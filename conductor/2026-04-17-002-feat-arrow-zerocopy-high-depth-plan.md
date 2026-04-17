@@ -18,8 +18,9 @@ The current `kand` bindings suffer from memory copy overhead. By integrating `ar
 ## Key Technical Decisions
 - **Alignment:** Output buffers are 64-byte aligned via `MutableBuffer`.
 - **Safety:** Strict null checks and offset-aware slicing in all Arrow variants.
-- **WASM Protocol:** `WasmBuffer` managed memory for zero-copy JS interaction.
+- **WASM Protocol:** `WasmBuffer` managed memory for zero-copy JS interaction. Improved to support generic types (f64, i32).
 - **Scaling:** High-level macros in both `kand` and `kand-py` to minimize boilerplate.
+- **Naming:** Arrow wrappers are explicitly suffixed with `_arrow` to avoid collisions.
 
 ## Implementation Units
 
@@ -38,19 +39,16 @@ Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
   - Done: DEMA, TEMA, T3, TRIMA, WMA.
 
 - [x] **Unit 2.3: Batch 4 - Momentum & Volume (COMPLETED)**
-  - Done: CCI, MFI, TypPrice, OBV, WillR, AD, AdOsc, ADR, ADXR, Aroon, AroonOsc, BOP.
+  - Done: CCI, MFI, TypPrice, OBV, WillR, AD, AdOsc, ADR, ADXR, Aroon, AroonOsc, BOP, Plus DM, Minus DM, TRange.
 
-- [ ] **Unit 2.4: Batch 5 - Stats (IN PROGRESS)**
-  **Goal:** Normalize and wrap statistics functions.
-  **Files:** `kand/src/ta/stats/{sum, stddev, max, min, correl}.rs`
-  **Approach (TDD):**
-  1. Refactor core to `_raw` variants.
-  2. Implement `_arrow` variants via macro.
-  3. Update Python bindings via `kand-py` macros.
-  4. Perform semantic commit.
+- [x] **Unit 2.4: Batch 5 - Stats (COMPLETED)**
+  - Done: Sum, StdDev, Max, Min, Correl.
 
-- [ ] **Unit 2.5: Batch 6 - Candle Patterns**
-  **Goal:** Bulk normalization of CDL_* pattern indicators.
+- [x] **Unit 2.5: Batch 6 - Candle Patterns (COMPLETED)**
+  - Done: CDL_Doji, CDL_Dragonfly_Doji, CDL_Gravestone_Doji, CDL_Hammer, CDL_Inverted_Hammer, CDL_Long_Shadow, CDL_Marubozu.
+
+- [x] **Unit 2.6: Batch 7 - Final Cleanup (COMPLETED)**
+  - Done: ECL, HA, MedPrice, MidPoint, MidPrice, Mom, NATR, RMA, ROC, ROCP, ROCR, ROCR100, SAR, Stoch, Supertrend, Trix, Vegas, VWAP, WCLPrice.
 
 ### Phase 3: Bindings & Final Audit
 

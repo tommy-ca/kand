@@ -1,8 +1,11 @@
 use crate::{
     KandError, TAFloat, TAInt,
     helper::{lower_shadow_length, period_to_k, real_body_length, upper_shadow_length},
-    types::Signal,
+    ta::types::Signal,
 };
+
+#[cfg(feature = "arrow")]
+use crate::ta::types::{TAArrowArray, TAArrowIntArray};
 
 /// Returns the required lookback period for Inverted Hammer pattern detection.
 ///
@@ -37,6 +40,56 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Inverted Hammer pattern without input validation for high performance.
+pub fn cdl_inverted_hammer_raw(
+    input_open: &[TAFloat],
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    opt_factor: TAFloat,
+    output_signals: &mut [TAInt],
+    output_body_avg: &mut [TAFloat],
+) {
+    let len = input_open.len();
+    let lookback = opt_period - 1;
+
+    // Calculate initial SMA
+    let mut sum = 0.0;
+    for i in 0..opt_period {
+        sum += real_body_length(input_open[i], input_close[i]);
+    }
+    let mut body_avg = sum / opt_period as TAFloat;
+    output_body_avg[lookback] = body_avg;
+
+    let k = 2.0 / (opt_period + 1) as TAFloat;
+
+    // Process first valid signal
+    output_signals[lookback] = cdl_inverted_hammer_inc_raw(
+        input_open[lookback],
+        input_high[lookback],
+        input_low[lookback],
+        input_close[lookback],
+        body_avg,
+        opt_factor,
+    );
+
+    // Process remaining candles
+    for i in opt_period..len {
+        let body = real_body_length(input_open[i], input_close[i]);
+        body_avg = (body - body_avg).mul_add(k, body_avg);
+        output_body_avg[i] = body_avg;
+        output_signals[i] = cdl_inverted_hammer_inc_raw(
+            input_open[i],
+            input_high[i],
+            input_low[i],
+            input_close[i],
+            body_avg,
+            opt_factor,
+        );
+    }
 }
 
 /// Detects Inverted Hammer candlestick patterns in price data.
@@ -144,37 +197,53 @@ pub fn cdl_inverted_hammer(
         }
     }
 
-    // Calculate initial SMA
-    let mut sum = 0.0;
-    for i in 0..opt_period {
-        sum += real_body_length(input_open[i], input_close[i]);
-    }
-    let mut body_avg = sum / opt_period as TAFloat;
-    output_body_avg[lookback] = body_avg;
+    cdl_inverted_hammer_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        opt_factor,
+        output_signals,
+        output_body_avg,
+    );
 
-    // Process remaining candles
-    for i in lookback..len {
-        let (signal, new_body_avg) = cdl_inverted_hammer_inc(
-            input_open[i],
-            input_high[i],
-            input_low[i],
-            input_close[i],
-            body_avg,
-            opt_period,
-            opt_factor,
-        )?;
-        output_signals[i] = signal;
-        output_body_avg[i] = new_body_avg;
-        body_avg = new_body_avg;
-    }
-
-    // Fill initial values with -1
+    // Fill initial values
     for i in 0..lookback {
-        output_signals[i] = Signal::Invalid.into();
+        output_signals[i] = Signal::Neutral.into();
         output_body_avg[i] = TAFloat::NAN;
     }
 
     Ok(())
+}
+
+/// Processes a single candlestick for Inverted Hammer detection without validation.
+#[inline]
+#[must_use]
+pub fn cdl_inverted_hammer_inc_raw(
+    input_open: TAFloat,
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+    body_avg: TAFloat,
+    opt_factor: TAFloat,
+) -> TAInt {
+    let body = real_body_length(input_open, input_close);
+    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
+    let down_shadow = lower_shadow_length(input_low, input_open, input_close);
+
+    // Check for Inverted Hammer pattern
+    let is_small_body = body <= body_avg && body > 0.0;
+    let has_long_upper_shadow = up_shadow >= opt_factor * body;
+    let has_minimal_lower_shadow = down_shadow <= body;
+    let body_in_lower_half =
+        TAFloat::max(input_open, input_close) < f64::midpoint(input_high, input_low);
+
+    if is_small_body && has_long_upper_shadow && has_minimal_lower_shadow && body_in_lower_half {
+        Signal::Bullish.into()
+    } else {
+        Signal::Neutral.into()
+    }
 }
 
 /// Processes a single candlestick to detect an Inverted Hammer pattern.
@@ -249,29 +318,32 @@ pub fn cdl_inverted_hammer_inc(
         }
     }
 
-    let body = real_body_length(input_open, input_close);
-    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
-    let down_shadow = lower_shadow_length(input_low, input_open, input_close);
     let k = period_to_k(opt_period)?;
+    let body = real_body_length(input_open, input_close);
     let body_avg = (body - prev_body_avg).mul_add(k, prev_body_avg);
 
-    // Check for Inverted Hammer pattern
-    let is_small_body = body <= body_avg && body > 0.0;
-    let has_long_upper_shadow = up_shadow >= opt_factor * body;
-    let has_minimal_lower_shadow = down_shadow <= body;
-    let body_in_lower_half =
-        TAFloat::max(input_open, input_close) < f64::midpoint(input_high, input_low);
-
-    let signal =
-        if is_small_body && has_long_upper_shadow && has_minimal_lower_shadow && body_in_lower_half
-        {
-            Signal::Bullish.into()
-        } else {
-            Signal::Neutral.into()
-        };
+    let signal = cdl_inverted_hammer_inc_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        body_avg,
+        opt_factor,
+    );
 
     Ok((signal, body_avg))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    cdl_inverted_hammer_arrow,
+    crate::ta::ohlcv::cdl_inverted_hammer::cdl_inverted_hammer_raw,
+    inputs: { input_open, input_high, input_low, input_close },
+    params: { opt_period: usize, opt_factor: TAFloat },
+    lookback_params: { opt_period },
+    outputs: { output_signals: TAInt, output_body_avg: TAFloat },
+    return_type: { TAArrowIntArray, TAArrowArray }
+);
 
 #[cfg(test)]
 mod tests {
@@ -308,7 +380,7 @@ mod tests {
 
         let opt_period = 14;
         let opt_factor = 2.0;
-        let mut output_signals = vec![0i64; input_open.len()];
+        let mut output_signals = vec![0; input_open.len()];
         let mut output_body_avg = vec![0.0; input_open.len()];
 
         cdl_inverted_hammer(
@@ -323,14 +395,11 @@ mod tests {
         )
         .unwrap();
 
-        // First 13 values should be -1
+        // First 13 values should be 0 (Neutral)
         for i in 0..13 {
-            assert_eq!(output_signals[i], -1);
+            assert_eq!(output_signals[i], 0);
             assert!(output_body_avg[i].is_nan());
         }
-
-        println!("output_signals: {output_signals:?}");
-        println!("output_body_avg: {output_body_avg:?}");
 
         // Test specific signals
         assert_eq!(output_signals[19], Signal::Bullish.into()); // TV BTCUSDT.P 5m 2025-02-08 14:05
@@ -357,5 +426,33 @@ mod tests {
             assert_relative_eq!(new_body_avg, output_body_avg[i], epsilon = 0.00001);
             prev_body_avg = new_body_avg;
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_cdl_inverted_hammer_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_open = vec![100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0];
+        let input_high = vec![105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0, 116.0, 117.0, 118.0, 119.0];
+        let input_low = vec![99.0, 100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0];
+        let input_close = vec![101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0];
+
+        let open_arrow = TAArrowArray::from(input_open);
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let (sig, _) = cdl_inverted_hammer_arrow(
+            &open_arrow,
+            &high_arrow,
+            &low_arrow,
+            &close_arrow,
+            14,
+            2.0,
+        )
+        .unwrap();
+
+        assert_eq!(sig.len(), 15);
     }
 }

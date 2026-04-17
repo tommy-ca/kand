@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period required for On Balance Volume (OBV) calculation
 ///
@@ -206,10 +204,11 @@ pub fn obv_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    obv,
+    obv_arrow,
     crate::ta::ohlcv::obv::obv_raw,
     inputs: { input_close, input_volume },
-    params: {}
+    params: {},
+    lookback_params: {}
 );
 
 #[cfg(test)]

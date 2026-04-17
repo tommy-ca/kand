@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for Variance calculation.
 ///
 /// # Description
@@ -274,11 +277,17 @@ pub fn var_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    var,
+    var_arrow,
     crate::ta::stats::var::var_raw,
     inputs: { input_prices },
     params: { opt_period: usize },
-    outputs: { output_var, output_sum, output_sum_sq }
+    lookback_params: { opt_period },
+    outputs: {
+        output_var: TAFloat,
+        output_sum: TAFloat,
+        output_sum_sq: TAFloat
+    },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]

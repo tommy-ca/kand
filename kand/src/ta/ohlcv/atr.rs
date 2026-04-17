@@ -253,10 +253,11 @@ pub fn atr_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    atr,
+    atr_arrow,
     crate::ta::ohlcv::atr::atr_raw,
     inputs: { input_high, input_low, input_close },
-    params: { opt_period: usize }
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]

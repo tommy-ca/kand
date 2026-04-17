@@ -331,13 +331,15 @@ pub fn rsi_inc(
     ))
 }
 
-// Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper_multi!(
-    rsi,
+    rsi_arrow,
     crate::ta::ohlcv::rsi::rsi_raw,
     inputs: { input_prices },
     params: { opt_period: usize },
-    outputs: { output_rsi, output_avg_gain, output_avg_loss }
+    lookback_params: { opt_period },
+    outputs: { output_rsi: crate::TAFloat, output_avg_gain: crate::TAFloat, output_avg_loss: crate::TAFloat },
+    return_type: { crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray }
 );
 
 #[cfg(test)]
@@ -406,5 +408,34 @@ mod tests {
             prev_avg_loss = new_avg_loss;
             prev_price = input_prices[i];
         }
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn test_rsi_arrow() {
+        use crate::ta::types::TAArrowArray;
+        let input_prices = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0,
+        ];
+        let input_prices_arrow = TAArrowArray::from(input_prices);
+        let opt_period = 14;
+
+        let (output_rsi_arrow, _output_avg_gain_arrow, _output_avg_loss_arrow) =
+            rsi_arrow(&input_prices_arrow, opt_period).unwrap();
+
+        // Verify against known values
+        assert_relative_eq!(
+            output_rsi_arrow.value(14),
+            37.748_344_370_861_39,
+            epsilon = 0.00001
+        );
+        assert_relative_eq!(
+            output_rsi_arrow.value(15),
+            34.223_538_361_225_86,
+            epsilon = 0.00001
+        );
     }
 }

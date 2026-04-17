@@ -1,4 +1,3 @@
-use super::typprice;
 use crate::{KandError, TAFloat};
 
 /// Returns the lookback period required for VWAP calculation.
@@ -29,6 +28,39 @@ use crate::{KandError, TAFloat};
 /// ```
 pub const fn lookback() -> Result<usize, KandError> {
     Ok(0)
+}
+
+/// Calculates Volume Weighted Average Price (VWAP) without input validation.
+pub fn vwap_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    input_volume: &[TAFloat],
+    output_vwap: &mut [TAFloat],
+    output_cum_pv: &mut [TAFloat],
+    output_cum_vol: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let mut cum_pv = 0.0;
+    let mut cum_vol = 0.0;
+
+    for i in 0..len {
+        let (new_cum_pv, new_cum_vol, vwap) = vwap_inc_raw(
+            input_high[i],
+            input_low[i],
+            input_close[i],
+            input_volume[i],
+            cum_pv,
+            cum_vol,
+        );
+
+        cum_pv = new_cum_pv;
+        cum_vol = new_cum_vol;
+
+        output_cum_pv[i] = cum_pv;
+        output_cum_vol[i] = cum_vol;
+        output_vwap[i] = vwap;
+    }
 }
 
 /// Calculates Volume Weighted Average Price (VWAP).
@@ -133,28 +165,37 @@ pub fn vwap(
         }
     }
 
-    let mut cum_pv = 0.0;
-    let mut cum_vol = 0.0;
-
-    for i in 0..len {
-        let (new_cum_pv, new_cum_vol, vwap) = vwap_inc(
-            input_high[i],
-            input_low[i],
-            input_close[i],
-            input_volume[i],
-            cum_pv,
-            cum_vol,
-        )?;
-
-        cum_pv = new_cum_pv;
-        cum_vol = new_cum_vol;
-
-        output_cum_pv[i] = cum_pv;
-        output_cum_vol[i] = cum_vol;
-        output_vwap[i] = vwap;
-    }
+    vwap_raw(
+        input_high,
+        input_low,
+        input_close,
+        input_volume,
+        output_vwap,
+        output_cum_pv,
+        output_cum_vol,
+    );
 
     Ok(())
+}
+
+/// Calculates the next VWAP value incrementally without input validation.
+pub fn vwap_inc_raw(
+    high: TAFloat,
+    low: TAFloat,
+    close: TAFloat,
+    volume: TAFloat,
+    prev_cum_pv: TAFloat,
+    prev_cum_vol: TAFloat,
+) -> (TAFloat, TAFloat, TAFloat) {
+    let typ_price = (high + low + close) / 3.0;
+    let cum_pv = typ_price.mul_add(volume, prev_cum_pv);
+    let cum_vol = prev_cum_vol + volume;
+    let vwap = if cum_vol == 0.0 {
+        0.0
+    } else {
+        cum_pv / cum_vol
+    };
+    (cum_pv, cum_vol, vwap)
 }
 
 /// Calculates the next VWAP value incrementally.
@@ -184,7 +225,7 @@ pub fn vwap(
 /// * `Result<(TAFloat, TAFloat, TAFloat), KandError>` - Tuple containing (new cumulative PV, new cumulative volume, new VWAP)
 ///
 /// # Errors
-/// None - this function cannot fail
+/// * `KandError::NaNDetected` - If any input value is NaN (when "`check-nan`" feature is enabled)
 ///
 /// # Example
 /// ```
@@ -207,16 +248,48 @@ pub fn vwap_inc(
     prev_cum_pv: TAFloat,
     prev_cum_vol: TAFloat,
 ) -> Result<(TAFloat, TAFloat, TAFloat), KandError> {
-    let typ_price = typprice::typprice_inc(high, low, close)?;
-    let cum_pv = typ_price.mul_add(volume, prev_cum_pv);
-    let cum_vol = prev_cum_vol + volume;
-    let vwap = if cum_vol == 0.0 {
-        0.0
-    } else {
-        cum_pv / cum_vol
-    };
-    Ok((cum_pv, cum_vol, vwap))
+    #[cfg(feature = "check-nan")]
+    {
+        if high.is_nan()
+            || low.is_nan()
+            || close.is_nan()
+            || volume.is_nan()
+            || prev_cum_pv.is_nan()
+            || prev_cum_vol.is_nan()
+        {
+            return Err(KandError::NaNDetected);
+        }
+    }
+
+    Ok(vwap_inc_raw(
+        high,
+        low,
+        close,
+        volume,
+        prev_cum_pv,
+        prev_cum_vol,
+    ))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    vwap_arrow,
+    crate::ta::ohlcv::vwap::vwap_raw,
+    inputs: { input_high, input_low, input_close, input_volume },
+    params: {},
+    lookback_params: {},
+    outputs: {
+        output_vwap: TAFloat,
+        output_cum_pv: TAFloat,
+        output_cum_vol: TAFloat
+    },
+    return_type: {
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray
+    }
+);
+
 
 #[cfg(test)]
 mod tests {
@@ -300,4 +373,39 @@ mod tests {
             prev_cum_vol = new_cum_vol;
         }
     }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_vwap_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            96955.7, 96850.0, 96787.8, 97163.0, 97212.0, 96870.7, 96824.2, 97041.9, 96979.8,
+            97127.0, 97150.0, 97094.5, 96844.7, 96660.0,
+        ];
+        let input_low = vec![
+            96490.7, 96309.5, 96407.1, 96492.8, 96707.0, 96505.0, 96556.2, 96765.8, 96743.4,
+            96782.4, 96916.4, 96750.1, 96436.1, 96507.3,
+        ];
+        let input_close = vec![
+            96708.6, 96497.4, 96495.2, 97094.9, 96715.4, 96635.9, 96786.6, 96889.9, 96828.0,
+            97062.0, 96965.8, 96844.6, 96612.3, 96531.2,
+        ];
+        let input_volume = vec![
+            3746.917, 3260.9, 2899.859, 4050.52, 4249.375, 2782.823, 2384.87, 3234.131, 2350.488,
+            3032.885, 2050.853, 2505.323, 3741.102, 811.82,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+        let volume_arrow = TAArrowArray::from(input_volume);
+
+        let (vwap, cum_pv, cum_vol) =
+            vwap_arrow(&high_arrow, &low_arrow, &close_arrow, &volume_arrow).unwrap();
+
+        assert_eq!(vwap.len(), 14);
+        assert_relative_eq!(vwap.value(0), 96718.333333, epsilon = 0.0001);
+    }
 }
+

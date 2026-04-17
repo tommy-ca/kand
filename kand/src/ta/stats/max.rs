@@ -1,7 +1,5 @@
 use crate::{EPSILON, KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Calculates the lookback period required for Maximum Value calculation.
 ///
@@ -221,10 +219,11 @@ pub fn max_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    max,
+    max_arrow,
     crate::ta::stats::max::max_raw,
     inputs: { input_prices },
-    params: { opt_period: usize }
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]

@@ -1,6 +1,9 @@
 use super::{minus_di, plus_di};
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculate the lookback period required for DX calculation
 ///
 /// # Description
@@ -365,11 +368,13 @@ pub fn dx_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    dx,
+    dx_arrow,
     crate::ta::ohlcv::dx::dx_raw,
     inputs: { input_high, input_low, input_close },
     params: { opt_period: usize },
-    outputs: { output_dx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr }
+    lookback_params: { opt_period },
+    outputs: { output_dx: TAFloat, output_smoothed_plus_dm: TAFloat, output_smoothed_minus_dm: TAFloat, output_smoothed_tr: TAFloat },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]

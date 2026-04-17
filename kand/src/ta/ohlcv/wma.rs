@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Calculates the lookback period required for Weighted Moving Average (WMA).
 ///
@@ -209,12 +207,13 @@ pub fn wma_inc(input_window: &[TAFloat], opt_period: usize) -> Result<TAFloat, K
     Ok(wma_inc_raw(input_window, opt_period))
 }
 
-// Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
-    wma,
+    wma_arrow,
     crate::ta::ohlcv::wma::wma_raw,
     inputs: { input },
-    params: { opt_period: usize }
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]

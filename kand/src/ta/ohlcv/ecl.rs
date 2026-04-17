@@ -1,4 +1,14 @@
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
+/// Returns the lookback period for Expanded Camarilla Levels (ECL) without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw() -> TAPeriod {
+    1
+}
 
 /// Returns the lookback period required for Expanded Camarilla Levels (ECL) calculation.
 ///
@@ -8,7 +18,7 @@ use crate::{KandError, TAFloat};
 /// requires the previous period's data.
 ///
 /// # Returns
-/// * `Result<usize, KandError>` - The lookback period (1)
+/// * `Result<TAPeriod, KandError>` - The lookback period (1)
 ///
 /// # Errors
 /// This function does not return any errors.
@@ -19,8 +29,79 @@ use crate::{KandError, TAFloat};
 /// let lookback = ecl::lookback().unwrap();
 /// assert_eq!(lookback, 1);
 /// ```
-pub const fn lookback() -> Result<usize, KandError> {
-    Ok(1)
+pub const fn lookback() -> Result<TAPeriod, KandError> {
+    Ok(lookback_raw())
+}
+
+/// Core calculation for Expanded Camarilla Levels (ECL) without error checking.
+///
+/// # Description
+/// ECL provides support and resistance levels based on the previous period's high, low and close prices.
+/// The levels are calculated using various ratios of the previous period's range.
+///
+/// # Arguments
+/// * `input_high` - Array of high prices
+/// * `input_low` - Array of low prices
+/// * `input_close` - Array of closing prices
+/// * `output_h5` - Output array for H5 resistance levels
+/// * `output_h4` - Output array for H4 resistance levels
+/// * `output_h3` - Output array for H3 resistance levels
+/// * `output_h2` - Output array for H2 resistance levels
+/// * `output_h1` - Output array for H1 resistance levels
+/// * `output_l1` - Output array for L1 support levels
+/// * `output_l2` - Output array for L2 support levels
+/// * `output_l3` - Output array for L3 support levels
+/// * `output_l4` - Output array for L4 support levels
+/// * `output_l5` - Output array for L5 support levels
+#[allow(clippy::similar_names)]
+pub fn ecl_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    output_h5: &mut [TAFloat],
+    output_h4: &mut [TAFloat],
+    output_h3: &mut [TAFloat],
+    output_h2: &mut [TAFloat],
+    output_h1: &mut [TAFloat],
+    output_l1: &mut [TAFloat],
+    output_l2: &mut [TAFloat],
+    output_l3: &mut [TAFloat],
+    output_l4: &mut [TAFloat],
+    output_l5: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = lookback_raw();
+    let opt_factor = 1.1;
+
+    for i in lookback..len {
+        let range = input_high[i - 1] - input_low[i - 1];
+        let h5_val = (input_high[i - 1] / input_low[i - 1]) * input_close[i - 1];
+
+        output_h5[i] = h5_val;
+        output_h4[i] = input_close[i - 1] + range * opt_factor / 2.0;
+        output_h3[i] = input_close[i - 1] + range * opt_factor / 4.0;
+        output_h2[i] = input_close[i - 1] + range * opt_factor / 6.0;
+        output_h1[i] = input_close[i - 1] + range * opt_factor / 12.0;
+        output_l1[i] = input_close[i - 1] - range * opt_factor / 12.0;
+        output_l2[i] = input_close[i - 1] - range * opt_factor / 6.0;
+        output_l3[i] = input_close[i - 1] - range * opt_factor / 4.0;
+        output_l4[i] = input_close[i - 1] - range * opt_factor / 2.0;
+        output_l5[i] = input_close[i - 1] - (h5_val - input_close[i - 1]);
+    }
+
+    // Fill initial values with NAN
+    for i in 0..lookback {
+        output_h5[i] = TAFloat::NAN;
+        output_h4[i] = TAFloat::NAN;
+        output_h3[i] = TAFloat::NAN;
+        output_h2[i] = TAFloat::NAN;
+        output_h1[i] = TAFloat::NAN;
+        output_l1[i] = TAFloat::NAN;
+        output_l2[i] = TAFloat::NAN;
+        output_l3[i] = TAFloat::NAN;
+        output_l4[i] = TAFloat::NAN;
+        output_l5[i] = TAFloat::NAN;
+    }
 }
 
 /// Calculates Expanded Camarilla Levels (ECL) for price data.
@@ -108,7 +189,7 @@ pub fn ecl(
     output_l5: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
-    let lookback = lookback()?;
+    let lookback = lookback_raw();
 
     #[cfg(feature = "check")]
     {
@@ -138,7 +219,7 @@ pub fn ecl(
         }
 
         // Data sufficiency check
-        if len <= lookback + 1 {
+        if len <= lookback {
             return Err(KandError::InsufficientData);
         }
     }
@@ -153,39 +234,49 @@ pub fn ecl(
         }
     }
 
-    let opt_factor = 1.1;
-
-    for i in lookback..len {
-        let range = input_high[i - 1] - input_low[i - 1];
-        let h5_val = (input_high[i - 1] / input_low[i - 1]) * input_close[i - 1];
-
-        output_h5[i] = h5_val;
-        output_h4[i] = input_close[i - 1] + range * opt_factor / 2.0;
-        output_h3[i] = input_close[i - 1] + range * opt_factor / 4.0;
-        output_h2[i] = input_close[i - 1] + range * opt_factor / 6.0;
-        output_h1[i] = input_close[i - 1] + range * opt_factor / 12.0;
-        output_l1[i] = input_close[i - 1] - range * opt_factor / 12.0;
-        output_l2[i] = input_close[i - 1] - range * opt_factor / 6.0;
-        output_l3[i] = input_close[i - 1] - range * opt_factor / 4.0;
-        output_l4[i] = input_close[i - 1] - range * opt_factor / 2.0;
-        output_l5[i] = input_close[i - 1] - (h5_val - input_close[i - 1]);
-    }
-
-    // Fill initial values with NAN
-    for i in 0..lookback {
-        output_h5[i] = TAFloat::NAN;
-        output_h4[i] = TAFloat::NAN;
-        output_h3[i] = TAFloat::NAN;
-        output_h2[i] = TAFloat::NAN;
-        output_h1[i] = TAFloat::NAN;
-        output_l1[i] = TAFloat::NAN;
-        output_l2[i] = TAFloat::NAN;
-        output_l3[i] = TAFloat::NAN;
-        output_l4[i] = TAFloat::NAN;
-        output_l5[i] = TAFloat::NAN;
-    }
+    ecl_raw(
+        input_high, input_low, input_close, output_h5, output_h4, output_h3, output_h2, output_h1,
+        output_l1, output_l2, output_l3, output_l4, output_l5,
+    );
 
     Ok(())
+}
+
+/// Core incremental calculation for Expanded Camarilla Levels (ECL) without error checking.
+#[inline]
+#[must_use]
+#[allow(clippy::similar_names)]
+pub fn ecl_inc_raw(
+    prev_high: TAFloat,
+    prev_low: TAFloat,
+    prev_close: TAFloat,
+) -> (
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+) {
+    let opt_factor = 1.1;
+    let range = prev_high - prev_low;
+    let h5_val = (prev_high / prev_low) * prev_close;
+
+    let h4 = prev_close + range * opt_factor / 2.0;
+    let h3 = prev_close + range * opt_factor / 4.0;
+    let h2 = prev_close + range * opt_factor / 6.0;
+    let h1 = prev_close + range * opt_factor / 12.0;
+    let l1 = prev_close - range * opt_factor / 12.0;
+    let l2 = prev_close - range * opt_factor / 6.0;
+    let l3 = prev_close - range * opt_factor / 4.0;
+    let l4 = prev_close - range * opt_factor / 2.0;
+    let l5 = prev_close - (h5_val - prev_close);
+
+    (h5_val, h4, h3, h2, h1, l1, l2, l3, l4, l5)
 }
 
 /// Incrementally calculates Expanded Camarilla Levels (ECL) for a single period.
@@ -258,22 +349,41 @@ pub fn ecl_inc(
         }
     }
 
-    let opt_factor = 1.1;
-    let range = prev_high - prev_low;
-    let h5_val = (prev_high / prev_low) * prev_close;
-
-    let h4 = prev_close + range * opt_factor / 2.0;
-    let h3 = prev_close + range * opt_factor / 4.0;
-    let h2 = prev_close + range * opt_factor / 6.0;
-    let h1 = prev_close + range * opt_factor / 12.0;
-    let l1 = prev_close - range * opt_factor / 12.0;
-    let l2 = prev_close - range * opt_factor / 6.0;
-    let l3 = prev_close - range * opt_factor / 4.0;
-    let l4 = prev_close - range * opt_factor / 2.0;
-    let l5 = prev_close - (h5_val - prev_close);
-
-    Ok((h5_val, h4, h3, h2, h1, l1, l2, l3, l4, l5))
+    Ok(ecl_inc_raw(prev_high, prev_low, prev_close))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    ecl_arrow,
+    crate::ta::ohlcv::ecl::ecl_raw,
+    inputs: { input_high, input_low, input_close },
+    params: {},
+    lookback_params: {},
+    outputs: {
+        output_h5: TAFloat,
+        output_h4: TAFloat,
+        output_h3: TAFloat,
+        output_h2: TAFloat,
+        output_h1: TAFloat,
+        output_l1: TAFloat,
+        output_l2: TAFloat,
+        output_l3: TAFloat,
+        output_l4: TAFloat,
+        output_l5: TAFloat
+    },
+    return_type: {
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray
+    }
+);
 
 #[cfg(test)]
 mod tests {
@@ -350,5 +460,52 @@ mod tests {
         assert_relative_eq!(l3_inc, output_l3[i], epsilon = TAFloat::EPSILON);
         assert_relative_eq!(l4_inc, output_l4[i], epsilon = TAFloat::EPSILON);
         assert_relative_eq!(l5_inc, output_l5[i], epsilon = TAFloat::EPSILON);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    #[allow(clippy::similar_names)]
+    fn test_ecl_arrow() {
+        let input_high = vec![24.20, 24.07, 24.04, 23.87, 23.67];
+        let input_low = vec![23.85, 23.72, 23.64, 23.37, 23.46];
+        let input_close = vec![23.89, 23.95, 23.67, 23.78, 23.50];
+
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let (h5, h4, h3, h2, h1, l1, l2, l3, l4, l5) =
+            ecl_arrow(&high_arrow, &low_arrow, &close_arrow).unwrap();
+
+        assert_eq!(h5.len(), 5);
+        assert!(h5.value(0).is_nan());
+        assert!(h5.value(1).is_finite());
+
+        assert_eq!(h4.len(), 5);
+        assert!(h4.value(0).is_nan());
+
+        assert_eq!(h3.len(), 5);
+        assert!(h3.value(0).is_nan());
+
+        assert_eq!(h2.len(), 5);
+        assert!(h2.value(0).is_nan());
+
+        assert_eq!(h1.len(), 5);
+        assert!(h1.value(0).is_nan());
+
+        assert_eq!(l1.len(), 5);
+        assert!(l1.value(0).is_nan());
+
+        assert_eq!(l2.len(), 5);
+        assert!(l2.value(0).is_nan());
+
+        assert_eq!(l3.len(), 5);
+        assert!(l3.value(0).is_nan());
+
+        assert_eq!(l4.len(), 5);
+        assert!(l4.value(0).is_nan());
+
+        assert_eq!(l5.len(), 5);
+        assert!(l5.value(0).is_nan());
     }
 }

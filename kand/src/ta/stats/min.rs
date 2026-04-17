@@ -1,7 +1,5 @@
 use crate::{EPSILON, KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Calculates the lookback period required for Minimum Value calculation.
 ///
@@ -230,10 +228,11 @@ pub fn min_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    min,
+    min_arrow,
     crate::ta::stats::min::min_raw,
     inputs: { input_prices },
-    params: { opt_period: usize }
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]

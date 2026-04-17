@@ -1,4 +1,12 @@
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+
+/// Returns the lookback period for MEDPRICE calculation without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw() -> TAPeriod {
+    0
+}
 
 /// Calculates the lookback period required for MEDPRICE calculation.
 ///
@@ -7,7 +15,7 @@ use crate::{KandError, TAFloat};
 /// Since MEDPRICE only requires current high and low prices, the lookback period is 0.
 ///
 /// # Returns
-/// * `Result<usize, KandError>` - Returns 0 on success
+/// * `Result<TAPeriod, KandError>` - Returns 0 on success
 ///
 /// # Errors
 /// No errors are returned by this function.
@@ -18,8 +26,21 @@ use crate::{KandError, TAFloat};
 /// let lookback = medprice::lookback().unwrap();
 /// assert_eq!(lookback, 0);
 /// ```
-pub const fn lookback() -> Result<usize, KandError> {
-    Ok(0)
+pub const fn lookback() -> Result<TAPeriod, KandError> {
+    Ok(lookback_raw())
+}
+
+/// Core calculation for Median Price (MEDPRICE) without error checking.
+///
+/// # Arguments
+/// * `input_high` - Array of high prices
+/// * `input_low` - Array of low prices
+/// * `output_medprice` - Output array for calculated median price values
+pub fn medprice_raw(input_high: &[TAFloat], input_low: &[TAFloat], output_medprice: &mut [TAFloat]) {
+    let len = input_high.len();
+    for i in 0..len {
+        output_medprice[i] = f64::midpoint(input_high[i], input_low[i]);
+    }
 }
 
 /// Calculates Median Price (MEDPRICE) for a price series.
@@ -92,11 +113,16 @@ pub fn medprice(
         }
     }
 
-    for i in 0..len {
-        output_medprice[i] = f64::midpoint(input_high[i], input_low[i]);
-    }
+    medprice_raw(input_high, input_low, output_medprice);
 
     Ok(())
+}
+
+/// Core incremental calculation for MEDPRICE value without error checking.
+#[inline]
+#[must_use]
+pub fn medprice_inc_raw(input_high: TAFloat, input_low: TAFloat) -> TAFloat {
+    f64::midpoint(input_high, input_low)
 }
 
 /// Calculates a single MEDPRICE value incrementally.
@@ -124,7 +150,7 @@ pub fn medprice(
 /// let result = medprice::medprice_inc(high, low).unwrap();
 /// assert_eq!(result, 9.0);
 /// ```
-pub const fn medprice_inc(input_high: TAFloat, input_low: TAFloat) -> Result<TAFloat, KandError> {
+pub fn medprice_inc(input_high: TAFloat, input_low: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
         if input_high.is_nan() || input_low.is_nan() {
@@ -132,8 +158,17 @@ pub const fn medprice_inc(input_high: TAFloat, input_low: TAFloat) -> Result<TAF
         }
     }
 
-    Ok(f64::midpoint(input_high, input_low))
+    Ok(medprice_inc_raw(input_high, input_low))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    medprice_arrow,
+    crate::ta::ohlcv::medprice::medprice_raw,
+    inputs: { input_high, input_low },
+    params: {},
+    lookback_params: {}
+);
 
 #[cfg(test)]
 mod tests {
@@ -148,7 +183,7 @@ mod tests {
             35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6,
         ];
         let input_low = vec![
-            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35202.6, 35175.0,
             35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1,
         ];
         let mut output_medprice = vec![0.0; input_high.len()];
@@ -157,7 +192,7 @@ mod tests {
 
         // Compare with known values
         let expected_values = [
-            35241.05, 35227.0, 35207.85, 35160.75, 35167.8, 35216.35, 35232.75, 35242.5, 35215.5,
+            35241.05, 35227.0, 35207.85, 35160.75, 35167.8, 35216.35, 35232.75, 35242.05, 35215.5,
             35188.0, 35178.15, 35192.05, 35213.5, 35181.0, 35146.35,
         ];
 
@@ -170,5 +205,22 @@ mod tests {
             let result = medprice_inc(input_high[i], input_low[i]).unwrap();
             assert_relative_eq!(result, output_medprice[i], epsilon = 0.0001);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_medprice_arrow() {
+        let input_high = vec![10.0, 11.0, 12.0];
+        let input_low = vec![8.0, 9.0, 10.0];
+
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+
+        let result = medprice_arrow(&high_arrow, &low_arrow).unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert_relative_eq!(result.value(0), 9.0, epsilon = 0.0001);
+        assert_relative_eq!(result.value(1), 10.0, epsilon = 0.0001);
+        assert_relative_eq!(result.value(2), 11.0, epsilon = 0.0001);
     }
 }

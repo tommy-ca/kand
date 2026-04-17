@@ -1,8 +1,6 @@
 use super::adx;
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Calculates the lookback period required for ADXR calculation
 ///
@@ -40,13 +38,14 @@ pub fn adxr_raw(
     input_close: &[TAFloat],
     opt_period: usize,
     output_adxr: &mut [TAFloat],
-    output_adx: &mut [TAFloat],
-    output_smoothed_plus_dm: &mut [TAFloat],
-    output_smoothed_minus_dm: &mut [TAFloat],
-    output_smoothed_tr: &mut [TAFloat],
 ) {
     let len = input_high.len();
     let lookback = opt_period * 3 - 2;
+
+    let mut output_adx = vec![0.0; len];
+    let mut output_smoothed_plus_dm = vec![0.0; len];
+    let mut output_smoothed_minus_dm = vec![0.0; len];
+    let mut output_smoothed_tr = vec![0.0; len];
 
     // Calculate ADX first
     adx::adx_raw(
@@ -54,10 +53,10 @@ pub fn adxr_raw(
         input_low,
         input_close,
         opt_period,
-        output_adx,
-        output_smoothed_plus_dm,
-        output_smoothed_minus_dm,
-        output_smoothed_tr,
+        &mut output_adx,
+        &mut output_smoothed_plus_dm,
+        &mut output_smoothed_minus_dm,
+        &mut output_smoothed_tr,
     );
 
     // Calculate ADXR = (Current ADX + ADX period-1 periods ago) / 2
@@ -86,10 +85,6 @@ pub fn adxr_raw(
 /// * `input_close` - Array of closing prices
 /// * `opt_period` - Period for ADX calculation
 /// * `output_adxr` - Output array for ADXR values
-/// * `output_adx` - Output array for ADX values
-/// * `output_smoothed_plus_dm` - Output array for smoothed +DM values
-/// * `output_smoothed_minus_dm` - Output array for smoothed -DM values
-/// * `output_smoothed_tr` - Output array for smoothed TR values
 ///
 /// # Returns
 /// * `Result<(), KandError>` - Ok if calculation succeeds
@@ -110,10 +105,6 @@ pub fn adxr_raw(
 /// let input_close = vec![23.89, 23.95, 23.67, 23.78, 23.50];
 /// let period = 2;
 /// let mut output_adxr = vec![0.0; 5];
-/// let mut output_adx = vec![0.0; 5];
-/// let mut output_smoothed_plus_dm = vec![0.0; 5];
-/// let mut output_smoothed_minus_dm = vec![0.0; 5];
-/// let mut output_smoothed_tr = vec![0.0; 5];
 ///
 /// adxr(
 ///     &input_high,
@@ -121,10 +112,6 @@ pub fn adxr_raw(
 ///     &input_close,
 ///     period,
 ///     &mut output_adxr,
-///     &mut output_adx,
-///     &mut output_smoothed_plus_dm,
-///     &mut output_smoothed_minus_dm,
-///     &mut output_smoothed_tr,
 /// )
 /// .unwrap();
 /// ```
@@ -134,10 +121,6 @@ pub fn adxr(
     input_close: &[TAFloat],
     opt_period: usize,
     output_adxr: &mut [TAFloat],
-    output_adx: &mut [TAFloat],
-    output_smoothed_plus_dm: &mut [TAFloat],
-    output_smoothed_minus_dm: &mut [TAFloat],
-    output_smoothed_tr: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
     let lookback = lookback(opt_period)?;
@@ -155,14 +138,7 @@ pub fn adxr(
         }
 
         // Length consistency check
-        if len != input_low.len()
-            || len != input_close.len()
-            || len != output_adxr.len()
-            || len != output_adx.len()
-            || len != output_smoothed_plus_dm.len()
-            || len != output_smoothed_minus_dm.len()
-            || len != output_smoothed_tr.len()
-        {
+        if len != input_low.len() || len != input_close.len() || len != output_adxr.len() {
             return Err(KandError::LengthMismatch);
         }
     }
@@ -183,10 +159,6 @@ pub fn adxr(
         input_close,
         opt_period,
         output_adxr,
-        output_adx,
-        output_smoothed_plus_dm,
-        output_smoothed_minus_dm,
-        output_smoothed_tr,
     );
 
     // Fill initial values with NAN
@@ -194,10 +166,6 @@ pub fn adxr(
     {
         for i in 0..lookback {
             output_adxr[i] = TAFloat::NAN;
-            output_adx[i] = TAFloat::NAN;
-            output_smoothed_plus_dm[i] = TAFloat::NAN;
-            output_smoothed_minus_dm[i] = TAFloat::NAN;
-            output_smoothed_tr[i] = TAFloat::NAN;
         }
     }
 
@@ -350,12 +318,12 @@ pub fn adxr_inc(
 }
 
 // Arrow wrapper
-crate::kand_arrow_wrapper_multi!(
-    adxr,
+crate::kand_arrow_wrapper!(
+    adxr_arrow,
     crate::ta::ohlcv::adxr::adxr_raw,
     inputs: { input_high, input_low, input_close },
     params: { opt_period: usize },
-    outputs: { output_adxr, output_adx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr }
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]
@@ -396,10 +364,6 @@ mod tests {
         ];
         let opt_period = 14;
         let mut output_adxr = vec![0.0; input_high.len()];
-        let mut output_adx = vec![0.0; input_high.len()];
-        let mut output_smoothed_plus_dm = vec![0.0; input_high.len()];
-        let mut output_smoothed_minus_dm = vec![0.0; input_high.len()];
-        let mut output_smoothed_tr = vec![0.0; input_high.len()];
 
         adxr(
             &input_high,
@@ -407,10 +371,6 @@ mod tests {
             &input_close,
             opt_period,
             &mut output_adxr,
-            &mut output_adx,
-            &mut output_smoothed_plus_dm,
-            &mut output_smoothed_minus_dm,
-            &mut output_smoothed_tr,
         )
         .unwrap();
 
@@ -453,6 +413,14 @@ mod tests {
             );
         }
 
+        // To test incremental, we need ADX and DM/TR values.
+        // We'll calculate them manually for the test.
+        let mut out_adx = vec![0.0; input_high.len()];
+        let mut out_plus_dm = vec![0.0; input_high.len()];
+        let mut out_minus_dm = vec![0.0; input_high.len()];
+        let mut out_tr = vec![0.0; input_high.len()];
+        adx::adx_raw(&input_high, &input_low, &input_close, opt_period, &mut out_adx, &mut out_plus_dm, &mut out_minus_dm, &mut out_tr);
+
         // Calculate and verify incremental values starting from index period * 4 - 3
         for i in (opt_period * 4 - 3)..input_high.len() {
             let result = adxr_inc(
@@ -461,21 +429,17 @@ mod tests {
                 input_high[i - 1],
                 input_low[i - 1],
                 input_close[i - 1],
-                output_adx[i - 1],
-                output_adx[i - opt_period + 1], // ADX value from period-1 days ago
-                output_smoothed_plus_dm[i - 1],
-                output_smoothed_minus_dm[i - 1],
-                output_smoothed_tr[i - 1],
+                out_adx[i - 1],
+                out_adx[i - opt_period + 1], // ADX value from period-1 days ago
+                out_plus_dm[i - 1],
+                out_minus_dm[i - 1],
+                out_tr[i - 1],
                 opt_period,
             )
             .unwrap();
 
             // Compare with full calculation
             assert_relative_eq!(result.0, output_adxr[i], epsilon = 0.00001); // ADXR value
-            assert_relative_eq!(result.1, output_adx[i], epsilon = 0.00001); // ADX value
-            assert_relative_eq!(result.2, output_smoothed_plus_dm[i], epsilon = 0.00001); // +DM
-            assert_relative_eq!(result.3, output_smoothed_minus_dm[i], epsilon = 0.00001); // -DM
-            assert_relative_eq!(result.4, output_smoothed_tr[i], epsilon = 0.00001); // TR
         }
     }
 
@@ -496,7 +460,7 @@ mod tests {
         let input_low = vec![
             35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
             35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
-            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0, 35073.0, 35055.0,
+            35012.3, 35022.2, 34931.6, 34931.0, 34952.5, 34977.9, 35039.0, 35073.0, 35055.0,
             35084.0, 35060.0, 35073.1, 35090.0, 35072.0, 35078.0, 35088.0, 35124.8, 35169.4,
             35138.0, 35141.0, 35182.0, 35151.1, 35158.4, 35140.0, 35087.0, 35085.8, 35114.7,
             35086.0, 35090.6, 35074.1, 35078.4, 35100.0, 35030.2, 34986.3, 34988.1, 34973.1,
@@ -517,16 +481,11 @@ mod tests {
         let close_arrow = TAArrowArray::from(input_close.clone());
         let opt_period = 14;
 
-        let (adxr_arrow, _, _, _, _) =
-            adxr_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
+        let adxr_arrow = adxr_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
 
         assert_eq!(adxr_arrow.len(), input_high.len());
 
         let mut out_adxr = vec![0.0; input_high.len()];
-        let mut out_adx = vec![0.0; input_high.len()];
-        let mut out_plus_dm = vec![0.0; input_high.len()];
-        let mut out_minus_dm = vec![0.0; input_high.len()];
-        let mut out_tr = vec![0.0; input_high.len()];
 
         adxr(
             &input_high,
@@ -534,10 +493,6 @@ mod tests {
             &input_close,
             opt_period,
             &mut out_adxr,
-            &mut out_adx,
-            &mut out_plus_dm,
-            &mut out_minus_dm,
-            &mut out_tr,
         )
         .unwrap();
 

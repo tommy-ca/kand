@@ -1,6 +1,9 @@
 use super::ema;
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculate the lookback period required for MACD calculation
 ///
 /// Returns the minimum number of data points needed before the first valid MACD output can be generated.
@@ -56,18 +59,18 @@ pub fn macd_raw(
     output_macd_line: &mut [TAFloat],
     output_signal_line: &mut [TAFloat],
     output_histogram: &mut [TAFloat],
-    output_fast_ema: &mut [TAFloat],
-    output_slow_ema: &mut [TAFloat],
 ) {
     let len = input_price.len();
     let lookback = (opt_slow_period - 1) + (opt_signal_period - 1);
 
-    ema::ema_raw(input_price, opt_fast_period, None, output_fast_ema);
-    ema::ema_raw(input_price, opt_slow_period, None, output_slow_ema);
+    // Use output_macd_line for fast EMA
+    ema::ema_raw(input_price, opt_fast_period, None, output_macd_line);
+    // Use output_histogram for slow EMA
+    ema::ema_raw(input_price, opt_slow_period, None, output_histogram);
 
-    // Calculate MACD line
+    // Calculate MACD line (Fast EMA - Slow EMA)
     for i in 0..len {
-        output_macd_line[i] = output_fast_ema[i] - output_slow_ema[i];
+        output_macd_line[i] -= output_histogram[i];
     }
 
     // Calculate signal line using non-NaN MACD values
@@ -114,8 +117,6 @@ pub fn macd_raw(
 /// * `output_macd_line` - Output buffer for MACD line values
 /// * `output_signal_line` - Output buffer for signal line values
 /// * `output_histogram` - Output buffer for histogram values
-/// * `output_fast_ema` - Output buffer for fast EMA values
-/// * `output_slow_ema` - Output buffer for slow EMA values
 ///
 /// # Returns
 /// * `Result<(), KandError>` - Empty Ok if successful
@@ -135,8 +136,6 @@ pub fn macd_raw(
 /// let mut macd_line = vec![0.0; prices.len()];
 /// let mut signal_line = vec![0.0; prices.len()];
 /// let mut histogram = vec![0.0; prices.len()];
-/// let mut fast_ema = vec![0.0; prices.len()];
-/// let mut slow_ema = vec![0.0; prices.len()];
 ///
 /// macd::macd(
 ///     &prices,
@@ -146,8 +145,6 @@ pub fn macd_raw(
 ///     &mut macd_line,
 ///     &mut signal_line,
 ///     &mut histogram,
-///     &mut fast_ema,
-///     &mut slow_ema,
 /// )
 /// .unwrap();
 /// ```
@@ -159,8 +156,6 @@ pub fn macd(
     output_macd_line: &mut [TAFloat],
     output_signal_line: &mut [TAFloat],
     output_histogram: &mut [TAFloat],
-    output_fast_ema: &mut [TAFloat],
-    output_slow_ema: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_price.len();
     let lookback = lookback(opt_fast_period, opt_slow_period, opt_signal_period)?;
@@ -181,8 +176,6 @@ pub fn macd(
         if len != output_macd_line.len()
             || len != output_signal_line.len()
             || len != output_histogram.len()
-            || len != output_fast_ema.len()
-            || len != output_slow_ema.len()
         {
             return Err(KandError::LengthMismatch);
         }
@@ -211,8 +204,6 @@ pub fn macd(
         output_macd_line,
         output_signal_line,
         output_histogram,
-        output_fast_ema,
-        output_slow_ema,
     );
 
     // Fill initial values with NAN
@@ -222,8 +213,6 @@ pub fn macd(
             output_macd_line[i] = TAFloat::NAN;
             output_signal_line[i] = TAFloat::NAN;
             output_histogram[i] = TAFloat::NAN;
-            output_fast_ema[i] = TAFloat::NAN;
-            output_slow_ema[i] = TAFloat::NAN;
         }
     }
 
@@ -348,7 +337,7 @@ pub fn macd_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    macd,
+    macd_arrow,
     crate::ta::ohlcv::macd::macd_raw,
     inputs: { input_price },
     params: {
@@ -356,11 +345,11 @@ crate::kand_arrow_wrapper_multi!(
         opt_slow_period: usize,
         opt_signal_period: usize
     },
+    lookback_params: { opt_fast_period, opt_slow_period, opt_signal_period },
     outputs: {
-        output_macd_line,
-        output_signal_line,
-        output_histogram,
-        output_fast_ema,
-        output_slow_ema
-    }
+        output_macd_line: TAFloat,
+        output_signal_line: TAFloat,
+        output_histogram: TAFloat
+    },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray }
 );

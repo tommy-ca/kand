@@ -238,11 +238,13 @@ pub fn mfi(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    mfi,
+    mfi_arrow,
     crate::ta::ohlcv::mfi::mfi_raw,
     inputs: { input_high, input_low, input_close, input_volume },
     params: { opt_period: usize },
-    outputs: { output_mfi, output_typ_prices, output_money_flows, output_pos_flows, output_neg_flows }
+    lookback_params: { opt_period },
+    outputs: { output_mfi: TAFloat, output_typ_prices: TAFloat, output_money_flows: TAFloat, output_pos_flows: TAFloat, output_neg_flows: TAFloat },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]

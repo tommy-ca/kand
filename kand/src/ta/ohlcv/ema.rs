@@ -242,6 +242,15 @@ pub fn ema_inc(
     Ok(ema_inc_raw(input_price, prev_ema, multiplier))
 }
 
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    ema_arrow,
+    crate::ta::ohlcv::ema::ema_raw,
+    inputs: { input_prices },
+    params: { opt_period: TAPeriod, opt_k: Option<TAFloat> },
+    lookback_params: { opt_period }
+);
+
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
@@ -302,6 +311,43 @@ mod tests {
             let result = ema_inc(input_prices[i], prev_ema, opt_period, None).unwrap();
             assert_relative_eq!(result, output_ema[i], epsilon = 0.00001);
             prev_ema = result;
+        }
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn test_ema_arrow() {
+        use crate::ta::types::TAArrowArray;
+        let input_prices = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1, 35215.3,
+        ];
+        let input_prices_arrow = TAArrowArray::from(input_prices);
+        let opt_period = 14;
+
+        let output_ema_arrow = ema_arrow(&input_prices_arrow, opt_period, None).unwrap();
+
+        // Test first valid value
+        let expected_values = [
+            35_203.535_714_285_72,
+            35_188.437_619_047_625,
+            35_168.805_936_507_94,
+            35_146.205_144_973_545,
+            35_128.497_792_310_41,
+            35_120.564_753_335_69,
+            35_107.769_452_890_934,
+            35_085.333_525_838_81,
+            35_067.635_722_393_636,
+            35_058.617_626_074_48,
+            35_056.375_275_931_22,
+            35_059.525_239_140_39,
+            35_066.855_207_255_01,
+        ];
+
+        for (i, expected) in expected_values.iter().enumerate() {
+            assert_relative_eq!(output_ema_arrow.value(i + 13), *expected, epsilon = 0.00001);
         }
     }
 }

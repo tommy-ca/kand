@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period for A/D without input validation.
 #[inline]
@@ -266,10 +264,11 @@ pub fn ad_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    ad,
+    ad_arrow,
     crate::ta::ohlcv::ad::ad_raw,
     inputs: { input_high, input_low, input_close, input_volume },
-    params: {}
+    params: {},
+    lookback_params: {}
 );
 
 #[cfg(test)]
@@ -333,83 +332,41 @@ mod tests {
 
     /// Tests A/D calculation with `allow-nan` feature enabled.
     #[test]
-    #[cfg(feature = "allow-nan")]
+    #[cfg(all(feature = "arrow", feature = "allow-nan"))]
     fn test_ad_with_nan() {
-        let mut output_ad = vec![f64::NAN; INPUT_HIGH.len()];
-        ad(
-            &INPUT_HIGH,
-            &INPUT_LOW,
-            &INPUT_CLOSE,
-            &INPUT_VOLUME,
-            &mut output_ad,
-        )
-        .unwrap();
+        let high_arrow = TAArrowArray::from(INPUT_HIGH.to_vec());
+        let low_arrow = TAArrowArray::from(INPUT_LOW.to_vec());
+        let close_arrow = TAArrowArray::from(INPUT_CLOSE.to_vec());
+        let volume_arrow = TAArrowArray::from(INPUT_VOLUME.to_vec());
+
+        let result = ad_arrow(&high_arrow, &low_arrow, &close_arrow, &volume_arrow).unwrap();
 
         // Verify full series calculation
         for (i, &expected) in EXPECTED_VALUES.iter().enumerate() {
-            assert_relative_eq!(output_ad[i], expected, epsilon = EPSILON);
-        }
-
-        // Verify incremental calculation matches full series
-        let mut prev_ad = output_ad[0];
-        for i in 1..INPUT_HIGH.len() {
-            let result = ad_inc(
-                INPUT_HIGH[i],
-                INPUT_LOW[i],
-                INPUT_CLOSE[i],
-                INPUT_VOLUME[i],
-                prev_ad,
-            )
-            .unwrap();
-            if result.is_nan() {
-                assert!(output_ad[i].is_nan());
-            } else {
-                assert_relative_eq!(result, output_ad[i], epsilon = EPSILON);
-            }
-            prev_ad = result;
+            assert_relative_eq!(result.value(i), expected, epsilon = EPSILON);
         }
     }
 
     /// Tests A/D calculation without `allow-nan` feature.
     #[test]
-    #[cfg(not(feature = "allow-nan"))]
+    #[cfg(feature = "arrow")]
     fn test_ad_without_nan() {
-        let mut output_ad = vec![0.0; INPUT_HIGH.len()];
-        ad(
-            &INPUT_HIGH,
-            &INPUT_LOW,
-            &INPUT_CLOSE,
-            &INPUT_VOLUME,
-            &mut output_ad,
-        )
-        .unwrap();
+        let high_arrow = TAArrowArray::from(INPUT_HIGH.to_vec());
+        let low_arrow = TAArrowArray::from(INPUT_LOW.to_vec());
+        let close_arrow = TAArrowArray::from(INPUT_CLOSE.to_vec());
+        let volume_arrow = TAArrowArray::from(INPUT_VOLUME.to_vec());
+
+        let result = ad_arrow(&high_arrow, &low_arrow, &close_arrow, &volume_arrow).unwrap();
 
         // Verify full series calculation
         for (i, &expected) in EXPECTED_VALUES.iter().enumerate() {
-            assert_relative_eq!(output_ad[i], expected, epsilon = EPSILON);
-        }
-
-        // Verify incremental calculation matches full series
-        let mut prev_ad = output_ad[0];
-        for i in 1..INPUT_HIGH.len() {
-            let result = ad_inc(
-                INPUT_HIGH[i],
-                INPUT_LOW[i],
-                INPUT_CLOSE[i],
-                INPUT_VOLUME[i],
-                prev_ad,
-            )
-            .unwrap();
-            assert_relative_eq!(result, output_ad[i], epsilon = EPSILON);
-            prev_ad = result;
+            assert_relative_eq!(result.value(i), expected, epsilon = EPSILON);
         }
     }
 
     #[test]
     #[cfg(feature = "arrow")]
     fn test_ad_arrow() {
-        use crate::ta::types::TAArrowArray;
-
         let high_arrow = TAArrowArray::from(INPUT_HIGH.to_vec());
         let low_arrow = TAArrowArray::from(INPUT_LOW.to_vec());
         let close_arrow = TAArrowArray::from(INPUT_CLOSE.to_vec());

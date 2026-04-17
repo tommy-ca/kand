@@ -4,13 +4,16 @@ macro_rules! kand_arrow_wrapper {
         $name:ident,
         $raw_fn:path,
         inputs: { $($input_name:ident),+ },
-        params: { $($param_name:ident : $param_type:ty),* }
+        params: { $($param_name:ident : $param_type:ty),* },
+        lookback_params: { $($lb_param:ident),* }
     ) => {
         #[cfg(feature = "arrow")]
+        #[allow(clippy::too_many_arguments)]
         pub fn $name(
             $($input_name: &$crate::ta::types::TAArrowArray,)+
             $($param_name: $param_type),*
         ) -> Result<$crate::ta::types::TAArrowArray, $crate::KandError> {
+            use arrow::array::Array;
             use arrow::buffer::MutableBuffer;
             use std::mem::size_of;
 
@@ -29,7 +32,7 @@ macro_rules! kand_arrow_wrapper {
             )+
 
             // Validation (lookback)
-            let lookback = $crate::ta::ohlcv::$name::lookback($($param_name),*)?;
+            let lookback = lookback($($lb_param),*)?;
             if len <= lookback {
                 return Err($crate::KandError::InsufficientData);
             }
@@ -67,13 +70,17 @@ macro_rules! kand_arrow_wrapper_multi {
         $raw_fn:path,
         inputs: { $($input_name:ident),+ },
         params: { $($param_name:ident : $param_type:ty),* },
-        outputs: { $($output_name:ident),+ }
+        lookback_params: { $($lb_param:ident),* },
+        outputs: { $($output_name:ident : $output_type:ty),+ },
+        return_type: { $($ret_type:ty),+ }
     ) => {
         #[cfg(feature = "arrow")]
+        #[allow(clippy::too_many_arguments)]
         pub fn $name(
             $($input_name: &$crate::ta::types::TAArrowArray,)+
             $($param_name: $param_type),*
-        ) -> Result<($( $crate::ta::types::TAArrowArray ),+), $crate::KandError> {
+        ) -> Result<($( $ret_type ),+), $crate::KandError> {
+            use arrow::array::Array;
             use arrow::buffer::MutableBuffer;
             use std::mem::size_of;
 
@@ -92,7 +99,7 @@ macro_rules! kand_arrow_wrapper_multi {
             )+
 
             // Validation (lookback)
-            let lookback = $crate::ta::ohlcv::$name::lookback($($param_name),*)?;
+            let lookback = lookback($($lb_param),*)?;
             if len <= lookback {
                 return Err($crate::KandError::InsufficientData);
             }
@@ -104,28 +111,31 @@ macro_rules! kand_arrow_wrapper_multi {
 
             // Aligned allocation for each output
             $(
-                let mut $output_name = MutableBuffer::new(len * size_of::<$crate::TAFloat>());
-                $output_name.resize(len * size_of::<$crate::TAFloat>(), 0);
+                let mut $output_name = MutableBuffer::new(len * size_of::<$output_type>());
+                $output_name.resize(len * size_of::<$output_type>(), 0);
             )+
 
             // Computation
             $raw_fn(
                 $($input_name,)+ 
                 $($param_name,)* 
-                $( $output_name.typed_data_mut::<$crate::TAFloat>() ),+
+                $( $output_name.typed_data_mut::<$output_type>() ),+
             );
 
             // Fill NaNs
             #[cfg(feature = "allow-nan")]
             {
                 $(
-                    for value in $output_name.typed_data_mut::<$crate::TAFloat>().iter_mut().take(lookback) {
-                        *value = $crate::TAFloat::NAN;
+                    // Only fill NaNs if output type is TAFloat
+                    if std::any::TypeId::of::<$output_type>() == std::any::TypeId::of::<$crate::TAFloat>() {
+                        for value in $output_name.typed_data_mut::<$crate::TAFloat>().iter_mut().take(lookback) {
+                            *value = $crate::TAFloat::NAN;
+                        }
                     }
                 )+
             }
 
-            Ok(($( $crate::ta::types::TAArrowArray::new($output_name.into(), None) ),+))
+            Ok(($( <$ret_type>::new($output_name.into(), None) ),+))
         }
     };
 }
@@ -136,13 +146,16 @@ macro_rules! kand_arrow_wrapper_int {
         $name:ident,
         $raw_fn:path,
         inputs: { $($input_name:ident),+ },
-        params: { $($param_name:ident : $param_type:ty),* }
+        params: { $($param_name:ident : $param_type:ty),* },
+        lookback_params: { $($lb_param:ident),* }
     ) => {
         #[cfg(feature = "arrow")]
+        #[allow(clippy::too_many_arguments)]
         pub fn $name(
             $($input_name: &$crate::ta::types::TAArrowArray,)+
             $($param_name: $param_type),*
         ) -> Result<$crate::ta::types::TAArrowIntArray, $crate::KandError> {
+            use arrow::array::Array;
             use arrow::buffer::MutableBuffer;
             use std::mem::size_of;
 
@@ -161,7 +174,7 @@ macro_rules! kand_arrow_wrapper_int {
             )+
 
             // Validation (lookback)
-            let lookback = $crate::ta::ohlcv::$name::lookback($($param_name),*)?;
+            let lookback = lookback($($lb_param),*)?;
             if len <= lookback {
                 return Err($crate::KandError::InsufficientData);
             }

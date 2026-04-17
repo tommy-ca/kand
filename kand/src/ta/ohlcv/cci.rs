@@ -1,8 +1,6 @@
 use super::{sma, typprice};
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period required for CCI calculation.
 ///
@@ -45,18 +43,18 @@ pub fn cci_raw(
     input_close: &[TAFloat],
     opt_period: usize,
     output_cci: &mut [TAFloat],
-    output_tp: &mut [TAFloat],
-    output_tp_sma: &mut [TAFloat],
-    output_mean_dev: &mut [TAFloat],
 ) {
     let len = input_high.len();
     let lookback = opt_period - 1;
 
+    let mut output_tp = vec![0.0; len];
+    let mut output_tp_sma = vec![0.0; len];
+
     // Calculate typical prices
-    typprice::typprice_raw(input_high, input_low, input_close, output_tp);
+    typprice::typprice_raw(input_high, input_low, input_close, &mut output_tp);
 
     // Calculate SMA of typical prices
-    sma::sma_raw(output_tp, opt_period, output_tp_sma);
+    sma::sma_raw(&output_tp, opt_period, &mut output_tp_sma);
 
     // Calculate mean deviation
     let factor = 0.015;
@@ -66,7 +64,6 @@ pub fn cci_raw(
             mean_dev += (output_tp[i - j] - output_tp_sma[i]).abs();
         }
         mean_dev /= opt_period as TAFloat;
-        output_mean_dev[i] = mean_dev;
 
         // Calculate CCI
         output_cci[i] = if mean_dev == 0.0 {
@@ -106,9 +103,6 @@ pub fn cci_raw(
 /// * `input_close` - Close prices array
 /// * `opt_period` - The time period for calculations (must be >= 2)
 /// * `output_cci` - Buffer to store CCI values
-/// * `output_tp` - Buffer to store typical price values
-/// * `output_tp_sma` - Buffer to store SMA of typical price values
-/// * `output_mean_dev` - Buffer to store mean deviation values
 ///
 /// # Returns
 /// * `Result<(), KandError>` - Empty result on success, or error on failure
@@ -129,9 +123,6 @@ pub fn cci_raw(
 /// let input_close = vec![23.89, 23.95, 23.67, 23.78, 23.50];
 /// let period = 3;
 /// let mut output_cci = vec![0.0; 5];
-/// let mut output_tp = vec![0.0; 5];
-/// let mut output_tp_sma = vec![0.0; 5];
-/// let mut output_mean_dev = vec![0.0; 5];
 ///
 /// cci::cci(
 ///     &input_high,
@@ -139,9 +130,6 @@ pub fn cci_raw(
 ///     &input_close,
 ///     period,
 ///     &mut output_cci,
-///     &mut output_tp,
-///     &mut output_tp_sma,
-///     &mut output_mean_dev,
 /// )
 /// .unwrap();
 /// ```
@@ -151,9 +139,6 @@ pub fn cci(
     input_close: &[TAFloat],
     opt_period: usize,
     output_cci: &mut [TAFloat],
-    output_tp: &mut [TAFloat],
-    output_tp_sma: &mut [TAFloat],
-    output_mean_dev: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
     let lookback = lookback(opt_period)?;
@@ -171,13 +156,7 @@ pub fn cci(
         }
 
         // Length consistency check
-        if len != input_low.len()
-            || len != input_close.len()
-            || len != output_cci.len()
-            || len != output_tp.len()
-            || len != output_tp_sma.len()
-            || len != output_mean_dev.len()
-        {
+        if len != input_low.len() || len != input_close.len() || len != output_cci.len() {
             return Err(KandError::LengthMismatch);
         }
     }
@@ -192,25 +171,13 @@ pub fn cci(
         }
     }
 
-    cci_raw(
-        input_high,
-        input_low,
-        input_close,
-        opt_period,
-        output_cci,
-        output_tp,
-        output_tp_sma,
-        output_mean_dev,
-    );
+    cci_raw(input_high, input_low, input_close, opt_period, output_cci);
 
-    // Fill all output arrays with NAN initially
+    // Fill output array with NAN initially
     #[cfg(feature = "allow-nan")]
     {
         for i in 0..lookback {
             output_cci[i] = TAFloat::NAN;
-            output_tp[i] = TAFloat::NAN;
-            output_tp_sma[i] = TAFloat::NAN;
-            output_mean_dev[i] = TAFloat::NAN;
         }
     }
 
@@ -368,12 +335,12 @@ pub fn cci_inc(
 }
 
 // Arrow wrapper
-crate::kand_arrow_wrapper_multi!(
-    cci,
+crate::kand_arrow_wrapper!(
+    cci_arrow,
     crate::ta::ohlcv::cci::cci_raw,
     inputs: { input_high, input_low, input_close },
     params: { opt_period: usize },
-    outputs: { output_cci, output_tp, output_tp_sma, output_mean_dev }
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]
@@ -401,9 +368,6 @@ mod tests {
         ];
         let opt_period = 14;
         let mut output_cci = vec![0.0; input_high.len()];
-        let mut output_tp = vec![0.0; input_high.len()];
-        let mut output_tp_sma = vec![0.0; input_high.len()];
-        let mut output_mean_dev = vec![0.0; input_high.len()];
 
         cci(
             &input_high,
@@ -411,9 +375,6 @@ mod tests {
             &input_close,
             opt_period,
             &mut output_cci,
-            &mut output_tp,
-            &mut output_tp_sma,
-            &mut output_mean_dev,
         )
         .unwrap();
 
@@ -421,9 +382,6 @@ mod tests {
         #[cfg(feature = "allow-nan")]
         for i in 0..13 {
             assert!(output_cci[i].is_nan());
-            assert!(output_tp[i].is_nan());
-            assert!(output_tp_sma[i].is_nan());
-            assert!(output_mean_dev[i].is_nan());
         }
 
         // Compare with known values
@@ -453,11 +411,17 @@ mod tests {
             tp_buffer.push(tp);
         }
 
+        // For testing incremental SMA
+        let mut tp_values = vec![0.0; input_high.len()];
+        typprice::typprice_raw(&input_high, &input_low, &input_close, &mut tp_values);
+        let mut tp_sma = vec![0.0; input_high.len()];
+        sma::sma_raw(&tp_values, opt_period, &mut tp_sma);
+
         // Calculate and verify incremental values
         for i in opt_period..input_high.len() {
             // Calculate incremental CCI
             let result = cci_inc(
-                output_tp_sma[i - 1],
+                tp_sma[i - 1],
                 input_high[i],
                 input_low[i],
                 input_close[i],
@@ -500,15 +464,11 @@ mod tests {
         let close_arrow = TAArrowArray::from(input_close.clone());
         let opt_period = 14;
 
-        let (cci_arrow, _, _, _) =
-            cci_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
+        let cci_arrow = cci_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
 
         assert_eq!(cci_arrow.len(), input_high.len());
 
         let mut out_cci = vec![0.0; input_high.len()];
-        let mut out_tp = vec![0.0; input_high.len()];
-        let mut out_tp_sma = vec![0.0; input_high.len()];
-        let mut out_mean_dev = vec![0.0; input_high.len()];
 
         cci(
             &input_high,
@@ -516,9 +476,6 @@ mod tests {
             &input_close,
             opt_period,
             &mut out_cci,
-            &mut out_tp,
-            &mut out_tp_sma,
-            &mut out_mean_dev,
         )
         .unwrap();
 

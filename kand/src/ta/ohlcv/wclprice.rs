@@ -21,6 +21,19 @@ pub const fn lookback() -> Result<usize, KandError> {
     Ok(0)
 }
 
+/// Calculates the Weighted Close Price (WCLPRICE) without input validation.
+pub fn wclprice_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    output: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    for i in 0..len {
+        output[i] = wclprice_inc_raw(input_high[i], input_low[i], input_close[i]);
+    }
+}
+
 /// Calculates the Weighted Close Price (WCLPRICE) for a series of price data.
 ///
 /// # Description
@@ -91,11 +104,14 @@ pub fn wclprice(
         }
     }
 
-    for i in 0..len {
-        output[i] = input_close[i].mul_add(2.0, input_high[i] + input_low[i]) / 4.0;
-    }
+    wclprice_raw(input_high, input_low, input_close, output);
 
     Ok(())
+}
+
+/// Calculates a single Weighted Close Price (WCLPRICE) value without input validation.
+pub fn wclprice_inc_raw(input_high: TAFloat, input_low: TAFloat, input_close: TAFloat) -> TAFloat {
+    input_close.mul_add(2.0, input_high + input_low) / 4.0
 }
 
 /// Calculates a single Weighted Close Price (WCLPRICE) value from the latest price data.
@@ -137,8 +153,18 @@ pub fn wclprice_inc(
         }
     }
 
-    Ok(input_close.mul_add(2.0, input_high + input_low) / 4.0)
+    Ok(wclprice_inc_raw(input_high, input_low, input_close))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    wclprice_arrow,
+    crate::ta::ohlcv::wclprice::wclprice_raw,
+    inputs: { input_high, input_low, input_close },
+    params: {},
+    lookback_params: {}
+);
+
 
 #[cfg(test)]
 mod tests {
@@ -183,4 +209,24 @@ mod tests {
             assert_relative_eq!(result, output[i], epsilon = 0.0001);
         }
     }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_wclprice_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![35266.0, 35247.5, 35235.7];
+        let input_low = vec![35216.1, 35206.5, 35180.0];
+        let input_close = vec![35216.1, 35221.4, 35190.7];
+
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let result = wclprice_arrow(&high_arrow, &low_arrow, &close_arrow).unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert_relative_eq!(result.value(0), 35228.575, epsilon = 0.0001);
+    }
 }
+

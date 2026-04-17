@@ -1,11 +1,11 @@
 use crate::{
-    TAFloat,
+    TAFloat, TAInt,
     error::KandError,
     helper::{highest_bars, lowest_bars},
 };
 
 #[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
+use crate::ta::types::{TAArrowArray, TAArrowIntArray};
 
 /// Returns the lookback period required for Aroon Oscillator calculation.
 ///
@@ -47,8 +47,8 @@ pub fn aroonosc_raw(
     output_aroonosc: &mut [TAFloat],
     output_prev_high: &mut [TAFloat],
     output_prev_low: &mut [TAFloat],
-    output_days_since_high: &mut [usize],
-    output_days_since_low: &mut [usize],
+    output_days_since_high: &mut [TAInt],
+    output_days_since_low: &mut [TAInt],
 ) {
     let len = input_high.len();
     let opt_period_t = opt_period as TAFloat;
@@ -58,8 +58,8 @@ pub fn aroonosc_raw(
         let days_since_high = highest_bars(input_high, i, opt_period + 1).unwrap();
         let days_since_low = lowest_bars(input_low, i, opt_period + 1).unwrap();
 
-        output_days_since_high[i] = days_since_high;
-        output_days_since_low[i] = days_since_low;
+        output_days_since_high[i] = days_since_high as TAInt;
+        output_days_since_low[i] = days_since_low as TAInt;
 
         output_prev_high[i] = input_high[i - days_since_high];
         output_prev_low[i] = input_low[i - days_since_low];
@@ -146,8 +146,8 @@ pub fn aroonosc(
     output_aroonosc: &mut [TAFloat],
     output_prev_high: &mut [TAFloat],
     output_prev_low: &mut [TAFloat],
-    output_days_since_high: &mut [usize],
-    output_days_since_low: &mut [usize],
+    output_days_since_high: &mut [TAInt],
+    output_days_since_low: &mut [TAInt],
 ) -> Result<(), KandError> {
     let len = input_high.len();
     let lookback = lookback(opt_period)?;
@@ -217,19 +217,19 @@ pub fn aroonosc_inc_raw(
     input_low: TAFloat,
     prev_high: TAFloat,
     prev_low: TAFloat,
-    input_days_since_high: usize,
-    input_days_since_low: usize,
+    input_days_since_high: TAInt,
+    input_days_since_low: TAInt,
     opt_period: usize,
-) -> (TAFloat, TAFloat, TAFloat, usize, usize) {
+) -> (TAFloat, TAFloat, TAFloat, TAInt, TAInt) {
     let mut new_high = prev_high;
     let mut new_low = prev_low;
     let mut days_since_high = input_days_since_high;
     let mut days_since_low = input_days_since_low;
 
-    if days_since_high < opt_period {
+    if (days_since_high as usize) < opt_period {
         days_since_high += 1;
     }
-    if days_since_low < opt_period {
+    if (days_since_low as usize) < opt_period {
         days_since_low += 1;
     }
 
@@ -289,7 +289,7 @@ pub fn aroonosc_inc_raw(
 /// * `opt_period` - The time period for Aroon calculation (must be >= 2)
 ///
 /// # Returns
-/// * `Result<(TAFloat, TAFloat, TAFloat, usize, usize), KandError>` - Returns tuple containing:
+/// * `Result<(TAFloat, TAFloat, TAFloat, TAInt, TAInt), KandError>` - Returns tuple containing:
 ///   - Aroon Oscillator value
 ///   - New highest price
 ///   - New lowest price
@@ -320,10 +320,10 @@ pub fn aroonosc_inc(
     input_low: TAFloat,
     prev_high: TAFloat,
     prev_low: TAFloat,
-    input_days_since_high: usize,
-    input_days_since_low: usize,
+    input_days_since_high: TAInt,
+    input_days_since_low: TAInt,
     opt_period: usize,
-) -> Result<(TAFloat, TAFloat, TAFloat, usize, usize), KandError> {
+) -> Result<(TAFloat, TAFloat, TAFloat, TAInt, TAInt), KandError> {
     #[cfg(feature = "check")]
     {
         if opt_period < 2 {
@@ -350,60 +350,27 @@ pub fn aroonosc_inc(
 }
 
 // Arrow wrapper
-#[cfg(feature = "arrow")]
-pub fn aroonosc_arrow(
-    input_high: &TAArrowArray,
-    input_low: &TAArrowArray,
-    opt_period: usize,
-) -> Result<TAArrowArray, KandError> {
-    use arrow::buffer::MutableBuffer;
-    use std::mem::size_of;
-
-    let len = input_high.len();
-    if input_low.len() != len {
-        return Err(KandError::LengthMismatch);
+crate::kand_arrow_wrapper_multi!(
+    aroonosc_arrow,
+    crate::ta::ohlcv::aroonosc::aroonosc_raw,
+    inputs: { input_high, input_low },
+    params: { opt_period: usize },
+    lookback_params: { opt_period },
+    outputs: {
+        output_aroonosc: TAFloat,
+        output_prev_high: TAFloat,
+        output_prev_low: TAFloat,
+        output_days_since_high: TAInt,
+        output_days_since_low: TAInt
+    },
+    return_type: {
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowIntArray,
+        TAArrowIntArray
     }
-
-    if input_high.null_count() > 0 || input_low.null_count() > 0 {
-        return Err(KandError::InvalidData);
-    }
-
-    let lookback = lookback(opt_period)?;
-    if len <= lookback {
-        return Err(KandError::InsufficientData);
-    }
-
-    let high_values = &input_high.values()[input_high.offset()..];
-    let low_values = &input_low.values()[input_low.offset()..];
-
-    let mut buffer = MutableBuffer::new(len * size_of::<TAFloat>());
-    buffer.resize(len * size_of::<TAFloat>(), 0);
-
-    let mut prev_high = vec![0.0; len];
-    let mut prev_low = vec![0.0; len];
-    let mut days_high = vec![0; len];
-    let mut days_low = vec![0; len];
-
-    aroonosc_raw(
-        high_values,
-        low_values,
-        opt_period,
-        buffer.typed_data_mut::<TAFloat>(),
-        &mut prev_high,
-        &mut prev_low,
-        &mut days_high,
-        &mut days_low,
-    );
-
-    #[cfg(feature = "allow-nan")]
-    {
-        for i in 0..lookback {
-            buffer.typed_data_mut::<TAFloat>()[i] = TAFloat::NAN;
-        }
-    }
-
-    Ok(TAArrowArray::new(buffer.into(), None))
-}
+);
 
 #[cfg(test)]
 mod tests {

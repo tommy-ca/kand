@@ -1,9 +1,11 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[cfg(feature = "arrow")]
-use arrow::array::{Float32Array, Float64Array, PrimitiveBuilder};
+use arrow::array::{
+    Float64Array, Int64Array, PrimitiveBuilder,
+};
 #[cfg(feature = "arrow")]
-use arrow::datatypes::{Float32Type, Float64Type};
+use arrow::datatypes::{Float64Type, Int64Type};
 
 /// Moving Average types for technical analysis.
 ///
@@ -141,3 +143,11 @@ pub type TAArrowIntArray = Int64Array;
 /// Arrow array type for integer values, matching library precision.
 #[cfg(all(feature = "arrow", not(feature = "i64")))]
 pub type TAArrowIntArray = Int32Array;
+
+/// Arrow builder type for integer values, matching library precision.
+#[cfg(all(feature = "arrow", feature = "i64"))]
+pub type TAArrowIntBuilder = PrimitiveBuilder<Int64Type>;
+
+/// Arrow builder type for integer values, matching library precision.
+#[cfg(all(feature = "arrow", not(feature = "i64")))]
+pub type TAArrowIntBuilder = PrimitiveBuilder<Int32Type>;

@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period required for Triangular Moving Average (TRIMA) calculation.
 ///
@@ -43,7 +41,7 @@ pub fn trima_raw(
     output_sma2: &mut [TAFloat],
 ) {
     let len = input.len();
-    let lookback = opt_period - 1;
+    let _lookback = opt_period - 1;
 
     let (n, m) = if opt_period % 2 == 1 {
         let n = opt_period.div_ceil(2);
@@ -296,13 +294,15 @@ pub fn trima_inc(
     ))
 }
 
-// Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper_multi!(
-    trima,
+    trima_arrow,
     crate::ta::ohlcv::trima::trima_raw,
     inputs: { input },
     params: { opt_period: usize },
-    outputs: { output_sma1, output_sma2 }
+    lookback_params: { opt_period },
+    outputs: { output_sma1: crate::TAFloat, output_sma2: crate::TAFloat },
+    return_type: { crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray }
 );
 
 #[cfg(test)]

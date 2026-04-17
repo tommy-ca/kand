@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat, ta::ohlcv::ema};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Calculates the lookback period required for Triple Exponential Moving Average (TEMA)
 ///
@@ -277,13 +275,15 @@ pub fn tema_inc(
     ))
 }
 
-// Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper_multi!(
-    tema,
+    tema_arrow,
     crate::ta::ohlcv::tema::tema_raw,
     inputs: { input },
     params: { opt_period: usize },
-    outputs: { output_tema, output_ema1, output_ema2, output_ema3 }
+    lookback_params: { opt_period },
+    outputs: { output_tema: crate::TAFloat, output_ema1: crate::TAFloat, output_ema2: crate::TAFloat, output_ema3: crate::TAFloat },
+    return_type: { crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray }
 );
 
 #[cfg(test)]

@@ -1,4 +1,11 @@
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAInt};
+
+/// Returns the lookback period required by the Parabolic SAR indicator without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(_opt_acceleration: TAFloat, _opt_maximum: TAFloat) -> usize {
+    1
+}
 
 /// Returns the lookback period required by the Parabolic SAR indicator.
 ///
@@ -26,10 +33,112 @@ use crate::{KandError, TAFloat};
 /// assert_eq!(lookback, 1);
 /// ```
 pub const fn lookback(
-    _opt_acceleration: TAFloat,
-    _opt_maximum: TAFloat,
+    opt_acceleration: TAFloat,
+    opt_maximum: TAFloat,
 ) -> Result<usize, KandError> {
-    Ok(1)
+    #[cfg(feature = "check")]
+    {
+        if opt_acceleration <= 0.0 || opt_maximum <= opt_acceleration {
+            return Err(KandError::InvalidParameter);
+        }
+    }
+    Ok(lookback_raw(opt_acceleration, opt_maximum))
+}
+
+/// Computes Parabolic SAR without input validation for high performance.
+pub fn sar_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    opt_acceleration: TAFloat,
+    opt_maximum: TAFloat,
+    output_sar: &mut [TAFloat],
+    output_is_long: &mut [TAInt],
+    output_af: &mut [TAFloat],
+    output_ep: &mut [TAFloat],
+) {
+    let len = input_high.len();
+
+    // Determine the initial trend by comparing the positive and negative directional movements.
+    let plus_dm = input_high[1] - input_high[0];
+    let minus_dm = input_low[0] - input_low[1];
+    let initial_trend = plus_dm >= minus_dm; // Default to long if equal
+
+    let mut af = opt_acceleration;
+    let mut ep = if initial_trend {
+        input_high[1]
+    } else {
+        input_low[1]
+    };
+
+    // Initialize the SAR output and auxiliary arrays at the first index.
+    output_sar[0] = TAFloat::NAN;
+    output_is_long[0] = if initial_trend { 1 } else { 0 };
+    output_af[0] = 0.0;
+    output_ep[0] = TAFloat::NAN;
+
+    // Derive the second SAR value from the first bar's price data.
+    output_sar[1] = if initial_trend {
+        input_low[0]
+    } else {
+        input_high[0]
+    };
+    output_is_long[1] = if initial_trend { 1 } else { 0 };
+    output_af[1] = af;
+    output_ep[1] = ep;
+
+    let mut is_long = initial_trend;
+    // Record the starting index of the current trend; a new trend begins at index 1.
+    let mut trend_start = 1;
+
+    // Iterate over remaining data points, computing the SAR values and updating state arrays.
+    for i in 2..len {
+        let prev_sar = output_sar[i - 1];
+        let high = input_high[i];
+        let low = input_low[i];
+
+        let mut sar_val = af.mul_add(ep - prev_sar, prev_sar);
+
+        if is_long {
+            if i - trend_start < 2 {
+                sar_val = sar_val.min(input_low[i - 1]);
+            } else {
+                sar_val = sar_val.min(input_low[i - 1]).min(input_low[i - 2]);
+            }
+            if high > ep {
+                ep = high;
+                af = (af + opt_acceleration).min(opt_maximum);
+            }
+            if low < sar_val {
+                is_long = false;
+                sar_val = ep;
+                ep = low;
+                af = opt_acceleration;
+                trend_start = i - 1;
+            }
+        } else {
+            if i - trend_start < 2 {
+                sar_val = sar_val.max(input_high[i - 1]);
+            } else {
+                sar_val = sar_val.max(input_high[i - 1]).max(input_high[i - 2]);
+            }
+            if low < ep {
+                ep = low;
+                af = (af + opt_acceleration).min(opt_maximum);
+            }
+            if high > sar_val {
+                is_long = true;
+                sar_val = ep;
+                ep = high;
+                af = opt_acceleration;
+                trend_start = i - 1;
+            }
+        }
+
+        output_sar[i] = sar_val;
+        output_is_long[i] = if is_long { 1 } else { 0 };
+        output_af[i] = af;
+        output_ep[i] = ep;
+    }
 }
 
 /// Calculates the Parabolic SAR (Stop And Reverse) indicator.
@@ -122,9 +231,6 @@ pub fn sar(
             || len != output_ep.len()
         {
             return Err(KandError::LengthMismatch);
-        }
-        if opt_acceleration <= 0.0 || opt_maximum <= opt_acceleration {
-            return Err(KandError::InvalidParameter);
         }
         if len <= lookback {
             return Err(KandError::InsufficientData);
@@ -225,6 +331,56 @@ pub fn sar(
     Ok(())
 }
 
+/// Computes the next SAR value incrementally without input validation.
+#[inline]
+#[must_use]
+pub fn sar_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    prev_high: TAFloat,
+    prev_low: TAFloat,
+    prev_sar: TAFloat,
+    input_is_long: bool,
+    input_af: TAFloat,
+    input_ep: TAFloat,
+    opt_acceleration: TAFloat,
+    opt_maximum: TAFloat,
+) -> (TAFloat, bool, TAFloat, TAFloat) {
+    let mut is_long = input_is_long;
+    let mut af = input_af;
+    let mut ep = input_ep;
+
+    let mut sar = af.mul_add(ep - prev_sar, prev_sar);
+
+    if is_long {
+        sar = sar.min(prev_low);
+        if input_high > ep {
+            ep = input_high;
+            af = (af + opt_acceleration).min(opt_maximum);
+        }
+        if input_low < sar {
+            is_long = false;
+            sar = ep;
+            ep = input_low;
+            af = opt_acceleration;
+        }
+    } else {
+        sar = sar.max(prev_high);
+        if input_low < ep {
+            ep = input_low;
+            af = (af + opt_acceleration).min(opt_maximum);
+        }
+        if input_high > sar {
+            is_long = true;
+            sar = ep;
+            ep = input_high;
+            af = opt_acceleration;
+        }
+    }
+
+    (sar, is_long, af, ep)
+}
+
 /// Incrementally updates the Parabolic SAR with new price data.
 ///
 /// # Description
@@ -304,42 +460,30 @@ pub fn sar_inc(
         }
     }
 
-    let high = input_high;
-    let low = input_low;
-    let mut is_long = input_is_long;
-    let mut af = input_af;
-    let mut ep = input_ep;
-
-    let mut sar = af.mul_add(ep - prev_sar, prev_sar);
-
-    if is_long {
-        sar = sar.min(prev_low);
-        if high > ep {
-            ep = high;
-            af = (af + opt_acceleration).min(opt_maximum);
-        }
-        if low < sar {
-            is_long = false;
-            sar = ep;
-            ep = low;
-            af = opt_acceleration;
-        }
-    } else {
-        sar = sar.max(prev_high);
-        if low < ep {
-            ep = low;
-            af = (af + opt_acceleration).min(opt_maximum);
-        }
-        if high > sar {
-            is_long = true;
-            sar = ep;
-            ep = high;
-            af = opt_acceleration;
-        }
-    }
-
-    Ok((sar, is_long, af, ep))
+    Ok(sar_inc_raw(
+        input_high,
+        input_low,
+        prev_high,
+        prev_low,
+        prev_sar,
+        input_is_long,
+        input_af,
+        input_ep,
+        opt_acceleration,
+        opt_maximum,
+    ))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    sar_arrow,
+    crate::ta::ohlcv::sar::sar_raw,
+    inputs: { input_high, input_low },
+    params: { opt_acceleration: TAFloat, opt_maximum: TAFloat },
+    lookback_params: { opt_acceleration, opt_maximum },
+    outputs: { output_sar: TAFloat, output_is_long: TAInt, output_af: TAFloat, output_ep: TAFloat },
+    return_type: { crate::ta::types::TAArrowArray, crate::ta::types::TAArrowIntArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray }
+);
 
 #[cfg(test)]
 mod tests {
@@ -437,5 +581,34 @@ mod tests {
             af = new_af;
             ep = new_ep;
         }
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn test_sar_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35212.6, 35128.9, 35047.7, 35019.5, 35078.8, 35085.0,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35080.1, 35021.1, 34950.1, 34966.0, 35012.3, 35022.2,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+
+        let opt_acceleration = 0.02;
+        let opt_maximum = 0.2;
+
+        let (sar_arrow, is_long_arrow, af_arrow, ep_arrow) =
+            sar_arrow(&high_arrow, &low_arrow, opt_acceleration, opt_maximum).unwrap();
+
+        assert_eq!(sar_arrow.len(), 16);
+        assert_eq!(is_long_arrow.len(), 16);
+        assert_eq!(af_arrow.len(), 16);
+        assert_eq!(ep_arrow.len(), 16);
     }
 }

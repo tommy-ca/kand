@@ -55,16 +55,28 @@ fn kand(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_doji::cdl_doji_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_dragonfly_doji::cdl_dragonfly_doji_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_dragonfly_doji::cdl_dragonfly_doji_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_dragonfly_doji::cdl_dragonfly_doji_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_gravestone_doji::cdl_gravestone_doji_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_gravestone_doji::cdl_gravestone_doji_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_gravestone_doji::cdl_gravestone_doji_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_hammer::cdl_hammer_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_hammer::cdl_hammer_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_hammer::cdl_hammer_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_inverted_hammer::cdl_inverted_hammer_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_inverted_hammer::cdl_inverted_hammer_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_inverted_hammer::cdl_inverted_hammer_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_long_shadow::cdl_long_shadow_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_long_shadow::cdl_long_shadow_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_long_shadow::cdl_long_shadow_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_marubozu::cdl_marubozu_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_marubozu::cdl_marubozu_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_marubozu::cdl_marubozu_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::dema::dema_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::dema::dema_inc_py, m)?)?;
     #[cfg(feature = "arrow")]

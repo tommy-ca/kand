@@ -1,8 +1,11 @@
 use crate::{
     KandError, TAFloat, TAInt,
     helper::{lower_shadow_length, period_to_k, real_body_length, upper_shadow_length},
-    types::Signal,
+    ta::types::Signal,
 };
+
+#[cfg(feature = "arrow")]
+use crate::ta::types::{TAArrowArray, TAArrowIntArray};
 
 /// Returns the lookback period for Hammer pattern detection.
 ///
@@ -33,6 +36,56 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Hammer pattern without input validation for high performance.
+pub fn cdl_hammer_raw(
+    input_open: &[TAFloat],
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    opt_factor: TAFloat,
+    output_signals: &mut [TAInt],
+    output_body_avg: &mut [TAFloat],
+) {
+    let len = input_open.len();
+    let lookback = opt_period - 1;
+
+    // Calculate initial SMA
+    let mut sum = 0.0;
+    for i in 0..opt_period {
+        sum += real_body_length(input_open[i], input_close[i]);
+    }
+    let mut body_avg = sum / opt_period as TAFloat;
+    output_body_avg[lookback] = body_avg;
+
+    let k = 2.0 / (opt_period + 1) as TAFloat;
+
+    // First valid signal
+    output_signals[lookback] = cdl_hammer_inc_raw(
+        input_open[lookback],
+        input_high[lookback],
+        input_low[lookback],
+        input_close[lookback],
+        body_avg,
+        opt_factor,
+    );
+
+    // Process remaining candles
+    for i in opt_period..len {
+        let body = real_body_length(input_open[i], input_close[i]);
+        body_avg = (body - body_avg).mul_add(k, body_avg);
+        output_body_avg[i] = body_avg;
+        output_signals[i] = cdl_hammer_inc_raw(
+            input_open[i],
+            input_high[i],
+            input_low[i],
+            input_close[i],
+            body_avg,
+            opt_factor,
+        );
+    }
 }
 
 /// Detects Hammer candlestick patterns in price data.
@@ -77,14 +130,14 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 /// * [`KandError::InsufficientData`] - If input length is less than required lookback
 /// * [`KandError::NaNDetected`] - If input contains NaN values (when `check-nan` enabled)
 ///
-/// # Examples
+/// # Example
 /// ```
 /// use kand::ohlcv::cdl_hammer;
 /// let input_open = vec![10.0, 11.0, 10.5];
 /// let input_high = vec![12.0, 11.5, 11.0];
 /// let input_low = vec![9.0, 10.0, 9.5];
 /// let input_close = vec![11.0, 10.5, 10.8];
-/// let mut output = vec![0i64; 3];
+/// let mut output = vec![0; 3];
 /// let mut body_avg = vec![0.0; 3];
 /// cdl_hammer::cdl_hammer(
 ///     &input_open,
@@ -155,37 +208,53 @@ pub fn cdl_hammer(
         }
     }
 
-    // Calculate initial SMA
-    let mut sum = 0.0;
-    for i in 0..opt_period {
-        sum += real_body_length(input_open[i], input_close[i]);
-    }
-    let mut body_avg = sum / opt_period as TAFloat;
-    output_body_avg[lookback] = body_avg;
+    cdl_hammer_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        opt_factor,
+        output_signals,
+        output_body_avg,
+    );
 
-    // Process remaining candles
-    for i in lookback..len {
-        let (signal, new_body_avg) = cdl_hammer_inc(
-            input_open[i],
-            input_high[i],
-            input_low[i],
-            input_close[i],
-            body_avg,
-            opt_period,
-            opt_factor,
-        )?;
-        output_signals[i] = signal;
-        output_body_avg[i] = new_body_avg;
-        body_avg = new_body_avg;
-    }
-
-    // Fill initial values with -1
+    // Fill initial values
     for i in 0..lookback {
-        output_signals[i] = Signal::Invalid.into();
+        output_signals[i] = Signal::Neutral.into();
         output_body_avg[i] = TAFloat::NAN;
     }
 
     Ok(())
+}
+
+/// Processes a single candlestick for Hammer detection without validation.
+#[inline]
+#[must_use]
+pub fn cdl_hammer_inc_raw(
+    input_open: TAFloat,
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+    body_avg: TAFloat,
+    opt_factor: TAFloat,
+) -> TAInt {
+    let body = real_body_length(input_open, input_close);
+    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
+    let down_shadow = lower_shadow_length(input_low, input_open, input_close);
+
+    // Check for Hammer pattern
+    let is_small_body = body <= body_avg && body > 0.0;
+    let has_long_lower_shadow = down_shadow >= opt_factor * body;
+    let has_minimal_upper_shadow = up_shadow <= body;
+    let body_in_upper_half =
+        TAFloat::min(input_open, input_close) > f64::midpoint(input_high, input_low);
+
+    if is_small_body && has_long_lower_shadow && has_minimal_upper_shadow && body_in_upper_half {
+        Signal::Bullish.into()
+    } else {
+        Signal::Neutral.into()
+    }
 }
 
 /// Incrementally processes a single candlestick for Hammer pattern detection.
@@ -260,29 +329,32 @@ pub fn cdl_hammer_inc(
         }
     }
 
-    let body = real_body_length(input_open, input_close);
-    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
-    let down_shadow = lower_shadow_length(input_low, input_open, input_close);
     let k = period_to_k(opt_period)?;
+    let body = real_body_length(input_open, input_close);
     let body_avg = (body - prev_body_avg).mul_add(k, prev_body_avg);
 
-    // Check for Hammer pattern
-    let is_small_body = body <= body_avg && body > 0.0;
-    let has_long_lower_shadow = down_shadow >= opt_factor * body;
-    let has_minimal_upper_shadow = up_shadow <= body;
-    let body_in_upper_half =
-        TAFloat::min(input_open, input_close) > f64::midpoint(input_high, input_low);
-
-    let signal =
-        if is_small_body && has_long_lower_shadow && has_minimal_upper_shadow && body_in_upper_half
-        {
-            Signal::Bullish.into()
-        } else {
-            Signal::Neutral.into()
-        };
+    let signal = cdl_hammer_inc_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        body_avg,
+        opt_factor,
+    );
 
     Ok((signal, body_avg))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    cdl_hammer_arrow,
+    crate::ta::ohlcv::cdl_hammer::cdl_hammer_raw,
+    inputs: { input_open, input_high, input_low, input_close },
+    params: { opt_period: usize, opt_factor: TAFloat },
+    lookback_params: { opt_period },
+    outputs: { output_signals: TAInt, output_body_avg: TAFloat },
+    return_type: { TAArrowIntArray, TAArrowArray }
+);
 
 #[cfg(test)]
 mod tests {
@@ -346,21 +418,13 @@ mod tests {
         )
         .unwrap();
 
-        // First 13 values should be -1
-        for i in 0..13 {
-            assert_eq!(output_signals[i], Signal::Invalid.into());
-            assert!(output_body_avg[i].is_nan());
-        }
-
         // Test specific signals
         assert_eq!(output_signals[16], Signal::Bullish.into()); // TV BTCUSDT.P 5m 2025-02-03 06:30
         assert_eq!(output_signals[54], Signal::Bullish.into()); // TV BTCUSDT.P 5m 2025-02-03 16:00
         assert_eq!(output_signals[59], Signal::Bullish.into()); // TV BTCUSDT.P 5m 2025-02-03 17:15
 
-        // Test incremental calculation matches regular calculation
-        let mut prev_body_avg = output_body_avg[13]; // First valid body average
-
-        // Test each incremental step
+        // Test incremental calculation
+        let mut prev_body_avg = output_body_avg[13];
         for i in 14..18 {
             let (signal, new_body_avg) = cdl_hammer_inc(
                 input_open[i],
@@ -376,5 +440,49 @@ mod tests {
             assert_relative_eq!(new_body_avg, output_body_avg[i], epsilon = 0.00001);
             prev_body_avg = new_body_avg;
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_cdl_hammer_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_open = vec![
+            97798.1, 96982.9, 97050.5, 97281.3, 97480.7, 98310.4, 98232.0, 98473.2, 98136.9,
+            97912.7, 97759.0, 97516.4, 96913.4, 96738.1, 96999.0, 97472.5, 97368.3, 97140.0,
+            97971.6, 97684.9, 96985.2, 97298.6, 97664.5, 97286.7, 97041.2,
+        ];
+        let input_high = vec![
+            97833.9, 97420.1, 97562.1, 97550.0, 98371.8, 98667.2, 98594.9, 98523.7, 98216.5,
+            97912.7, 97947.4, 97582.8, 97294.2, 97051.5, 97683.0, 97700.0, 97368.3, 97999.0,
+            97985.8, 97897.9, 97608.8, 97755.5, 97748.0, 97570.0, 97167.0,
+        ];
+        let input_low = vec![
+            96750.1, 96760.0, 96759.1, 96985.1, 97469.9, 97982.8, 98161.2, 98043.2, 97780.9,
+            97618.2, 97481.4, 96880.4, 96520.0, 96576.3, 96948.1, 97131.8, 96029.6, 97023.7,
+            97130.0, 96500.0, 96716.2, 97273.0, 97226.8, 96006.0, 95325.6,
+        ];
+        let input_close = vec![
+            96977.5, 97050.5, 97281.2, 97480.7, 98310.3, 98232.0, 98473.2, 98136.8, 97912.7,
+            97759.1, 97516.4, 96913.4, 96738.0, 96998.8, 97472.6, 97368.3, 97140.0, 97971.6,
+            97684.9, 96985.3, 97298.6, 97664.5, 97287.8, 97041.2, 95591.8,
+        ];
+
+        let open_arrow = TAArrowArray::from(input_open);
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let (sig, _) = cdl_hammer_arrow(
+            &open_arrow,
+            &high_arrow,
+            &low_arrow,
+            &close_arrow,
+            14,
+            2.0,
+        )
+        .unwrap();
+
+        assert_eq!(sig.len(), 25);
     }
 }

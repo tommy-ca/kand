@@ -1,4 +1,14 @@
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
+/// Returns the lookback period for Heikin-Ashi calculation without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw() -> TAPeriod {
+    1
+}
 
 /// Returns the lookback period required for Heikin-Ashi calculation
 ///
@@ -7,12 +17,61 @@ use crate::{KandError, TAFloat};
 /// The lookback period is 1 since we need the previous candle to calculate the first value.
 ///
 /// # Returns
-/// * `Result<usize, KandError>` - The lookback period (always 1)
+/// * `Result<TAPeriod, KandError>` - The lookback period (always 1)
 ///
 /// # Errors
 /// This function does not return any errors.
-pub const fn lookback() -> Result<usize, KandError> {
-    Ok(1)
+pub const fn lookback() -> Result<TAPeriod, KandError> {
+    Ok(lookback_raw())
+}
+
+/// Core calculation for Heikin-Ashi candlestick values without error checking.
+///
+/// # Arguments
+/// * `input_open` - Array of opening prices
+/// * `input_high` - Array of high prices
+/// * `input_low` - Array of low prices
+/// * `input_close` - Array of closing prices
+/// * `output_open` - Output array for HA open values
+/// * `output_high` - Output array for HA high values
+/// * `output_low` - Output array for HA low values
+/// * `output_close` - Output array for HA close values
+pub fn ha_raw(
+    input_open: &[TAFloat],
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    output_open: &mut [TAFloat],
+    output_high: &mut [TAFloat],
+    output_low: &mut [TAFloat],
+    output_close: &mut [TAFloat],
+) {
+    let len = input_open.len();
+    if len == 0 {
+        return;
+    }
+
+    // Calculate first candle
+    output_close[0] = (input_open[0] + input_high[0] + input_low[0] + input_close[0]) / 4.0;
+    output_open[0] = f64::midpoint(input_open[0], input_close[0]);
+    output_high[0] = input_high[0];
+    output_low[0] = input_low[0];
+
+    // Calculate remaining candles
+    for i in 1..len {
+        let (o, h, l, c) = ha_inc_raw(
+            input_open[i],
+            input_high[i],
+            input_low[i],
+            input_close[i],
+            output_open[i - 1],
+            output_close[i - 1],
+        );
+        output_open[i] = o;
+        output_high[i] = h;
+        output_low[i] = l;
+        output_close[i] = c;
+    }
 }
 
 /// Calculates Heikin-Ashi candlestick values from OHLC price data
@@ -85,7 +144,6 @@ pub fn ha(
     output_close: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_open.len();
-    let lookback = lookback()?;
 
     #[cfg(feature = "check")]
     {
@@ -121,29 +179,37 @@ pub fn ha(
         }
     }
 
-    // Calculate first candle
-    output_close[0] = (input_open[0] + input_high[0] + input_low[0] + input_close[0]) / 4.0;
-    output_open[0] = f64::midpoint(input_open[0], input_close[0]);
-    output_high[0] = input_high[0];
-    output_low[0] = input_low[0];
-
-    // Calculate remaining candles
-    for i in lookback..len {
-        let (o, h, l, c) = ha_inc(
-            input_open[i],
-            input_high[i],
-            input_low[i],
-            input_close[i],
-            output_open[i - 1],
-            output_close[i - 1],
-        )?;
-        output_open[i] = o;
-        output_high[i] = h;
-        output_low[i] = l;
-        output_close[i] = c;
-    }
+    ha_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        output_open,
+        output_high,
+        output_low,
+        output_close,
+    );
 
     Ok(())
+}
+
+/// Core incremental calculation for Heikin-Ashi candle without error checking.
+#[inline]
+#[must_use]
+pub fn ha_inc_raw(
+    curr_open: TAFloat,
+    curr_high: TAFloat,
+    curr_low: TAFloat,
+    curr_close: TAFloat,
+    prev_ha_open: TAFloat,
+    prev_ha_close: TAFloat,
+) -> (TAFloat, TAFloat, TAFloat, TAFloat) {
+    let ha_close = (curr_open + curr_high + curr_low + curr_close) / 4.0;
+    let ha_open = f64::midpoint(prev_ha_open, prev_ha_close);
+    let ha_high = curr_high.max(ha_open).max(ha_close);
+    let ha_low = curr_low.min(ha_open).min(ha_close);
+
+    (ha_open, ha_high, ha_low, ha_close)
 }
 
 /// Calculates a single Heikin-Ashi candle incrementally for streaming data
@@ -211,13 +277,36 @@ pub fn ha_inc(
         }
     }
 
-    let ha_close = (curr_open + curr_high + curr_low + curr_close) / 4.0;
-    let ha_open = f64::midpoint(prev_ha_open, prev_ha_close);
-    let ha_high = curr_high.max(ha_open).max(ha_close);
-    let ha_low = curr_low.min(ha_open).min(ha_close);
-
-    Ok((ha_open, ha_high, ha_low, ha_close))
+    Ok(ha_inc_raw(
+        curr_open,
+        curr_high,
+        curr_low,
+        curr_close,
+        prev_ha_open,
+        prev_ha_close,
+    ))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    ha_arrow,
+    crate::ta::ohlcv::ha::ha_raw,
+    inputs: { input_open, input_high, input_low, input_close },
+    params: {},
+    lookback_params: {},
+    outputs: {
+        output_open: TAFloat,
+        output_high: TAFloat,
+        output_low: TAFloat,
+        output_close: TAFloat
+    },
+    return_type: {
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray
+    }
+);
 
 #[cfg(test)]
 mod tests {
@@ -278,5 +367,26 @@ mod tests {
             assert_relative_eq!(ha_low, output_low[i], epsilon = 0.0001);
             assert_relative_eq!(ha_close, output_close[i], epsilon = 0.0001);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_ha_arrow() {
+        let input_open = vec![10.0, 10.5, 11.2, 10.8, 11.5];
+        let input_high = vec![11.0, 11.5, 11.8, 11.3, 12.0];
+        let input_low = vec![9.5, 10.2, 10.8, 10.5, 11.3];
+        let input_close = vec![10.8, 11.3, 11.5, 11.0, 11.8];
+
+        let open_arrow = TAArrowArray::from(input_open);
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let (output_open, output_high, output_low, output_close) =
+            ha_arrow(&open_arrow, &high_arrow, &low_arrow, &close_arrow).unwrap();
+
+        assert_eq!(output_open.len(), 5);
+        assert_relative_eq!(output_open.value(0), 10.4, epsilon = 0.0001);
+        assert_relative_eq!(output_close.value(0), 10.325, epsilon = 0.0001);
     }
 }

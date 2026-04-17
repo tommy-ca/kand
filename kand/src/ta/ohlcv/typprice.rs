@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period required for Typical Price calculation.
 ///
@@ -160,12 +158,13 @@ pub fn typprice_inc(
     Ok(typprice_inc_raw(input_high, input_low, input_close))
 }
 
-// Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
-    typprice,
+    typprice_arrow,
     crate::ta::ohlcv::typprice::typprice_raw,
     inputs: { input_high, input_low, input_close },
-    params: {}
+    params: {},
+    lookback_params: {}
 );
 
 #[cfg(test)]

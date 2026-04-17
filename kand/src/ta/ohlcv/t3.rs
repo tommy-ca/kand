@@ -460,11 +460,29 @@ pub fn t3_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    t3,
+    t3_arrow,
     crate::ta::ohlcv::t3::t3_raw,
     inputs: { input },
     params: { opt_period: usize, opt_vfactor: TAFloat },
-    outputs: { output, output_ema1, output_ema2, output_ema3, output_ema4, output_ema5, output_ema6 }
+    lookback_params: { opt_period },
+    outputs: {
+        output: TAFloat,
+        output_ema1: TAFloat,
+        output_ema2: TAFloat,
+        output_ema3: TAFloat,
+        output_ema4: TAFloat,
+        output_ema5: TAFloat,
+        output_ema6: TAFloat
+    },
+    return_type: {
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray
+    }
 );
 
 #[cfg(test)]

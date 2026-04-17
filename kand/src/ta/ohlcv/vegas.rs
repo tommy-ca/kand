@@ -20,6 +20,21 @@ pub const fn lookback() -> Result<usize, KandError> {
     Ok(676 - 1) // Longest EMA period - 1
 }
 
+/// Calculates VEGAS (Volume and EMA Guided Adaptive Scaling) without input validation.
+pub fn vegas_raw(
+    input_price: &[TAFloat],
+    output_channel_upper: &mut [TAFloat],
+    output_channel_lower: &mut [TAFloat],
+    output_boundary_upper: &mut [TAFloat],
+    output_boundary_lower: &mut [TAFloat],
+) {
+    // Calculate EMAs
+    let _ = ema::ema(input_price, 144, None, output_channel_upper); // Channel upper - EMA(144)
+    let _ = ema::ema(input_price, 169, None, output_channel_lower); // Channel lower - EMA(169)
+    let _ = ema::ema(input_price, 576, None, output_boundary_upper); // Boundary upper - EMA(576)
+    let _ = ema::ema(input_price, 676, None, output_boundary_lower); // Boundary lower - EMA(676)
+}
+
 /// Calculates VEGAS (Volume and EMA Guided Adaptive Scaling) indicator for the entire price array
 ///
 /// # Description
@@ -100,7 +115,7 @@ pub fn vegas(
         }
 
         // Data sufficiency check
-        if len < 676 {
+        if len <= lookback {
             return Err(KandError::InsufficientData);
         }
     }
@@ -115,18 +130,136 @@ pub fn vegas(
         }
     }
 
-    // Calculate EMAs
-    ema::ema(input_price, 144, None, output_channel_upper)?; // Channel upper - EMA(144)
-    ema::ema(input_price, 169, None, output_channel_lower)?; // Channel lower - EMA(169)
-    ema::ema(input_price, 576, None, output_boundary_upper)?; // Boundary upper - EMA(576)
-    ema::ema(input_price, 676, None, output_boundary_lower)?; // Boundary lower - EMA(676)
+    vegas_raw(
+        input_price,
+        output_channel_upper,
+        output_channel_lower,
+        output_boundary_upper,
+        output_boundary_lower,
+    );
 
     // Fill initial values with NAN
-    for value in output_channel_upper.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_channel_upper[i] = TAFloat::NAN;
+            output_channel_lower[i] = TAFloat::NAN;
+            output_boundary_upper[i] = TAFloat::NAN;
+            output_boundary_lower[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    vegas_arrow,
+    crate::ta::ohlcv::vegas::vegas_raw,
+    inputs: { input_price },
+    params: {},
+    lookback_params: {},
+    outputs: {
+        output_channel_upper: TAFloat,
+        output_channel_lower: TAFloat,
+        output_boundary_upper: TAFloat,
+        output_boundary_lower: TAFloat
+    },
+    return_type: {
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray
+    }
+);
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_relative_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_vegas_calculation() {
+        let input_price = vec![100.0; 700];
+        let mut channel_upper = vec![0.0; 700];
+        let mut channel_lower = vec![0.0; 700];
+        let mut boundary_upper = vec![0.0; 700];
+        let mut boundary_lower = vec![0.0; 700];
+
+        vegas(
+            &input_price,
+            &mut channel_upper,
+            &mut channel_lower,
+            &mut boundary_upper,
+            &mut boundary_lower,
+        )
+        .unwrap();
+
+        let lookback = lookback().unwrap();
+
+        #[cfg(feature = "allow-nan")]
+        {
+            for i in 0..lookback {
+                assert!(channel_upper[i].is_nan());
+                assert!(channel_lower[i].is_nan());
+                assert!(boundary_upper[i].is_nan());
+                assert!(boundary_lower[i].is_nan());
+            }
+        }
+
+        // After lookback, values should be 100.0 for constant input
+        assert_relative_eq!(channel_upper[lookback], 100.0);
+        assert_relative_eq!(channel_lower[lookback], 100.0);
+        assert_relative_eq!(boundary_upper[lookback], 100.0);
+        assert_relative_eq!(boundary_lower[lookback], 100.0);
+    }
+
+    #[test]
+    fn test_vegas_inc() {
+        let current_price = 100.0;
+        let prev_values = (100.0, 100.0, 100.0, 100.0);
+
+        let new_values = vegas_inc(
+            current_price,
+            prev_values.0,
+            prev_values.1,
+            prev_values.2,
+            prev_values.3,
+        )
+        .unwrap();
+
+        assert_relative_eq!(new_values.0, 100.0);
+        assert_relative_eq!(new_values.1, 100.0);
+        assert_relative_eq!(new_values.2, 100.0);
+        assert_relative_eq!(new_values.3, 100.0);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_vegas_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_price = vec![100.0; 700];
+        let input_arrow = TAArrowArray::from(input_price);
+
+        let (upper, lower, b_upper, b_lower) = vegas_arrow(&input_arrow).unwrap();
+
+        assert_eq!(upper.len(), 700);
+        let lookback = lookback().unwrap();
+
+        #[cfg(feature = "allow-nan")]
+        {
+            for i in 0..lookback {
+                assert!(upper.value(i).is_nan());
+                assert!(lower.value(i).is_nan());
+                assert!(b_upper.value(i).is_nan());
+                assert!(b_lower.value(i).is_nan());
+            }
+        }
+
+        assert_relative_eq!(upper.value(lookback), 100.0);
+    }
 }
 
 /// Calculates latest VEGAS indicator values incrementally for real-time updates

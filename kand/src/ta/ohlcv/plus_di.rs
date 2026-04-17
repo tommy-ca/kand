@@ -1,6 +1,9 @@
 use super::trange;
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period needed for +DI calculation
 ///
 /// # Arguments
@@ -41,7 +44,7 @@ pub fn plus_di_raw(
     output_smoothed_tr: &mut [TAFloat],
 ) {
     let len = input_high.len();
-    let lookback = opt_period;
+    let _lookback = opt_period;
 
     // Calculate initial +DM and TR sums
     let mut plus_dm_sum = 0.0;
@@ -388,11 +391,13 @@ pub fn plus_di_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    plus_di,
+    plus_di_arrow,
     crate::ta::ohlcv::plus_di::plus_di_raw,
     inputs: { input_high, input_low, input_close },
     params: { opt_period: usize },
-    outputs: { output_plus_di, output_smoothed_plus_dm, output_smoothed_tr }
+    lookback_params: { opt_period },
+    outputs: { output_plus_di: TAFloat, output_smoothed_plus_dm: TAFloat, output_smoothed_tr: TAFloat },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]

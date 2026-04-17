@@ -1,8 +1,9 @@
 use crate::{
     KandError, TAFloat, TAInt,
     helper::{lower_shadow_length, real_body_length},
-    types::Signal,
+    ta::types::Signal,
 };
+
 
 /// Returns the lookback period required for Gravestone Doji pattern detection.
 ///
@@ -25,6 +26,27 @@ use crate::{
 /// ```
 pub const fn lookback() -> Result<usize, KandError> {
     Ok(0)
+}
+
+/// Calculates Gravestone Doji pattern without input validation for high performance.
+pub fn cdl_gravestone_doji_raw(
+    input_open: &[TAFloat],
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_body_percent: TAFloat,
+    output_signals: &mut [TAInt],
+) {
+    let len = input_open.len();
+    for i in 0..len {
+        output_signals[i] = cdl_gravestone_doji_inc_raw(
+            input_open[i],
+            input_high[i],
+            input_low[i],
+            input_close[i],
+            opt_body_percent,
+        );
+    }
 }
 
 /// Detects Gravestone Doji candlestick patterns in price data.
@@ -65,7 +87,7 @@ pub const fn lookback() -> Result<usize, KandError> {
 /// let input_high = vec![102.0, 103.0];
 /// let input_low = vec![99.0, 98.0];
 /// let input_close = vec![99.5, 98.5];
-/// let mut output_signals = vec![0i64; 2];
+/// let mut output_signals = vec![0; 2];
 ///
 /// cdl_gravestone_doji::cdl_gravestone_doji(
 ///     &input_open,
@@ -97,6 +119,11 @@ pub fn cdl_gravestone_doji(
         {
             return Err(KandError::LengthMismatch);
         }
+
+        // Check parameters
+        if opt_body_percent <= 0.0 {
+            return Err(KandError::InvalidParameter);
+        }
     }
 
     #[cfg(feature = "check-nan")]
@@ -112,18 +139,41 @@ pub fn cdl_gravestone_doji(
         }
     }
 
-    // Process each candle
-    for i in 0..len {
-        output_signals[i] = cdl_gravestone_doji_inc(
-            input_open[i],
-            input_high[i],
-            input_low[i],
-            input_close[i],
-            opt_body_percent,
-        )?;
-    }
+    cdl_gravestone_doji_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_body_percent,
+        output_signals,
+    );
 
     Ok(())
+}
+
+/// Processes a single candlestick for Gravestone Doji detection without validation.
+#[inline]
+#[must_use]
+pub fn cdl_gravestone_doji_inc_raw(
+    input_open: TAFloat,
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+    opt_body_percent: TAFloat,
+) -> TAInt {
+    let body = real_body_length(input_open, input_close);
+    let range = input_high - input_low;
+    let dn_shadow = lower_shadow_length(input_low, input_open, input_close);
+
+    // Check for Gravestone Doji pattern
+    let is_doji_body = range > 0.0 && body <= range * opt_body_percent / 100.0;
+    let has_minimal_lower_shadow = dn_shadow <= body;
+
+    if is_doji_body && has_minimal_lower_shadow {
+        Signal::Bearish.into()
+    } else {
+        Signal::Neutral.into()
+    }
 }
 
 /// Processes a single candlestick to detect a Gravestone Doji pattern.
@@ -156,21 +206,6 @@ pub fn cdl_gravestone_doji(
 /// # Errors
 /// * [`KandError::InvalidParameter`] - If `opt_body_percent` is less than or equal to zero
 /// * [`KandError::NaNDetected`] - If any input value is NaN (when `check-nan` feature enabled)
-/// * [`KandError::ConversionError`] - If numeric conversion fails
-///
-/// # Examples
-/// ```
-/// use kand::ohlcv::cdl_gravestone_doji;
-///
-/// let signal = cdl_gravestone_doji::cdl_gravestone_doji_inc(
-///     100.0, // open
-///     102.0, // high
-///     99.8,  // low
-///     99.9,  // close
-///     5.0,   // body_percent
-/// )
-/// .unwrap();
-/// ```
 pub fn cdl_gravestone_doji_inc(
     input_open: TAFloat,
     input_high: TAFloat,
@@ -178,6 +213,13 @@ pub fn cdl_gravestone_doji_inc(
     input_close: TAFloat,
     opt_body_percent: TAFloat,
 ) -> Result<TAInt, KandError> {
+    #[cfg(feature = "check")]
+    {
+        if opt_body_percent <= 0.0 {
+            return Err(KandError::InvalidParameter);
+        }
+    }
+
     #[cfg(feature = "check-nan")]
     {
         if input_open.is_nan() || input_high.is_nan() || input_low.is_nan() || input_close.is_nan()
@@ -186,22 +228,23 @@ pub fn cdl_gravestone_doji_inc(
         }
     }
 
-    let body = real_body_length(input_open, input_close);
-    let range = input_high - input_low;
-    let dn_shadow = lower_shadow_length(input_low, input_open, input_close);
-
-    // Check for Gravestone Doji pattern
-    let is_doji_body = range > 0.0 && body <= range * opt_body_percent / 100.0;
-    let has_minimal_lower_shadow = dn_shadow <= body;
-
-    let output_signal = if is_doji_body && has_minimal_lower_shadow {
-        Signal::Bearish.into()
-    } else {
-        Signal::Neutral.into()
-    };
-
-    Ok(output_signal)
+    Ok(cdl_gravestone_doji_inc_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_body_percent,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_int!(
+    cdl_gravestone_doji_arrow,
+    crate::ta::ohlcv::cdl_gravestone_doji::cdl_gravestone_doji_raw,
+    inputs: { input_open, input_high, input_low, input_close },
+    params: { opt_body_percent: TAFloat },
+    lookback_params: {}
+);
 
 #[cfg(test)]
 mod tests {
@@ -231,7 +274,7 @@ mod tests {
         ];
 
         let opt_body_percent = 5.0;
-        let mut output_signals = vec![0i64; input_open.len()];
+        let mut output_signals = vec![0; input_open.len()];
 
         cdl_gravestone_doji(
             &input_open,
@@ -243,14 +286,12 @@ mod tests {
         )
         .unwrap();
 
-        println!("output_signals: {output_signals:?}");
-
         // Test specific signals
         assert_eq!(output_signals[15], Signal::Bearish.into()); // TV BTCUSDT.P 5m 2025-01-29 03:45
 
         // Test incremental calculation matches regular calculation
         for i in 0..18 {
-            let output_signal: i64 = cdl_gravestone_doji_inc(
+            let output_signal = cdl_gravestone_doji_inc(
                 input_open[i],
                 input_high[i],
                 input_low[i],
@@ -260,5 +301,32 @@ mod tests {
             .unwrap();
             assert_eq!(output_signal, output_signals[i]);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_cdl_gravestone_doji_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_open = vec![100.0, 101.0];
+        let input_high = vec![102.0, 103.0];
+        let input_low = vec![99.0, 98.0];
+        let input_close = vec![99.5, 98.5];
+
+        let open_arrow = TAArrowArray::from(input_open);
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let result = cdl_gravestone_doji_arrow(
+            &open_arrow,
+            &high_arrow,
+            &low_arrow,
+            &close_arrow,
+            5.0,
+        )
+        .unwrap();
+
+        assert_eq!(result.len(), 2);
     }
 }

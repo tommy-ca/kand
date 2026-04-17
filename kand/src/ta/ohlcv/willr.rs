@@ -3,8 +3,6 @@ use crate::{
     helper::{highest_bars, lowest_bars},
 };
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period required for Williams %R calculation
 ///
@@ -292,13 +290,15 @@ pub fn willr_inc(
     Ok((willr, new_highest_high, new_lowest_low))
 }
 
-// Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper_multi!(
-    willr,
+    willr_arrow,
     crate::ta::ohlcv::willr::willr_raw,
     inputs: { input_high, input_low, input_close },
     params: { opt_period: usize },
-    outputs: { output, output_highest_high, output_lowest_low }
+    lookback_params: { opt_period },
+    outputs: { output: crate::TAFloat, output_highest_high: crate::TAFloat, output_lowest_low: crate::TAFloat },
+    return_type: { crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray }
 );
 
 #[cfg(test)]

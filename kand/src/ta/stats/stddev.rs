@@ -243,11 +243,17 @@ pub fn stddev_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    stddev,
+    stddev_arrow,
     crate::ta::stats::stddev::stddev_raw,
     inputs: { input_prices },
     params: { opt_period: usize },
-    outputs: { output_stddev, output_sum, output_sum_sq }
+    lookback_params: { opt_period },
+    outputs: {
+        output_stddev: TAFloat,
+        output_sum: TAFloat,
+        output_sum_sq: TAFloat
+    },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]

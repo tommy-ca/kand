@@ -1,11 +1,9 @@
 use crate::{
     KandError, TAFloat, TAInt,
     helper::{lower_shadow_length, real_body_length, upper_shadow_length},
-    types::Signal,
+    ta::types::Signal,
 };
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowIntArray;
 
 /// Returns the lookback period for Doji pattern detection.
 ///
@@ -275,10 +273,11 @@ pub fn cdl_doji_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_int!(
-    cdl_doji,
+    cdl_doji_arrow,
     crate::ta::ohlcv::cdl_doji::cdl_doji_raw,
     inputs: { input_open, input_high, input_low, input_close },
-    params: { opt_body_percent: TAFloat, opt_shadow_equal_percent: TAFloat }
+    params: { opt_body_percent: TAFloat, opt_shadow_equal_percent: TAFloat },
+    lookback_params: {}
 );
 
 #[cfg(test)]

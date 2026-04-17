@@ -1,4 +1,12 @@
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+
+/// Returns the lookback period for Momentum (MOM) calculation without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
+    opt_period as TAPeriod
+}
 
 /// Returns the lookback period required for Momentum (MOM) calculation
 ///
@@ -10,7 +18,7 @@ use crate::{KandError, TAFloat};
 /// * `opt_period` - The number of periods to look back for momentum calculation (must be >= 2)
 ///
 /// # Returns
-/// * `Result<usize, KandError>` - The lookback period on success, or error on failure
+/// * `Result<TAPeriod, KandError>` - The lookback period on success, or error on failure
 ///
 /// # Errors
 /// * `KandError::InvalidParameter` - If `opt_period` < 2 (when "check" feature is enabled)
@@ -23,14 +31,35 @@ use crate::{KandError, TAFloat};
 /// let lookback = mom::lookback(period).unwrap();
 /// assert_eq!(lookback, 14);
 /// ```
-pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
+pub const fn lookback(opt_period: usize) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
         if opt_period < 2 {
             return Err(KandError::InvalidParameter);
         }
     }
-    Ok(opt_period)
+    Ok(lookback_raw(opt_period))
+}
+
+/// Core calculation for Momentum (MOM) without error checking.
+///
+/// # Arguments
+/// * `input_prices` - Array of input price values
+/// * `opt_period` - Number of periods to look back
+/// * `output_mom` - Array to store calculated momentum values
+pub fn mom_raw(input_prices: &[TAFloat], opt_period: usize, output_mom: &mut [TAFloat]) {
+    let len = input_prices.len();
+    let lookback = lookback_raw(opt_period) as usize;
+
+    // Calculate momentum
+    for i in lookback..len {
+        output_mom[i] = input_prices[i] - input_prices[i - opt_period];
+    }
+
+    // Fill initial values with NAN
+    for item in output_mom.iter_mut().take(lookback) {
+        *item = TAFloat::NAN;
+    }
 }
 
 /// Calculates Momentum (MOM) for an array of prices
@@ -85,7 +114,7 @@ pub fn mom(
     output_mom: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_prices.len();
-    let lookback = lookback(opt_period)?;
+    let lookback = lookback(opt_period)? as usize;
 
     #[cfg(feature = "check")]
     {
@@ -115,17 +144,16 @@ pub fn mom(
         }
     }
 
-    // Calculate momentum
-    for i in lookback..len {
-        output_mom[i] = input_prices[i] - input_prices[i - opt_period];
-    }
-
-    // Fill initial values with NAN
-    for item in output_mom.iter_mut().take(lookback) {
-        *item = TAFloat::NAN;
-    }
+    mom_raw(input_prices, opt_period, output_mom);
 
     Ok(())
+}
+
+/// Core incremental calculation for Momentum (MOM) without error checking.
+#[inline]
+#[must_use]
+pub fn mom_inc_raw(input_current_price: TAFloat, input_old_price: TAFloat) -> TAFloat {
+    input_current_price - input_old_price
 }
 
 /// Calculates the latest Momentum (MOM) value incrementally
@@ -164,8 +192,17 @@ pub fn mom_inc(
         }
     }
 
-    Ok(input_current_price - input_old_price)
+    Ok(mom_inc_raw(input_current_price, input_old_price))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    mom_arrow,
+    crate::ta::ohlcv::mom::mom_raw,
+    inputs: { input_prices },
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
+);
 
 #[cfg(test)]
 mod tests {
@@ -206,5 +243,20 @@ mod tests {
             let result = mom_inc(input_prices[i], input_prices[i - opt_period]).unwrap();
             assert_relative_eq!(result, output_mom[i], epsilon = 0.00001);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_mom_arrow() {
+        let input_prices = vec![2.0, 4.0, 6.0, 8.0, 10.0];
+        let period = 2;
+
+        let prices_arrow = TAArrowArray::from(input_prices);
+        let result = mom_arrow(&prices_arrow, period).unwrap();
+
+        assert_eq!(result.len(), 5);
+        assert!(result.value(0).is_nan());
+        assert!(result.value(1).is_nan());
+        assert_relative_eq!(result.value(2), 4.0, epsilon = 0.0001);
     }
 }

@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period required for Plus DM calculation
 ///
@@ -283,10 +281,11 @@ pub fn plus_dm_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    plus_dm,
+    plus_dm_arrow,
     crate::ta::ohlcv::plus_dm::plus_dm_raw,
     inputs: { input_high, input_low },
-    params: { opt_period: usize }
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]

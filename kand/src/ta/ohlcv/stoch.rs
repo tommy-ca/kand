@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat, ta::ohlcv::sma};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for Stochastic Oscillator calculation.
 ///
 /// # Description
@@ -41,6 +44,118 @@ pub const fn lookback(
         }
     }
     Ok(opt_k_period + opt_k_slow_period + opt_d_period - 3)
+}
+
+/// Calculates the Stochastic Oscillator indicator for the entire price series.
+///
+/// # Description
+/// The Stochastic Oscillator is a momentum indicator that shows the location of the close
+/// relative to the high-low range over a set number of periods. The indicator consists of
+/// two lines: %K (the fast line) and %D (the slow line).
+///
+/// # Mathematical Formula
+/// ```text
+/// Fast %K = 100 * (Close - Lowest Low) / (Highest High - Lowest Low)
+/// Slow %K = SMA(Fast %K, k_slow_period)
+/// %D = SMA(Slow %K, d_period)
+/// ```
+///
+/// # Calculation Steps
+/// 1. Calculate the Fast %K by comparing current close to the high-low range
+/// 2. Smooth the Fast %K using SMA to get Slow %K
+/// 3. Calculate %D as the SMA of Slow %K
+///
+/// # Arguments
+/// * `input_high` - Array of high prices
+/// * `input_low` - Array of low prices
+/// * `input_close` - Array of closing prices
+/// * `opt_k_period` - Period for %K calculation, must be >= 2
+/// * `opt_k_slow_period` - Smoothing period for slow %K, must be >= 2
+/// * `opt_d_period` - Period for %D calculation, must be >= 2
+/// * `output_fast_k` - Array to store Fast %K values
+/// * `output_k` - Array to store Slow %K values
+/// * `output_d` - Array to store %D values
+///
+/// # Returns
+/// * `Result<(), KandError>` - Unit type if successful
+///
+/// # Errors
+/// * `KandError::InvalidData` - If input arrays are empty
+/// * `KandError::LengthMismatch` - If input/output arrays have different lengths
+/// * `KandError::InvalidParameter` - If any period parameter is less than 2
+/// * `KandError::InsufficientData` - If input length is less than required lookback period
+/// * `KandError::NaNDetected` - If any input value is NaN (when "`check-nan`" feature is enabled)
+///
+/// # Example
+/// ```
+/// use kand::ohlcv::stoch;
+///
+/// let input_high = vec![10.0, 12.0, 15.0, 14.0, 13.0];
+/// let input_low = vec![8.0, 9.0, 11.0, 10.0, 9.0];
+/// let input_close = vec![9.0, 11.0, 14.0, 12.0, 11.0];
+/// let opt_k_period = 3;
+/// let opt_k_slow_period = 2;
+/// let opt_d_period = 2;
+/// let mut output_fast_k = vec![0.0; 5];
+/// let mut output_k = vec![0.0; 5];
+/// let mut output_d = vec![0.0; 5];
+///
+/// stoch::stoch(
+///     &input_high,
+///     &input_low,
+///     &input_close,
+///     opt_k_period,
+///     opt_k_slow_period,
+///     opt_d_period,
+///     &mut output_fast_k,
+///     &mut output_k,
+///     &mut output_d,
+/// )
+/// .unwrap();
+/// ```
+#[allow(clippy::similar_names)]
+pub fn stoch_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_k_period: usize,
+    opt_k_slow_period: usize,
+    opt_d_period: usize,
+    output_fast_k: &mut [TAFloat],
+    output_k: &mut [TAFloat],
+    output_d: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let hundred = 100.0;
+
+    // Calculate Fast %K first
+    for i in (opt_k_period - 1)..len {
+        let mut highest_high = input_high[i];
+        let mut lowest_low = input_low[i];
+
+        for j in 0..opt_k_period {
+            let idx = i - j;
+            highest_high = highest_high.max(input_high[idx]);
+            lowest_low = lowest_low.min(input_low[idx]);
+        }
+
+        let range = highest_high - lowest_low;
+        if range > 0.0 {
+            output_fast_k[i] = hundred * (input_close[i] - lowest_low) / range;
+        } else {
+            output_fast_k[i] = 50.0; // Default to 50 when range is zero
+        }
+    }
+
+    // Calculate Slow %K (SMA of Fast %K)
+    sma::sma_raw(output_fast_k, opt_k_slow_period, output_k);
+
+    // Calculate %D (SMA of Slow %K)
+    sma::sma_raw(
+        &output_k[opt_k_slow_period - 1..],
+        opt_d_period,
+        &mut output_d[opt_k_slow_period - 1..],
+    );
 }
 
 /// Calculates the Stochastic Oscillator indicator for the entire price series.
@@ -158,36 +273,17 @@ pub fn stoch(
         }
     }
 
-    let hundred = 100.0;
-
-    // Calculate Fast %K first
-    for i in (opt_k_period - 1)..len {
-        let mut highest_high = input_high[i];
-        let mut lowest_low = input_low[i];
-
-        for j in 0..opt_k_period {
-            let idx = i - j;
-            highest_high = highest_high.max(input_high[idx]);
-            lowest_low = lowest_low.min(input_low[idx]);
-        }
-
-        let range = highest_high - lowest_low;
-        if range > 0.0 {
-            output_fast_k[i] = hundred * (input_close[i] - lowest_low) / range;
-        } else {
-            output_fast_k[i] = 50.0; // Default to 50 when range is zero
-        }
-    }
-
-    // Calculate Slow %K (SMA of Fast %K)
-    sma::sma(output_fast_k, opt_k_slow_period, output_k)?;
-
-    // Calculate %D (SMA of Slow %K)
-    sma::sma(
-        &output_k[opt_k_slow_period - 1..],
+    stoch_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_k_period,
+        opt_k_slow_period,
         opt_d_period,
-        &mut output_d[opt_k_slow_period - 1..],
-    )?;
+        output_fast_k,
+        output_k,
+        output_d,
+    );
 
     // Fill initial values with NAN
     for i in 0..lookback {
@@ -198,6 +294,25 @@ pub fn stoch(
 
     Ok(())
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    stoch_arrow,
+    crate::ta::ohlcv::stoch::stoch_raw,
+    inputs: { input_high, input_low, input_close },
+    params: {
+        opt_k_period: usize,
+        opt_k_slow_period: usize,
+        opt_d_period: usize
+    },
+    lookback_params: { opt_k_period, opt_k_slow_period, opt_d_period },
+    outputs: {
+        output_fast_k: TAFloat,
+        output_k: TAFloat,
+        output_d: TAFloat
+    },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray }
+);
 
 #[cfg(test)]
 mod tests {
@@ -276,6 +391,71 @@ mod tests {
         for (i, (&exp_k, &exp_d)) in expected_k.iter().zip(expected_d.iter()).enumerate() {
             assert_relative_eq!(output_k[i + 17], exp_k, epsilon = 0.0001);
             assert_relative_eq!(output_d[i + 17], exp_d, epsilon = 0.0001);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_stoch_arrow() {
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ];
+
+        let input_high_arrow = TAArrowArray::from(input_high.clone());
+        let input_low_arrow = TAArrowArray::from(input_low.clone());
+        let input_close_arrow = TAArrowArray::from(input_close.clone());
+
+        let opt_k_period = 14;
+        let opt_k_slow_period = 3;
+        let opt_d_period = 3;
+
+        let (_fast_k, k, d) = stoch_arrow(
+            &input_high_arrow,
+            &input_low_arrow,
+            &input_close_arrow,
+            opt_k_period,
+            opt_k_slow_period,
+            opt_d_period,
+        )
+        .unwrap();
+
+        let mut output_fast_k = vec![0.0; input_high.len()];
+        let mut output_k = vec![0.0; input_high.len()];
+        let mut output_d = vec![0.0; input_high.len()];
+
+        stoch(
+            &input_high,
+            &input_low,
+            &input_close,
+            opt_k_period,
+            opt_k_slow_period,
+            opt_d_period,
+            &mut output_fast_k,
+            &mut output_k,
+            &mut output_d,
+        )
+        .unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 17 {
+                assert!(k.value(i).is_nan());
+                assert!(d.value(i).is_nan());
+            } else {
+                assert_relative_eq!(k.value(i), output_k[i], epsilon = 0.0001);
+                assert_relative_eq!(d.value(i), output_d[i], epsilon = 0.0001);
+            }
         }
     }
 }

@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Calculates the lookback period required for Sum calculation.
 ///
@@ -201,10 +199,11 @@ pub fn sum_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    sum,
+    sum_arrow,
     crate::ta::stats::sum::sum_raw,
     inputs: { input_prices },
-    params: { opt_period: usize }
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]

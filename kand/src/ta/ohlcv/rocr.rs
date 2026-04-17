@@ -1,5 +1,12 @@
 use crate::{KandError, TAFloat};
 
+/// Returns the lookback period for Rate of Change Ratio (ROCR) without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> usize {
+    opt_period
+}
+
 /// Calculates the lookback period required for Rate of Change Ratio (ROCR) calculation.
 ///
 /// Returns the number of historical data points needed for ROCR calculation, which equals the input period.
@@ -27,7 +34,22 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
             return Err(KandError::InvalidParameter);
         }
     }
-    Ok(opt_period)
+    Ok(lookback_raw(opt_period))
+}
+
+/// Computes ROCR without input validation for high performance.
+pub fn rocr_raw(
+    input_price: &[TAFloat],
+    opt_period: usize,
+    output_rocr: &mut [TAFloat],
+) {
+    let len = input_price.len();
+    let lookback = lookback_raw(opt_period);
+
+    // Calculate ROCR values
+    for i in lookback..len {
+        output_rocr[i] = input_price[i] / input_price[i - opt_period];
+    }
 }
 
 /// Calculates Rate of Change Ratio (ROCR) for a price series.
@@ -107,17 +129,24 @@ pub fn rocr(
         }
     }
 
-    // Calculate ROCR values
-    for i in lookback..len {
-        output_rocr[i] = input_price[i] / input_price[i - opt_period];
-    }
+    rocr_raw(input_price, opt_period, output_rocr);
 
     // Fill initial values with NAN
-    for value in output_rocr.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for value in output_rocr.iter_mut().take(lookback) {
+            *value = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Computes the next ROCR value incrementally without input validation.
+#[inline]
+#[must_use]
+pub fn rocr_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
+    input / prev
 }
 
 /// Calculates a single ROCR value incrementally.
@@ -153,8 +182,17 @@ pub fn rocr_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> {
         }
     }
 
-    Ok(input / prev)
+    Ok(rocr_inc_raw(input, prev))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    rocr_arrow,
+    crate::ta::ohlcv::rocr::rocr_raw,
+    inputs: { input_price },
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
+);
 
 #[cfg(test)]
 mod tests {
@@ -175,6 +213,7 @@ mod tests {
         rocr(&input, opt_period, &mut output_rocr).unwrap();
 
         // First 10 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_rocr.iter().take(10) {
             assert!(value.is_nan());
         }
@@ -201,6 +240,39 @@ mod tests {
         for i in opt_period..input.len() {
             let result = rocr_inc(input[i], input[i - opt_period]).unwrap();
             assert_relative_eq!(result, output_rocr[i], epsilon = 0.0001);
+        }
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn test_rocr_arrow() {
+        use crate::ta::types::TAArrowArray;
+        let input = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6,
+        ];
+        let input_arrow = TAArrowArray::from(input);
+        let opt_period = 10;
+
+        let output_rocr_arrow = rocr_arrow(&input_arrow, opt_period).unwrap();
+
+        // Compare with known values
+        let expected_values = [
+            0.998_835_759_780_327_8,
+            1.000_241_330_554_719_5,
+            1.000_619_481_851_739_3,
+            0.999_735_570_088_143_2,
+            0.997_407_728_493_668_7,
+            0.993_946_889_200_274_5,
+            0.994_219_209_835_581_2,
+            0.993_234_407_223_440_5,
+            0.996_346_341_796_031_5,
+            0.995_449_726_727_810_7,
+        ];
+
+        for (i, expected) in expected_values.iter().enumerate() {
+            assert_relative_eq!(output_rocr_arrow.value(i + 10), *expected, epsilon = 0.0001);
         }
     }
 }

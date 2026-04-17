@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Calculates the lookback period required for Minus Directional Movement (-DM) calculation.
 ///
@@ -297,10 +295,11 @@ pub fn minus_dm_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    minus_dm,
+    minus_dm_arrow,
     crate::ta::ohlcv::minus_dm::minus_dm_raw,
     inputs: { input_high, input_low },
-    params: { opt_period: usize }
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]

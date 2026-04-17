@@ -1,8 +1,11 @@
 use crate::{
     KandError, TAFloat, TAInt,
     helper::{lower_shadow_length, period_to_k, real_body_length, upper_shadow_length},
-    types::Signal,
+    ta::types::Signal,
 };
+
+#[cfg(feature = "arrow")]
+use crate::ta::types::{TAArrowArray, TAArrowIntArray};
 
 /// Returns the required lookback period for Long Shadow pattern detection.
 ///
@@ -38,6 +41,56 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period - 1)
 }
 
+/// Calculates Long Shadow pattern without input validation for high performance.
+pub fn cdl_long_shadow_raw(
+    input_open: &[TAFloat],
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    opt_shadow_factor: TAFloat,
+    output_signals: &mut [TAInt],
+    output_body_avg: &mut [TAFloat],
+) {
+    let len = input_open.len();
+    let lookback = opt_period - 1;
+
+    // Calculate initial SMA
+    let mut sum = 0.0;
+    for i in 0..opt_period {
+        sum += real_body_length(input_open[i], input_close[i]);
+    }
+    let mut body_avg = sum / opt_period as TAFloat;
+    output_body_avg[lookback] = body_avg;
+
+    let k = 2.0 / (opt_period + 1) as TAFloat;
+
+    // Process first valid signal
+    output_signals[lookback] = cdl_long_shadow_inc_raw(
+        input_open[lookback],
+        input_high[lookback],
+        input_low[lookback],
+        input_close[lookback],
+        body_avg,
+        opt_shadow_factor,
+    );
+
+    // Process remaining candles
+    for i in opt_period..len {
+        let body = real_body_length(input_open[i], input_close[i]);
+        body_avg = (body - body_avg).mul_add(k, body_avg);
+        output_body_avg[i] = body_avg;
+        output_signals[i] = cdl_long_shadow_inc_raw(
+            input_open[i],
+            input_high[i],
+            input_low[i],
+            input_close[i],
+            body_avg,
+            opt_shadow_factor,
+        );
+    }
+}
+
 /// Detects Long Shadow candlestick patterns in price data.
 ///
 /// # Description
@@ -55,7 +108,7 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 ///
 /// Pattern detected when:
 /// 1. Body <= BodyAvg
-/// 2. UpperShadow or LowerShadow >= ShadowFactor * TotalRange
+/// 2. UpperShadow or LowerShadow >= ShadowFactor * TotalRange / 100
 /// ```
 ///
 /// # Arguments
@@ -66,10 +119,9 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 /// * `opt_period` - Period for EMA calculation of body sizes (typically 14)
 /// * `opt_shadow_factor` - Minimum percentage of total range that shadow must be (typically 75.0)
 /// * `output_signals` - Output array for pattern signals:
-///   - 1: Bullish Long Lower Shadow
-///   - -1: Bearish Long Upper Shadow
+///   - 100: Bullish Long Lower Shadow
+///   - -100: Bearish Long Upper Shadow
 ///   - 0: No pattern
-///   - `i64::MIN`: Insufficient data
 /// * `output_body_avg` - Output array storing the EMA values of candle body sizes
 ///
 /// # Returns
@@ -81,7 +133,7 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 /// * [`KandError::InsufficientData`] - Input length is less than required lookback
 /// * [`KandError::NaNDetected`] - Input contains NaN values (when `check-nan` enabled)
 ///
-/// # Examples
+/// # Example
 /// ```
 /// use kand::ohlcv::cdl_long_shadow;
 ///
@@ -161,37 +213,59 @@ pub fn cdl_long_shadow(
         }
     }
 
-    // Calculate initial SMA
-    let mut sum = 0.0;
-    for i in 0..opt_period {
-        sum += real_body_length(input_open[i], input_close[i]);
-    }
-    let mut body_avg = sum / opt_period as TAFloat;
-    output_body_avg[lookback] = body_avg;
-
-    // Process remaining candles
-    for i in lookback..len {
-        let (signal, new_body_avg) = cdl_long_shadow_inc(
-            input_open[i],
-            input_high[i],
-            input_low[i],
-            input_close[i],
-            body_avg,
-            opt_period,
-            opt_shadow_factor,
-        )?;
-        output_signals[i] = signal;
-        output_body_avg[i] = new_body_avg;
-        body_avg = new_body_avg;
-    }
+    cdl_long_shadow_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        opt_shadow_factor,
+        output_signals,
+        output_body_avg,
+    );
 
     // Fill initial values
     for i in 0..lookback {
-        output_signals[i] = Signal::Invalid.into();
+        output_signals[i] = Signal::Neutral.into();
         output_body_avg[i] = TAFloat::NAN;
     }
 
     Ok(())
+}
+
+/// Processes a single candlestick for Long Shadow detection without validation.
+#[inline]
+#[must_use]
+pub fn cdl_long_shadow_inc_raw(
+    input_open: TAFloat,
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+    body_avg: TAFloat,
+    opt_shadow_factor: TAFloat,
+) -> TAInt {
+    let body = real_body_length(input_open, input_close);
+    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
+    let down_shadow = lower_shadow_length(input_low, input_open, input_close);
+    let total_range = input_high - input_low;
+
+    // Check for Long Shadow patterns
+    let is_small_body = body <= body_avg;
+    let shadow_threshold = (opt_shadow_factor / 100.0) * total_range;
+    let has_long_upper_shadow = up_shadow >= shadow_threshold;
+    let has_long_lower_shadow = down_shadow >= shadow_threshold;
+
+    if is_small_body {
+        if has_long_upper_shadow && !has_long_lower_shadow {
+            Signal::Bearish.into()
+        } else if has_long_lower_shadow && !has_long_upper_shadow {
+            Signal::Bullish.into()
+        } else {
+            Signal::Neutral.into()
+        }
+    } else {
+        Signal::Neutral.into()
+    }
 }
 
 /// Processes a single candlestick to detect a Long Shadow pattern.
@@ -199,15 +273,6 @@ pub fn cdl_long_shadow(
 /// # Description
 /// Implements incremental calculation for Long Shadow pattern detection by analyzing
 /// a single candlestick's components and comparing them against thresholds.
-///
-/// # Calculation
-/// 1. Calculate real body, upper shadow, and lower shadow lengths
-/// 2. Calculate total range = high - low
-/// 3. Update EMA of body sizes using: EMA = (body - `prev_ema`) * k + `prev_ema`
-/// 4. Check pattern conditions:
-///    - Small body: body <= `body_avg`
-///    - Shadow threshold = `shadow_factor` * `total_range` / 100
-///    - Long upper/lower shadow: shadow >= `shadow_threshold`
 ///
 /// # Arguments
 /// * `input_open` - Opening price of the candlestick
@@ -232,22 +297,6 @@ pub fn cdl_long_shadow(
 ///   - `opt_shadow_factor` is less than or equal to zero
 /// * [`KandError::NaNDetected`] - If any input value is NaN (when `check-nan` enabled)
 /// * [`KandError::ConversionError`] - If numeric conversion fails
-///
-/// # Examples
-/// ```
-/// use kand::ohlcv::cdl_long_shadow;
-///
-/// let (signal, body_avg) = cdl_long_shadow::cdl_long_shadow_inc(
-///     10.0, // open
-///     11.0, // high
-///     9.0,  // low
-///     10.5, // close
-///     0.5,  // previous body average
-///     14,   // period
-///     75.0, // shadow factor
-/// )
-/// .unwrap();
-/// ```
 pub fn cdl_long_shadow_inc(
     input_open: TAFloat,
     input_high: TAFloat,
@@ -281,33 +330,32 @@ pub fn cdl_long_shadow_inc(
         }
     }
 
-    let body = real_body_length(input_open, input_close);
-    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
-    let down_shadow = lower_shadow_length(input_low, input_open, input_close);
-    let total_range = input_high - input_low;
     let k = period_to_k(opt_period)?;
+    let body = real_body_length(input_open, input_close);
     let body_avg = (body - prev_body_avg).mul_add(k, prev_body_avg);
 
-    // Check for Long Shadow patterns
-    let is_small_body = body <= body_avg;
-    let shadow_threshold = (opt_shadow_factor / 100.0) * total_range;
-    let has_long_upper_shadow = up_shadow >= shadow_threshold;
-    let has_long_lower_shadow = down_shadow >= shadow_threshold;
-
-    let signal = if is_small_body {
-        if has_long_upper_shadow && !has_long_lower_shadow {
-            Signal::Bearish.into()
-        } else if has_long_lower_shadow && !has_long_upper_shadow {
-            Signal::Bullish.into()
-        } else {
-            Signal::Neutral.into()
-        }
-    } else {
-        Signal::Neutral.into()
-    };
+    let signal = cdl_long_shadow_inc_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        body_avg,
+        opt_shadow_factor,
+    );
 
     Ok((signal, body_avg))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    cdl_long_shadow_arrow,
+    crate::ta::ohlcv::cdl_long_shadow::cdl_long_shadow_raw,
+    inputs: { input_open, input_high, input_low, input_close },
+    params: { opt_period: usize, opt_shadow_factor: TAFloat },
+    lookback_params: { opt_period },
+    outputs: { output_signals: TAInt, output_body_avg: TAFloat },
+    return_type: { TAArrowIntArray, TAArrowArray }
+);
 
 #[cfg(test)]
 mod tests {
@@ -355,13 +403,11 @@ mod tests {
         )
         .unwrap();
 
-        // First 13 values should be i64::MIN
+        // First 13 values should be 0 (Neutral)
         for i in 0..13 {
-            assert_eq!(output_signals[i], Signal::Invalid.into());
+            assert_eq!(output_signals[i], 0);
             assert!(output_body_avg[i].is_nan());
         }
-
-        println!("output_signals: {output_signals:?}");
 
         // Test specific signals
         assert_eq!(output_signals[15], Signal::Bullish.into()); // Example bullish signal
@@ -388,5 +434,49 @@ mod tests {
             assert_relative_eq!(new_body_avg, output_body_avg[i], epsilon = 0.00001);
             prev_body_avg = new_body_avg;
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_cdl_long_shadow_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_open = vec![
+            96674.3, 96814.9, 96667.3, 96747.9, 96743.4, 96712.4, 96677.7, 96556.3, 96500.0,
+            96442.8, 96229.7, 96152.2, 96145.7, 96233.1, 96140.1, 95505.0, 95575.1, 95585.2,
+            95544.0, 95450.0, 95592.4, 95456.0, 95664.2, 95674.1, 95546.9,
+        ];
+        let input_high = vec![
+            96911.0, 96831.2, 96754.9, 96875.7, 96793.9, 96725.7, 96802.4, 96646.6, 96526.0,
+            96470.9, 96229.8, 96245.3, 96341.5, 96233.1, 96140.1, 95582.6, 95856.1, 95585.2,
+            95702.4, 95729.2, 95633.3, 95720.6, 95698.2, 95682.9, 95794.6,
+        ];
+        let input_low = vec![
+            96567.2, 96646.7, 96648.0, 96730.0, 96694.7, 96660.4, 96556.2, 96500.1, 96400.0,
+            96200.0, 96100.0, 96073.6, 96130.4, 96045.6, 95400.0, 95200.1, 95544.8, 95400.7,
+            95427.6, 95359.5, 95442.3, 95427.0, 95545.4, 95473.1, 95475.8,
+        ];
+        let input_close = vec![
+            96814.9, 96667.4, 96747.9, 96743.4, 96712.5, 96677.7, 96556.2, 96500.1, 96442.7,
+            96229.7, 96152.2, 96145.7, 96233.1, 96140.0, 95505.2, 95575.1, 95585.3, 95544.0,
+            95450.1, 95592.5, 95456.0, 95664.2, 95674.1, 95547.0, 95679.4,
+        ];
+
+        let open_arrow = TAArrowArray::from(input_open);
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let (sig, _) = cdl_long_shadow_arrow(
+            &open_arrow,
+            &high_arrow,
+            &low_arrow,
+            &close_arrow,
+            14,
+            75.0,
+        )
+        .unwrap();
+
+        assert_eq!(sig.len(), 25);
     }
 }

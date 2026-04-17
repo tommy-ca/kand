@@ -1,6 +1,9 @@
 use super::trange;
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for -DI (Minus Directional Indicator) calculation.
 ///
 /// # Arguments
@@ -397,11 +400,13 @@ pub fn minus_di_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    minus_di,
+    minus_di_arrow,
     crate::ta::ohlcv::minus_di::minus_di_raw,
     inputs: { input_high, input_low, input_close },
     params: { opt_period: usize },
-    outputs: { output_minus_di, output_smoothed_minus_dm, output_smoothed_tr }
+    lookback_params: { opt_period },
+    outputs: { output_minus_di: TAFloat, output_smoothed_minus_dm: TAFloat, output_smoothed_tr: TAFloat },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]

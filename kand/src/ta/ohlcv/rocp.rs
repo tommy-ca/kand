@@ -1,4 +1,12 @@
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+
+/// Returns the lookback period for Rate of Change Percentage (ROCP) calculation without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
+    opt_period as TAPeriod
+}
 
 /// Returns the lookback period for Rate of Change Percentage (ROCP) calculation.
 ///
@@ -11,7 +19,7 @@ use crate::{KandError, TAFloat};
 /// * `opt_period` - The time period used for ROCP calculation (usize)
 ///
 /// # Returns
-/// * `Result<usize, KandError>` - The lookback period if parameters are valid
+/// * `Result<TAPeriod, KandError>` - The lookback period if parameters are valid
 ///
 /// # Errors
 /// * `KandError::InvalidParameter` - If `opt_period` < 1 (when "check" feature enabled)
@@ -22,7 +30,7 @@ use crate::{KandError, TAFloat};
 /// let lookback = rocp::lookback(14).unwrap();
 /// assert_eq!(lookback, 14);
 /// ```
-pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
+pub const fn lookback(opt_period: usize) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
         // Parameter range check
@@ -30,7 +38,29 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
             return Err(KandError::InvalidParameter);
         }
     }
-    Ok(opt_period)
+    Ok(lookback_raw(opt_period))
+}
+
+/// Core calculation for Rate of Change Percentage (ROCP) without error checking.
+///
+/// # Arguments
+/// * `input_price` - Array of price values
+/// * `opt_period` - Number of periods to look back
+/// * `output_rocp` - Output array for calculated ROCP values
+pub fn rocp_raw(input_price: &[TAFloat], opt_period: usize, output_rocp: &mut [TAFloat]) {
+    let len = input_price.len();
+    let lookback = lookback_raw(opt_period) as usize;
+
+    // Calculate ROCP values
+    for i in lookback..len {
+        output_rocp[i] =
+            (input_price[i] - input_price[i - opt_period]) / input_price[i - opt_period];
+    }
+
+    // Fill initial values with NAN
+    for value in output_rocp.iter_mut().take(lookback) {
+        *value = TAFloat::NAN;
+    }
 }
 
 /// Calculates Rate of Change Percentage (ROCP) technical indicator for a price series.
@@ -83,7 +113,7 @@ pub fn rocp(
     output_rocp: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_price.len();
-    let lookback = lookback(opt_period)?;
+    let lookback = lookback(opt_period)? as usize;
 
     #[cfg(feature = "check")]
     {
@@ -105,25 +135,26 @@ pub fn rocp(
 
     #[cfg(feature = "check-nan")]
     {
-        for price in input_price {
-            if price.is_nan() {
+        for i in 0..len {
+            if input_price[i].is_nan() {
                 return Err(KandError::NaNDetected);
+            }
+            if i >= lookback && input_price[i - opt_period] == 0.0 {
+                return Err(KandError::InvalidData);
             }
         }
     }
 
-    // Calculate ROCP values
-    for i in lookback..len {
-        output_rocp[i] =
-            (input_price[i] - input_price[i - opt_period]) / input_price[i - opt_period];
-    }
-
-    // Fill initial values with NAN
-    for value in output_rocp.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
-    }
+    rocp_raw(input_price, opt_period, output_rocp);
 
     Ok(())
+}
+
+/// Core incremental calculation for Rate of Change Percentage (ROCP) without error checking.
+#[inline]
+#[must_use]
+pub fn rocp_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
+    (input - prev) / prev
 }
 
 /// Calculates a single ROCP value incrementally.
@@ -163,10 +194,22 @@ pub fn rocp_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> {
         if input.is_nan() || prev.is_nan() {
             return Err(KandError::NaNDetected);
         }
+        if prev == 0.0 {
+            return Err(KandError::InvalidData);
+        }
     }
 
-    Ok((input - prev) / prev)
+    Ok(rocp_inc_raw(input, prev))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    rocp_arrow,
+    crate::ta::ohlcv::rocp::rocp_raw,
+    inputs: { input_price },
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
+);
 
 #[cfg(test)]
 mod tests {
@@ -214,5 +257,20 @@ mod tests {
             let result = rocp_inc(input_price[i], input_price[i - opt_period]).unwrap();
             assert_relative_eq!(result, output_rocp[i], epsilon = 0.000_000_1);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_rocp_arrow() {
+        let input_price = vec![10.0, 10.5, 11.2, 10.8, 11.5];
+        let opt_period = 2;
+
+        let price_arrow = TAArrowArray::from(input_price);
+        let result = rocp_arrow(&price_arrow, opt_period).unwrap();
+
+        assert_eq!(result.len(), 5);
+        assert!(result.value(0).is_nan());
+        assert!(result.value(1).is_nan());
+        assert_relative_eq!(result.value(2), 0.12, epsilon = 0.0001);
     }
 }

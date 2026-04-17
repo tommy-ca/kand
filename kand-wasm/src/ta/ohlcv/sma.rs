@@ -12,6 +12,11 @@ pub fn sma_wasm_zero_copy(
     opt_period: usize,
     output_buffer: &mut WasmBuffer,
 ) -> Result<(), JsValue> {
-    sma::sma(&input_buffer.data, opt_period, &mut output_buffer.data)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    let len = input_buffer.len();
+    sma::sma(
+        input_buffer.as_slice::<f64>(len),
+        opt_period,
+        output_buffer.as_mut_slice::<f64>(len),
+    )
+    .map_err(|e| JsValue::from_str(&e.to_string()))
 }

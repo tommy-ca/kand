@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period required for Balance of Power (BOP) calculation.
 ///
@@ -214,10 +212,11 @@ pub fn bop_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    bop,
+    bop_arrow,
     crate::ta::ohlcv::bop::bop_raw,
     inputs: { input_open, input_high, input_low, input_close },
-    params: {}
+    params: {},
+    lookback_params: {}
 );
 
 #[cfg(test)]

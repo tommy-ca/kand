@@ -1,4 +1,4 @@
-use crate::{TAFloat, error::KandError, helper::period_to_k};
+use crate::{TAFloat, error::KandError};
 
 #[cfg(feature = "arrow")]
 use crate::ta::types::TAArrowArray;
@@ -265,11 +265,13 @@ pub fn dema_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    dema,
+    dema_arrow,
     crate::ta::ohlcv::dema::dema_raw,
     inputs: { input },
     params: { opt_period: usize },
-    outputs: { output_dema, output_ema1, output_ema2 }
+    lookback_params: { opt_period },
+    outputs: { output_dema: TAFloat, output_ema1: TAFloat, output_ema2: TAFloat },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]

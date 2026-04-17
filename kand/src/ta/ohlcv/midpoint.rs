@@ -1,4 +1,14 @@
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
+/// Returns the lookback period for Midpoint calculation without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
+    (opt_period - 1) as TAPeriod
+}
 
 /// Calculates the lookback period required for Midpoint calculation.
 ///
@@ -10,7 +20,7 @@ use crate::{KandError, TAFloat};
 /// * `opt_period` - The time period used for calculation (must be >= 2)
 ///
 /// # Returns
-/// * `Result<usize, KandError>` - The lookback period (period - 1) on success
+/// * `Result<TAPeriod, KandError>` - The lookback period (period - 1) on success
 ///
 /// # Errors
 /// * `KandError::InvalidParameter` - If `opt_period` is less than 2
@@ -23,7 +33,7 @@ use crate::{KandError, TAFloat};
 /// let lookback = midpoint::lookback(period).unwrap();
 /// assert_eq!(lookback, 13);
 /// ```
-pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
+pub const fn lookback(opt_period: usize) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
         // Parameter range check
@@ -31,7 +41,50 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
             return Err(KandError::InvalidParameter);
         }
     }
-    Ok(opt_period - 1)
+    Ok(lookback_raw(opt_period))
+}
+
+/// Core calculation for Midpoint values without error checking.
+///
+/// # Arguments
+/// * `input_price` - Array of price values
+/// * `opt_period` - Time period for calculation
+/// * `output_midpoint` - Output array for calculated Midpoint values
+/// * `output_highest` - Output array for highest values for each period
+/// * `output_lowest` - Output array for lowest values for each period
+pub fn midpoint_raw(
+    input_price: &[TAFloat],
+    opt_period: usize,
+    output_midpoint: &mut [TAFloat],
+    output_highest: &mut [TAFloat],
+    output_lowest: &mut [TAFloat],
+) {
+    let len = input_price.len();
+    let lookback = lookback_raw(opt_period) as usize;
+
+    // Calculate midpoint for each window
+    for i in lookback..len {
+        let start_idx = i + 1 - opt_period;
+        let mut highest = input_price[start_idx];
+        let mut lowest = input_price[start_idx];
+
+        // Find highest and lowest prices in the period
+        for &price in input_price.iter().take(i + 1).skip(start_idx + 1) {
+            highest = highest.max(price);
+            lowest = lowest.min(price);
+        }
+
+        output_highest[i] = highest;
+        output_lowest[i] = lowest;
+        output_midpoint[i] = f64::midpoint(highest, lowest);
+    }
+
+    // Fill initial values with NAN
+    for i in 0..lookback {
+        output_midpoint[i] = TAFloat::NAN;
+        output_highest[i] = TAFloat::NAN;
+        output_lowest[i] = TAFloat::NAN;
+    }
 }
 
 /// Calculates Midpoint values for a price series.
@@ -99,7 +152,7 @@ pub fn midpoint(
     output_lowest: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_price.len();
-    let lookback = lookback(opt_period)?;
+    let lookback = lookback(opt_period)? as usize;
 
     #[cfg(feature = "check")]
     {
@@ -129,31 +182,29 @@ pub fn midpoint(
         }
     }
 
-    // Calculate midpoint for each window
-    for i in lookback..len {
-        let start_idx = i + 1 - opt_period;
-        let mut highest = input_price[start_idx];
-        let mut lowest = input_price[start_idx];
-
-        // Find highest and lowest prices in the period
-        for &price in input_price.iter().take(i + 1).skip(start_idx + 1) {
-            highest = highest.max(price);
-            lowest = lowest.min(price);
-        }
-
-        output_highest[i] = highest;
-        output_lowest[i] = lowest;
-        output_midpoint[i] = f64::midpoint(highest, lowest);
-    }
-
-    // Fill initial values with NAN
-    for i in 0..lookback {
-        output_midpoint[i] = TAFloat::NAN;
-        output_highest[i] = TAFloat::NAN;
-        output_lowest[i] = TAFloat::NAN;
-    }
+    midpoint_raw(
+        input_price,
+        opt_period,
+        output_midpoint,
+        output_highest,
+        output_lowest,
+    );
 
     Ok(())
+}
+
+/// Core incremental calculation for Midpoint value without error checking.
+#[inline]
+#[must_use]
+pub fn midpoint_inc_raw(
+    input_price: TAFloat,
+    prev_highest: TAFloat,
+    prev_lowest: TAFloat,
+) -> (TAFloat, TAFloat, TAFloat) {
+    let new_highest = input_price.max(prev_highest);
+    let new_lowest = input_price.min(prev_lowest);
+    let midpoint = f64::midpoint(new_highest, new_lowest);
+    (midpoint, new_highest, new_lowest)
 }
 
 /// Calculates the next Midpoint value incrementally.
@@ -200,7 +251,7 @@ pub fn midpoint(
 /// let (midpoint, new_highest, new_lowest) =
 ///     midpoint::midpoint_inc(current_price, prev_highest, prev_lowest, period).unwrap();
 /// ```
-pub const fn midpoint_inc(
+pub fn midpoint_inc(
     input_price: TAFloat,
     prev_highest: TAFloat,
     prev_lowest: TAFloat,
@@ -220,12 +271,27 @@ pub const fn midpoint_inc(
         }
     }
 
-    let new_highest = input_price.max(prev_highest);
-    let new_lowest = input_price.min(prev_lowest);
-    let midpoint = f64::midpoint(new_highest, new_lowest);
-
-    Ok((midpoint, new_highest, new_lowest))
+    Ok(midpoint_inc_raw(input_price, prev_highest, prev_lowest))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    midpoint_arrow,
+    crate::ta::ohlcv::midpoint::midpoint_raw,
+    inputs: { input_price },
+    params: { opt_period: usize },
+    lookback_params: { opt_period },
+    outputs: {
+        output_midpoint: TAFloat,
+        output_highest: TAFloat,
+        output_lowest: TAFloat
+    },
+    return_type: {
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray
+    }
+);
 
 #[cfg(test)]
 mod tests {
@@ -283,5 +349,21 @@ mod tests {
             prev_highest = new_highest;
             prev_lowest = new_lowest;
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_midpoint_arrow() {
+        let input_price = vec![10.0, 12.0, 15.0, 14.0, 13.0];
+        let opt_period = 3;
+
+        let price_arrow = TAArrowArray::from(input_price);
+
+        let (midpoint, highest, lowest) = midpoint_arrow(&price_arrow, opt_period).unwrap();
+
+        assert_eq!(midpoint.len(), 5);
+        assert!(midpoint.value(0).is_nan());
+        assert!(midpoint.value(1).is_nan());
+        assert_relative_eq!(midpoint.value(2), 12.5, epsilon = 0.0001);
     }
 }

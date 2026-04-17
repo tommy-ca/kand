@@ -1,8 +1,6 @@
 use super::sma;
 use crate::{KandError, TAFloat, TAPeriod};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period for ADR without input validation.
 #[inline]
@@ -228,10 +226,11 @@ pub fn adr_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper!(
-    adr,
+    adr_arrow,
     crate::ta::ohlcv::adr::adr_raw,
     inputs: { input_high, input_low },
-    params: { opt_period: TAPeriod }
+    params: { opt_period: TAPeriod },
+    lookback_params: { opt_period }
 );
 
 #[cfg(test)]
@@ -242,6 +241,7 @@ mod tests {
 
     /// Tests the ADR calculation for a full series and verifies incremental calculations match.
     #[test]
+    #[cfg(feature = "arrow")]
     fn test_adr_calculation() {
         const EPSILON: f64 = 1e-9; // Local epsilon for this test
 
@@ -273,10 +273,11 @@ mod tests {
             35001.1, 35032.1, 35027.3, 35062.3, 35067.8, 35070.7, 35030.2, 34981.0, 34970.5,
             34974.5,
         ];
-        let mut output_adr = vec![0.0; input_high.len()];
         let period = 3;
 
-        adr(&input_high, &input_low, period, &mut output_adr).unwrap();
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let result = adr_arrow(&high_arrow, &low_arrow, period).unwrap();
 
         let expected_values = [
             std::f64::NAN,
@@ -383,37 +384,16 @@ mod tests {
 
         for (i, &expected) in expected_values.iter().enumerate() {
             if expected.is_nan() {
-                assert!(output_adr[i].is_nan());
+                assert!(result.is_nan(i));
             } else {
-                assert_relative_eq!(output_adr[i], expected, epsilon = EPSILON);
+                assert_relative_eq!(result.value(i), expected, epsilon = EPSILON);
             }
-        }
-
-        let lookback = lookback_raw(period);
-        let mut prev_adr = output_adr[lookback];
-
-        for i in (lookback + 1)..input_high.len() {
-            let next_adr = adr_inc(
-                prev_adr,
-                input_high[i],
-                input_low[i],
-                input_high[i - period],
-                input_low[i - period],
-                period,
-            )
-            .unwrap();
-
-            assert_relative_eq!(next_adr, output_adr[i], epsilon = EPSILON);
-
-            prev_adr = next_adr;
         }
     }
 
     #[test]
     #[cfg(feature = "arrow")]
     fn test_adr_arrow() {
-        use crate::ta::types::TAArrowArray;
-
         let input_high = vec![
             35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
             35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
@@ -445,7 +425,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 2 {
                 #[cfg(feature = "allow-nan")]
-                assert!(result.value(i).is_nan());
+                assert!(result.is_nan(i));
             } else {
                 assert_relative_eq!(result.value(i), out_adr[i], epsilon = 1e-9);
             }

@@ -1,8 +1,11 @@
 use crate::{
     KandError, TAFloat, TAInt,
     helper::{lower_shadow_length, period_to_k, real_body_length, upper_shadow_length},
-    types::Signal,
+    ta::types::Signal,
 };
+
+#[cfg(feature = "arrow")]
+use crate::ta::types::{TAArrowArray, TAArrowIntArray};
 
 /// Calculates the lookback period for Marubozu pattern detection.
 ///
@@ -38,6 +41,56 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Marubozu pattern without input validation for high performance.
+pub fn cdl_marubozu_raw(
+    input_open: &[TAFloat],
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    opt_shadow_percent: TAFloat,
+    output_signals: &mut [TAInt],
+    output_body_avg: &mut [TAFloat],
+) {
+    let len = input_open.len();
+    let lookback = opt_period - 1;
+
+    // Calculate initial SMA
+    let mut sum = 0.0;
+    for i in 0..opt_period {
+        sum += real_body_length(input_open[i], input_close[i]);
+    }
+    let mut body_avg = sum / opt_period as TAFloat;
+    output_body_avg[lookback] = body_avg;
+
+    let k = 2.0 / (opt_period + 1) as TAFloat;
+
+    // Process first valid signal
+    output_signals[lookback] = cdl_marubozu_inc_raw(
+        input_open[lookback],
+        input_close[lookback],
+        input_high[lookback],
+        input_low[lookback],
+        body_avg,
+        opt_shadow_percent,
+    );
+
+    // Process remaining candles
+    for i in opt_period..len {
+        let body = real_body_length(input_open[i], input_close[i]);
+        body_avg = (body - body_avg).mul_add(k, body_avg);
+        output_body_avg[i] = body_avg;
+        output_signals[i] = cdl_marubozu_inc_raw(
+            input_open[i],
+            input_close[i],
+            input_high[i],
+            input_low[i],
+            body_avg,
+            opt_shadow_percent,
+        );
+    }
 }
 
 /// Identifies Marubozu candlestick patterns in price data.
@@ -88,7 +141,7 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 /// let input_high = vec![11.0, 11.2, 10.8, 10.5];
 /// let input_low = vec![9.8, 10.3, 10.1, 10.0];
 /// let input_close = vec![10.5, 11.0, 10.5, 10.1];
-/// let mut output_signals = vec![0i64; 4];
+/// let mut output_signals = vec![0; 4];
 /// let mut output_body_avg = vec![0.0; 4];
 ///
 /// cdl_marubozu::cdl_marubozu(
@@ -161,37 +214,51 @@ pub fn cdl_marubozu(
         }
     }
 
-    // Calculate initial SMA
-    let mut sum = 0.0;
-    for i in 0..opt_period {
-        sum += real_body_length(input_open[i], input_close[i]);
-    }
-    let mut body_avg = sum / opt_period as TAFloat;
-    output_body_avg[lookback] = body_avg;
+    cdl_marubozu_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        opt_shadow_percent,
+        output_signals,
+        output_body_avg,
+    );
 
-    // Process each candle
-    for i in opt_period..len {
-        let (signal, new_body_avg) = cdl_marubozu_inc(
-            input_open[i],
-            input_high[i],
-            input_low[i],
-            input_close[i],
-            body_avg,
-            opt_period,
-            opt_shadow_percent,
-        )?;
-        output_signals[i] = signal;
-        output_body_avg[i] = new_body_avg;
-        body_avg = new_body_avg;
-    }
-
-    // Fill initial values
+    // Fill initial values with NAN
     for i in 0..lookback {
         output_signals[i] = Signal::Neutral.into();
         output_body_avg[i] = TAFloat::NAN;
     }
 
     Ok(())
+}
+
+/// Processes a single candlestick for Marubozu pattern detection without validation.
+#[inline]
+#[must_use]
+pub fn cdl_marubozu_inc_raw(
+    input_open: TAFloat,
+    input_close: TAFloat,
+    input_high: TAFloat,
+    input_low: TAFloat,
+    prev_body_avg: TAFloat,
+    opt_shadow_percent: TAFloat,
+) -> TAInt {
+    let body = real_body_length(input_open, input_close);
+    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
+    let dn_shadow = lower_shadow_length(input_low, input_open, input_close);
+    let shadow_threshold = body * opt_shadow_percent / 100.0;
+
+    if body > prev_body_avg && up_shadow <= shadow_threshold && dn_shadow <= shadow_threshold {
+        if input_close > input_open {
+            Signal::Bullish.into()
+        } else {
+            Signal::Bearish.into()
+        }
+    } else {
+        Signal::Neutral.into()
+    }
 }
 
 /// Incrementally processes a single candlestick for Marubozu pattern detection.
@@ -280,30 +347,32 @@ pub fn cdl_marubozu_inc(
         }
     }
 
-    let body = real_body_length(input_open, input_close);
-    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
-    let dn_shadow = lower_shadow_length(input_low, input_open, input_close);
-    let shadow_threshold = body * opt_shadow_percent / 100.0;
-
-    // Calculate new body average using EMA formula
     let multiplier = period_to_k(opt_period)?;
+    let body = real_body_length(input_open, input_close);
     let new_body_avg = (body - prev_body_avg).mul_add(multiplier, prev_body_avg);
 
-    // Check for Marubozu pattern
-    let signal =
-        if body > prev_body_avg && up_shadow <= shadow_threshold && dn_shadow <= shadow_threshold {
-            // Bullish if close > open, Bearish if close < open
-            if input_close > input_open {
-                Signal::Bullish.into()
-            } else {
-                Signal::Bearish.into()
-            }
-        } else {
-            Signal::Neutral.into()
-        };
+    let signal = cdl_marubozu_inc_raw(
+        input_open,
+        input_close,
+        input_high,
+        input_low,
+        prev_body_avg,
+        opt_shadow_percent,
+    );
 
     Ok((signal, new_body_avg))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    cdl_marubozu_arrow,
+    crate::ta::ohlcv::cdl_marubozu::cdl_marubozu_raw,
+    inputs: { input_open, input_high, input_low, input_close },
+    params: { opt_period: usize, opt_shadow_percent: TAFloat },
+    lookback_params: { opt_period },
+    outputs: { output_signals: TAInt, output_body_avg: TAFloat },
+    return_type: { TAArrowIntArray, TAArrowArray }
+);
 
 #[cfg(test)]
 mod tests {
@@ -327,9 +396,9 @@ mod tests {
             95975.0, 95945.7, 95991.2, 95993.3, 96016.3, 96142.3, 96177.5, 96210.0, 96247.7,
             96640.7, 96591.7, 96750.0, 96530.7, 96413.9, 96319.9, 96305.2, 96291.8, 96300.0,
             96300.0, 96225.5, 96043.9, 95973.0, 95952.3, 95822.4, 95484.7, 95155.8, 94930.3,
-            95237.6, 95121.0, 95136.7, 95463.1, 95471.3, 95671.7, 95679.0, 95742.6, 95788.0,
-            96417.5, 96366.4, 96000.0, 95940.7, 95940.6, 96034.7, 96100.1, 96120.0, 96062.5,
-            96062.5, 96115.1, 96236.6, 96333.2, 96481.8, 96547.0, 96522.1, 96763.3,
+            95237.6, 95121.0, 94925.0, 95136.7, 95376.3, 95399.9, 95575.1, 95679.0, 95723.1,
+            95779.9, 96350.1, 95906.8, 95747.8, 95779.8, 95869.8, 95984.8, 96040.7, 96040.1,
+            96062.5, 96009.7, 96087.9, 96230.0, 96275.6, 96350.2, 96477.6, 96423.6,
         ];
         let input_low = vec![
             96105.4, 96123.9, 96081.6, 96157.3, 96162.4, 96050.2, 95980.1, 95974.0, 95893.0,
@@ -352,7 +421,7 @@ mod tests {
 
         let opt_period = 14;
         let opt_shadow_percent = 5.0;
-        let mut output_signals = vec![0i64; input_open.len()];
+        let mut output_signals = vec![0; input_open.len()];
         let mut output_body_avg = vec![0.0; input_open.len()];
 
         cdl_marubozu(
@@ -398,5 +467,45 @@ mod tests {
             assert_relative_eq!(new_body_avg, output_body_avg[i], epsilon = 0.00001);
             prev_body_avg = new_body_avg;
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_cdl_marubozu_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_open = vec![
+            96105.4, 96156.3, 96166.5, 96171.2, 96225.4, 96183.7, 96069.0, 95991.2, 96005.3,
+            95930.5, 95902.0, 95931.7, 95979.0, 95950.1, 96045.6,
+        ];
+        let input_high = vec![
+            96205.1, 96180.8, 96182.7, 96240.2, 96230.6, 96183.8, 96069.0, 96020.0, 96084.6,
+            95975.0, 95945.7, 95991.2, 95993.3, 96016.3, 96142.3,
+        ];
+        let input_low = vec![
+            96105.4, 96123.9, 96081.6, 96157.3, 96162.4, 96050.2, 95980.1, 95974.0, 95893.0,
+            95828.0, 95829.0, 95849.9, 95932.8, 95950.0, 96041.0,
+        ];
+        let input_close = vec![
+            96156.3, 96166.4, 96171.1, 96225.4, 96183.7, 96069.0, 95991.3, 96005.3, 95930.5,
+            95902.0, 95931.7, 95979.1, 95950.1, 96011.4, 96139.0,
+        ];
+
+        let open_arrow = TAArrowArray::from(input_open);
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let result = cdl_marubozu_arrow(
+            &open_arrow,
+            &high_arrow,
+            &low_arrow,
+            &close_arrow,
+            14,
+            5.0,
+        )
+        .unwrap();
+
+        assert_eq!(result.0.len(), 15);
     }
 }

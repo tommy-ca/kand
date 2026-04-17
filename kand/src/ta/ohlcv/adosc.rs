@@ -1,13 +1,15 @@
 use super::{ad, ema};
-use crate::{KandError, TAFloat, TAPeriod};
+use crate::{KandError, TAFloat, TAPeriod, ta::types::MAType};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period for ADOSC without input validation.
 #[inline]
 #[must_use]
-pub const fn lookback_raw(_opt_fast_period: TAPeriod, opt_slow_period: TAPeriod) -> TAPeriod {
+pub const fn lookback_raw(
+    _opt_fast_period: TAPeriod,
+    opt_slow_period: TAPeriod,
+    _opt_ma_type: MAType,
+) -> TAPeriod {
     opt_slow_period - 1
 }
 
@@ -23,11 +25,16 @@ pub const fn lookback_raw(_opt_fast_period: TAPeriod, opt_slow_period: TAPeriod)
 ///
 /// ```
 /// use kand::ohlcv::adosc;
-/// let lookback = adosc::lookback(3, 10).unwrap();
+/// use kand::ta::types::MAType;
+/// let lookback = adosc::lookback(3, 10, MAType::EMA).unwrap();
 /// assert_eq!(lookback, 9);
 /// ```
 #[must_use]
-pub const fn lookback(opt_fast_period: TAPeriod, opt_slow_period: TAPeriod) -> Result<TAPeriod, KandError> {
+pub const fn lookback(
+    opt_fast_period: TAPeriod,
+    opt_slow_period: TAPeriod,
+    opt_ma_type: MAType,
+) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
         if opt_fast_period < 2 || opt_slow_period < 2 || opt_fast_period >= opt_slow_period {
@@ -35,7 +42,7 @@ pub const fn lookback(opt_fast_period: TAPeriod, opt_slow_period: TAPeriod) -> R
         }
     }
 
-    Ok(lookback_raw(opt_fast_period, opt_slow_period))
+    Ok(lookback_raw(opt_fast_period, opt_slow_period, opt_ma_type))
 }
 
 /// Computes ADOSC without input validation for high performance.
@@ -46,18 +53,20 @@ pub fn adosc_raw(
     input_volume: &[TAFloat],
     opt_fast_period: TAPeriod,
     opt_slow_period: TAPeriod,
+    opt_ma_type: MAType,
     output_adosc: &mut [TAFloat],
-    output_ad: &mut [TAFloat],
-    output_ad_fast_ema: &mut [TAFloat],
-    output_ad_slow_ema: &mut [TAFloat],
 ) {
     let len = input_high.len();
-    ad::ad_raw(input_high, input_low, input_close, input_volume, output_ad);
+    let mut output_ad = vec![0.0; len];
+    let mut output_ad_fast_ema = vec![0.0; len];
+    let mut output_ad_slow_ema = vec![0.0; len];
 
-    ema::ema_raw(output_ad, opt_fast_period, None, output_ad_fast_ema);
-    ema::ema_raw(output_ad, opt_slow_period, None, output_ad_slow_ema);
+    ad::ad_raw(input_high, input_low, input_close, input_volume, &mut output_ad);
 
-    let lookback = lookback_raw(opt_fast_period, opt_slow_period);
+    ema::ema_raw(&output_ad, opt_fast_period, None, &mut output_ad_fast_ema);
+    ema::ema_raw(&output_ad, opt_slow_period, None, &mut output_ad_slow_ema);
+
+    let lookback = lookback_raw(opt_fast_period, opt_slow_period, opt_ma_type);
     for i in lookback..len {
         output_adosc[i] = output_ad_fast_ema[i] - output_ad_slow_ema[i];
     }
@@ -99,14 +108,12 @@ pub fn adosc_raw(
 ///
 /// ```
 /// use kand::ohlcv::adosc;
+/// use kand::ta::types::MAType;
 /// let high = vec![10.0, 11.0, 12.0, 11.5, 10.5];
 /// let low = vec![8.0, 9.0, 10.0, 9.5, 8.5];
 /// let close = vec![9.0, 10.0, 11.0, 10.0, 9.0];
 /// let volume = vec![100.0, 150.0, 200.0, 150.0, 100.0];
 /// let mut adosc_out = vec![0.0; 5];
-/// let mut ad_out = vec![0.0; 5];
-/// let mut ad_fast_ema = vec![0.0; 5];
-/// let mut ad_slow_ema = vec![0.0; 5];
 ///
 /// adosc::adosc(
 ///     &high,
@@ -115,10 +122,8 @@ pub fn adosc_raw(
 ///     &volume,
 ///     3,
 ///     5,
+///     MAType::EMA,
 ///     &mut adosc_out,
-///     &mut ad_out,
-///     &mut ad_fast_ema,
-///     &mut ad_slow_ema,
 /// )
 /// .unwrap();
 /// ```
@@ -129,13 +134,11 @@ pub fn adosc(
     input_volume: &[TAFloat],
     opt_fast_period: TAPeriod,
     opt_slow_period: TAPeriod,
+    opt_ma_type: MAType,
     output_adosc: &mut [TAFloat],
-    output_ad: &mut [TAFloat],
-    output_ad_fast_ema: &mut [TAFloat],
-    output_ad_slow_ema: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
-    let lookback = lookback(opt_fast_period, opt_slow_period)?;
+    let lookback = lookback(opt_fast_period, opt_slow_period, opt_ma_type)?;
 
     #[cfg(feature = "check")]
     {
@@ -151,9 +154,6 @@ pub fn adosc(
             || len != input_close.len()
             || len != input_volume.len()
             || len != output_adosc.len()
-            || len != output_ad.len()
-            || len != output_ad_fast_ema.len()
-            || len != output_ad_slow_ema.len()
         {
             return Err(KandError::LengthMismatch);
         }
@@ -179,10 +179,8 @@ pub fn adosc(
         input_volume,
         opt_fast_period,
         opt_slow_period,
+        opt_ma_type,
         output_adosc,
-        output_ad,
-        output_ad_fast_ema,
-        output_ad_slow_ema,
     );
 
     // Fill initial values with NAN
@@ -190,9 +188,6 @@ pub fn adosc(
     {
         for i in 0..lookback {
             output_adosc[i] = TAFloat::NAN;
-            output_ad[i] = TAFloat::NAN;
-            output_ad_fast_ema[i] = TAFloat::NAN;
-            output_ad_slow_ema[i] = TAFloat::NAN;
         }
     }
 
@@ -252,6 +247,7 @@ pub fn adosc_inc_raw(
 ///
 /// ```
 /// use kand::ohlcv::adosc;
+/// use kand::ta::types::MAType;
 /// let (adosc, ad, ad_fast_ema, ad_slow_ema) = adosc::adosc_inc(
 ///     10.5,
 ///     9.5,
@@ -262,6 +258,7 @@ pub fn adosc_inc_raw(
 ///     90.0,
 ///     3,
 ///     10,
+///     MAType::EMA,
 /// )
 /// .unwrap();
 /// ```
@@ -275,6 +272,7 @@ pub fn adosc_inc(
     prev_ad_slow_ema: TAFloat,
     opt_fast_period: TAPeriod,
     opt_slow_period: TAPeriod,
+    _opt_ma_type: MAType,
 ) -> Result<(TAFloat, TAFloat, TAFloat, TAFloat), KandError> {
     #[cfg(feature = "check")]
     {
@@ -314,12 +312,12 @@ pub fn adosc_inc(
 }
 
 // Arrow wrapper
-crate::kand_arrow_wrapper_multi!(
-    adosc,
+crate::kand_arrow_wrapper!(
+    adosc_arrow,
     crate::ta::ohlcv::adosc::adosc_raw,
     inputs: { input_high, input_low, input_close, input_volume },
-    params: { opt_fast_period: TAPeriod, opt_slow_period: TAPeriod },
-    outputs: { output_adosc, output_ad, output_ad_fast_ema, output_ad_slow_ema }
+    params: { opt_fast_period: usize, opt_slow_period: usize, opt_ma_type: crate::ta::types::MAType },
+    lookback_params: { opt_fast_period, opt_slow_period, opt_ma_type }
 );
 
 #[cfg(test)]
@@ -360,9 +358,6 @@ mod tests {
         let opt_fast_period = 3;
         let opt_slow_period = 10;
         let mut output_adosc = vec![0.0; input_high.len()];
-        let mut output_ad = vec![0.0; input_high.len()];
-        let mut output_ad_fast_ema = vec![0.0; input_high.len()];
-        let mut output_ad_slow_ema = vec![0.0; input_high.len()];
 
         adosc(
             &input_high,
@@ -371,10 +366,8 @@ mod tests {
             &input_volume,
             opt_fast_period,
             opt_slow_period,
+            MAType::EMA,
             &mut output_adosc,
-            &mut output_ad,
-            &mut output_ad_fast_ema,
-            &mut output_ad_slow_ema,
         )
         .unwrap();
 
@@ -405,9 +398,19 @@ mod tests {
             assert_relative_eq!(output_adosc[i + 9], expected, epsilon = EPSILON);
         }
 
-        let mut prev_ad = output_ad[9];
-        let mut prev_ad_fast_ema = output_ad_fast_ema[9];
-        let mut prev_ad_slow_ema = output_ad_slow_ema[9];
+        // Test incremental
+        // To test incremental, we still need the intermediate values because adosc_inc needs them.
+        // We'll calculate them manually for the test.
+        let mut ad_values = vec![0.0; input_high.len()];
+        ad::ad_raw(&input_high, &input_low, &input_close, &input_volume, &mut ad_values);
+        let mut ad_fast_ema = vec![0.0; input_high.len()];
+        let mut ad_slow_ema = vec![0.0; input_high.len()];
+        ema::ema_raw(&ad_values, opt_fast_period, None, &mut ad_fast_ema);
+        ema::ema_raw(&ad_values, opt_slow_period, None, &mut ad_slow_ema);
+
+        let mut prev_ad = ad_values[9];
+        let mut prev_ad_fast_ema = ad_fast_ema[9];
+        let mut prev_ad_slow_ema = ad_slow_ema[9];
 
         for i in 10..input_high.len() {
             let (output_adosc_inc, output_ad_inc, output_ad_fast_ema_inc, output_ad_slow_ema_inc) =
@@ -421,20 +424,10 @@ mod tests {
                     prev_ad_slow_ema,
                     opt_fast_period,
                     opt_slow_period,
+                    MAType::EMA,
                 )
                 .unwrap();
             assert_relative_eq!(output_adosc_inc, output_adosc[i], epsilon = EPSILON);
-            assert_relative_eq!(output_ad_inc, output_ad[i], epsilon = EPSILON);
-            assert_relative_eq!(
-                output_ad_fast_ema_inc,
-                output_ad_fast_ema[i],
-                epsilon = EPSILON
-            );
-            assert_relative_eq!(
-                output_ad_slow_ema_inc,
-                output_ad_slow_ema[i],
-                epsilon = EPSILON
-            );
             prev_ad = output_ad_inc;
             prev_ad_fast_ema = output_ad_fast_ema_inc;
             prev_ad_slow_ema = output_ad_slow_ema_inc;
@@ -473,13 +466,14 @@ mod tests {
         let opt_fast_period = 3;
         let opt_slow_period = 10;
 
-        let (adosc_arrow, _, _, _) = adosc_arrow(
+        let adosc_arrow = adosc_arrow(
             &high_arrow,
             &low_arrow,
             &close_arrow,
             &volume_arrow,
             opt_fast_period,
             opt_slow_period,
+            MAType::EMA,
         )
         .unwrap();
 

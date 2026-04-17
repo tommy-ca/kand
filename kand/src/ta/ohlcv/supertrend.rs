@@ -1,5 +1,12 @@
 use super::atr;
-use crate::{KandError, TAFloat, TAInt, types::Signal};
+use crate::{KandError, TAFloat, TAInt, ta::types::Signal};
+
+/// Returns the lookback period required for Supertrend calculation without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> usize {
+    opt_period
+}
 
 /// Returns the lookback period required for Supertrend calculation
 ///
@@ -26,6 +33,80 @@ use crate::{KandError, TAFloat, TAInt, types::Signal};
 /// ```
 pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     atr::lookback(opt_period)
+}
+
+/// Computes Supertrend without input validation for high performance.
+pub fn supertrend_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    opt_multiplier: TAFloat,
+    output_trend: &mut [TAInt],
+    output_supertrend: &mut [TAFloat],
+    output_atr: &mut [TAFloat],
+    output_upper: &mut [TAFloat],
+    output_lower: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = lookback_raw(opt_period);
+
+    // Calculate ATR
+    atr::atr_raw(input_high, input_low, input_close, opt_period, output_atr);
+
+    let mut basic_upper = vec![0.0; len];
+    let mut basic_lower = vec![0.0; len];
+
+    // Convert trend direction values
+    let up_trend: TAInt = Signal::Bullish.into();
+    let down_trend: TAInt = Signal::Bearish.into();
+
+    // Calculate basic bands
+    for i in lookback..len {
+        let hl2 = (input_high[i] + input_low[i]) / 2.0;
+        basic_upper[i] = opt_multiplier.mul_add(output_atr[i], hl2);
+        basic_lower[i] = opt_multiplier.mul_add(-output_atr[i], hl2);
+    }
+
+    // Initialize the first valid point (at lookback)
+    output_trend[lookback] = up_trend;
+    output_supertrend[lookback] = basic_lower[lookback];
+    output_upper[lookback] = basic_upper[lookback];
+    output_lower[lookback] = basic_lower[lookback];
+
+    // Calculate final bands and trend for remaining points
+    for i in (lookback + 1)..len {
+        // Calculate final upper band using min/max logic
+        if input_close[i - 1] <= output_upper[i - 1] {
+            output_upper[i] = basic_upper[i].min(output_upper[i - 1]);
+        } else {
+            output_upper[i] = basic_upper[i];
+        }
+
+        // Calculate final lower band using min/max logic
+        if input_close[i - 1] >= output_lower[i - 1] {
+            output_lower[i] = basic_lower[i].max(output_lower[i - 1]);
+        } else {
+            output_lower[i] = basic_lower[i];
+        }
+
+        // Determine trend direction based on previous trend
+        if output_trend[i - 1] == up_trend {
+            if input_close[i] < output_lower[i] {
+                output_trend[i] = down_trend;
+                output_supertrend[i] = output_upper[i];
+            } else {
+                output_trend[i] = up_trend;
+                output_supertrend[i] = output_lower[i];
+            }
+        } else if input_close[i] > output_upper[i] {
+            output_trend[i] = up_trend;
+            output_supertrend[i] = output_lower[i];
+        } else {
+            output_trend[i] = down_trend;
+            output_supertrend[i] = output_upper[i];
+        }
+    }
 }
 
 /// Calculates Supertrend values for the entire price series
@@ -141,65 +222,21 @@ pub fn supertrend(
         }
     }
 
-    // Calculate ATR
-    atr::atr(input_high, input_low, input_close, opt_period, output_atr)?;
+    supertrend_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        opt_multiplier,
+        output_trend,
+        output_supertrend,
+        output_atr,
+        output_upper,
+        output_lower,
+    );
 
-    let mut basic_upper = vec![0.0; len];
-    let mut basic_lower = vec![0.0; len];
-
-    // Convert trend direction values
-    let up_trend = Signal::Bullish.into();
-    let down_trend = Signal::Bearish.into();
-    let no_trend = Signal::Neutral.into();
-
-    // Calculate basic bands
-    for i in lookback..len {
-        let hl2 = f64::midpoint(input_high[i], input_low[i]);
-        basic_upper[i] = opt_multiplier.mul_add(output_atr[i], hl2);
-        basic_lower[i] = opt_multiplier.mul_add(-output_atr[i], hl2);
-    }
-
-    // Initialize the first valid point (at lookback)
-    output_trend[lookback] = up_trend;
-    output_supertrend[lookback] = basic_lower[lookback];
-    output_upper[lookback] = basic_upper[lookback];
-    output_lower[lookback] = basic_lower[lookback];
-
-    // Calculate final bands and trend for remaining points
-    for i in (lookback + 1)..len {
-        // Calculate final upper band using min/max logic
-        if input_close[i - 1] <= output_upper[i - 1] {
-            output_upper[i] = basic_upper[i].min(output_upper[i - 1]);
-        } else {
-            output_upper[i] = basic_upper[i];
-        }
-
-        // Calculate final lower band using min/max logic
-        if input_close[i - 1] >= output_lower[i - 1] {
-            output_lower[i] = basic_lower[i].max(output_lower[i - 1]);
-        } else {
-            output_lower[i] = basic_lower[i];
-        }
-
-        // Determine trend direction based on previous trend
-        if output_trend[i - 1] == up_trend {
-            if input_close[i] < output_lower[i] {
-                output_trend[i] = down_trend;
-                output_supertrend[i] = output_upper[i];
-            } else {
-                output_trend[i] = up_trend;
-                output_supertrend[i] = output_lower[i];
-            }
-        } else if input_close[i] > output_upper[i] {
-            output_trend[i] = up_trend;
-            output_supertrend[i] = output_lower[i];
-        } else {
-            output_trend[i] = down_trend;
-            output_supertrend[i] = output_upper[i];
-        }
-    }
-
-    // Fill initial values with 0 (matching Python's initialization)
+    // Fill initial values with 0/NAN
+    let no_trend: TAInt = Signal::Neutral.into();
     for i in 0..lookback {
         output_trend[i] = no_trend;
         output_supertrend[i] = TAFloat::NAN;
@@ -209,6 +246,63 @@ pub fn supertrend(
     }
 
     Ok(())
+}
+
+/// Computes the next Supertrend values incrementally without input validation.
+#[inline]
+#[must_use]
+pub fn supertrend_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+    prev_close: TAFloat,
+    prev_atr: TAFloat,
+    prev_trend: TAInt,
+    prev_upper: TAFloat,
+    prev_lower: TAFloat,
+    opt_period: usize,
+    opt_multiplier: TAFloat,
+) -> (TAInt, TAFloat, TAFloat, TAFloat, TAFloat) {
+    let output_atr = atr::atr_inc_raw(input_high, input_low, prev_close, prev_atr, opt_period);
+
+    let hl2 = (input_high + input_low) / 2.0;
+    let basic_upper = opt_multiplier.mul_add(output_atr, hl2);
+    let basic_lower = opt_multiplier.mul_add(-output_atr, hl2);
+
+    let output_upper = if prev_close <= prev_upper {
+        basic_upper.min(prev_upper)
+    } else {
+        basic_upper
+    };
+
+    let output_lower = if prev_close >= prev_lower {
+        basic_lower.max(prev_lower)
+    } else {
+        basic_lower
+    };
+
+    let up_trend: TAInt = Signal::Bullish.into();
+    let down_trend: TAInt = Signal::Bearish.into();
+
+    let (output_trend, output_supertrend) = if prev_trend == up_trend {
+        if input_close < output_lower {
+            (down_trend, output_upper)
+        } else {
+            (up_trend, output_lower)
+        }
+    } else if input_close > output_upper {
+        (up_trend, output_lower)
+    } else {
+        (down_trend, output_upper)
+    };
+
+    (
+        output_trend,
+        output_supertrend,
+        output_atr,
+        output_upper,
+        output_lower,
+    )
 }
 
 /// Calculates a single Supertrend value incrementally
@@ -250,7 +344,7 @@ pub fn supertrend(
 /// * `opt_multiplier` - ATR multiplier (typically 2-4)
 ///
 /// # Returns
-/// * `Ok((TAInt, TAFloat, TAFloat, TAFloat, TAFloat))` - Tuple containing:
+/// * `Result<(TAInt, TAFloat, TAFloat, TAFloat, TAFloat), KandError>` - Tuple containing:
 ///   - Current trend signal (1: uptrend, -1: downtrend)
 ///   - Current Supertrend value (support/resistance level)
 ///   - Current ATR value
@@ -295,47 +389,30 @@ pub fn supertrend_inc(
         }
     }
 
-    let output_atr = atr::atr_inc(input_high, input_low, prev_close, prev_atr, opt_period)?;
-
-    let hl2 = f64::midpoint(input_high, input_low);
-    let basic_upper = opt_multiplier.mul_add(output_atr, hl2);
-    let basic_lower = opt_multiplier.mul_add(-output_atr, hl2);
-
-    let output_upper = if prev_close <= prev_upper {
-        basic_upper.min(prev_upper)
-    } else {
-        basic_upper
-    };
-
-    let output_lower = if prev_close >= prev_lower {
-        basic_lower.max(prev_lower)
-    } else {
-        basic_lower
-    };
-
-    let up_trend = Signal::Bullish.into();
-    let down_trend = Signal::Bearish.into();
-
-    let (output_trend, output_supertrend) = if prev_trend == up_trend {
-        if input_close < output_lower {
-            (down_trend, output_upper)
-        } else {
-            (up_trend, output_lower)
-        }
-    } else if input_close > output_upper {
-        (up_trend, output_lower)
-    } else {
-        (down_trend, output_upper)
-    };
-
-    Ok((
-        output_trend,
-        output_supertrend,
-        output_atr,
-        output_upper,
-        output_lower,
+    Ok(supertrend_inc_raw(
+        input_high,
+        input_low,
+        input_close,
+        prev_close,
+        prev_atr,
+        prev_trend,
+        prev_upper,
+        prev_lower,
+        opt_period,
+        opt_multiplier,
     ))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    supertrend_arrow,
+    crate::ta::ohlcv::supertrend::supertrend_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize, opt_multiplier: TAFloat },
+    lookback_params: { opt_period },
+    outputs: { output_trend: TAInt, output_supertrend: TAFloat, output_atr: TAFloat, output_upper: TAFloat, output_lower: TAFloat },
+    return_type: { crate::ta::types::TAArrowIntArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray }
+);
 
 #[cfg(test)]
 mod tests {
@@ -416,7 +493,7 @@ mod tests {
                 output_supertrend[i].is_nan(),
                 "Expected NaN for output_supertrend[{i}]"
             );
-            assert!(output_trend[i] == 0, "Expected NaN for output_trend[{i}]");
+            assert!(output_trend[i] == 0, "Expected 0 for output_trend[{i}]");
         }
 
         // Check the remaining values against expected values
@@ -450,5 +527,44 @@ mod tests {
 
         assert!(trend == output_trend[len - 1]);
         assert_relative_eq!(supertrend, output_supertrend[len - 1], epsilon = 0.00001);
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn test_supertrend_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let opt_period = 10;
+        let opt_multiplier = 3.0;
+
+        let (trend_arrow, supertrend_arrow, atr_arrow, upper_arrow, lower_arrow) =
+            supertrend_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period, opt_multiplier)
+                .unwrap();
+
+        assert_eq!(trend_arrow.len(), 25);
+        assert_eq!(supertrend_arrow.len(), 25);
+        assert_eq!(atr_arrow.len(), 25);
+        assert_eq!(upper_arrow.len(), 25);
+        assert_eq!(lower_arrow.len(), 25);
     }
 }

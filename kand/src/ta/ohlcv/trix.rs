@@ -1,6 +1,13 @@
 use super::{ema, roc};
 use crate::{KandError, TAFloat};
 
+/// Returns the lookback period for TRIX without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> usize {
+    3 * (opt_period - 1) + 1
+}
+
 /// Calculates the lookback period required for TRIX calculation
 ///
 /// # Description
@@ -25,7 +32,51 @@ use crate::{KandError, TAFloat};
 /// assert_eq!(lookback, 40); // 3 * EMA lookback + 1 ROC lookback
 /// ```
 pub fn lookback(opt_period: usize) -> Result<usize, KandError> {
-    Ok(3 * ema::lookback(opt_period)? + roc::lookback(1)?)
+    #[cfg(feature = "check")]
+    {
+        if opt_period < 2 {
+            return Err(KandError::InvalidParameter);
+        }
+    }
+    Ok(lookback_raw(opt_period))
+}
+
+/// Computes TRIX without input validation for high performance.
+pub fn trix_raw(
+    input: &[TAFloat],
+    opt_period: usize,
+    output: &mut [TAFloat],
+    ema1_output: &mut [TAFloat],
+    ema2_output: &mut [TAFloat],
+    ema3_output: &mut [TAFloat],
+) {
+    let _lookback = lookback_raw(opt_period);
+
+    // Calculate first EMA
+    ema::ema_raw(input, opt_period, None, ema1_output);
+
+    // Calculate second EMA
+    ema::ema_raw(
+        &ema1_output[opt_period - 1..],
+        opt_period,
+        None,
+        &mut ema2_output[opt_period - 1..],
+    );
+
+    // Calculate third EMA
+    ema::ema_raw(
+        &ema2_output[2 * (opt_period - 1)..],
+        opt_period,
+        None,
+        &mut ema3_output[2 * (opt_period - 1)..],
+    );
+
+    // Calculate TRIX using ROC
+    roc::roc_raw(
+        &ema3_output[3 * (opt_period - 1)..],
+        1,
+        &mut output[3 * (opt_period - 1)..],
+    );
 }
 
 /// Calculates the Triple Exponential Moving Average Oscillator (TRIX)
@@ -121,41 +172,37 @@ pub fn trix(
         }
     }
 
-    // Calculate first EMA
-    ema::ema(input, opt_period, None, ema1_output)?;
-
-    // Calculate second EMA
-    ema::ema(
-        &ema1_output[opt_period - 1..],
-        opt_period,
-        None,
-        &mut ema2_output[opt_period - 1..],
-    )?;
-
-    // Calculate third EMA
-    ema::ema(
-        &ema2_output[2 * (opt_period - 1)..],
-        opt_period,
-        None,
-        &mut ema3_output[2 * (opt_period - 1)..],
-    )?;
-
-    // Calculate TRIX using ROC
-    roc::roc(
-        &ema3_output[3 * (opt_period - 1)..],
-        1,
-        &mut output[3 * (opt_period - 1)..],
-    )?;
+    trix_raw(input, opt_period, output, ema1_output, ema2_output, ema3_output);
 
     // Fill initial values with NAN
-    for i in 0..lookback {
-        output[i] = TAFloat::NAN;
-        ema1_output[i] = TAFloat::NAN;
-        ema2_output[i] = TAFloat::NAN;
-        ema3_output[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output[i] = TAFloat::NAN;
+            ema1_output[i] = TAFloat::NAN;
+            ema2_output[i] = TAFloat::NAN;
+            ema3_output[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Computes the next TRIX value incrementally without input validation.
+#[inline]
+#[must_use]
+pub fn trix_inc_raw(
+    input: TAFloat,
+    prev_ema1: TAFloat,
+    prev_ema2: TAFloat,
+    prev_ema3: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat, TAFloat) {
+    let new_ema1 = ema::ema_inc_raw(input, prev_ema1, 2.0 / (opt_period + 1) as TAFloat);
+    let new_ema2 = ema::ema_inc_raw(new_ema1, prev_ema2, 2.0 / (opt_period + 1) as TAFloat);
+    let new_ema3 = ema::ema_inc_raw(new_ema2, prev_ema3, 2.0 / (opt_period + 1) as TAFloat);
+    let trix = roc::roc_inc_raw(new_ema3, prev_ema3);
+    (trix, new_ema1, new_ema2, new_ema3)
 }
 
 /// Calculates a single new TRIX value incrementally using previous EMA values
@@ -223,13 +270,21 @@ pub fn trix_inc(
         }
     }
 
-    let new_ema1 = ema::ema_inc(input, prev_ema1, opt_period, None)?;
-    let new_ema2 = ema::ema_inc(new_ema1, prev_ema2, opt_period, None)?;
-    let new_ema3 = ema::ema_inc(new_ema2, prev_ema3, opt_period, None)?;
-    let trix = roc::roc_inc(new_ema3, prev_ema3)?;
-
-    Ok((trix, new_ema1, new_ema2, new_ema3))
+    Ok(trix_inc_raw(
+        input, prev_ema1, prev_ema2, prev_ema3, opt_period,
+    ))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    trix_arrow,
+    crate::ta::ohlcv::trix::trix_raw,
+    inputs: { input },
+    params: { opt_period: usize },
+    lookback_params: { opt_period },
+    outputs: { output: TAFloat, ema1_output: TAFloat, ema2_output: TAFloat, ema3_output: TAFloat },
+    return_type: { crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray }
+);
 
 #[cfg(test)]
 mod tests {
@@ -261,6 +316,7 @@ mod tests {
         .unwrap();
 
         // First 7 values should be NaN (lookback period)
+        #[cfg(feature = "allow-nan")]
         for value in output.iter().take(7) {
             assert!(value.is_nan());
         }
@@ -301,5 +357,27 @@ mod tests {
             prev_ema2 = new_ema2;
             prev_ema3 = new_ema3;
         }
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn test_trix_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6,
+        ];
+        let input_arrow = TAArrowArray::from(input);
+        let opt_period = 3;
+
+        let (output_arrow, ema1_arrow, ema2_arrow, ema3_arrow) =
+            trix_arrow(&input_arrow, opt_period).unwrap();
+
+        assert_eq!(output_arrow.len(), 20);
+        assert_eq!(ema1_arrow.len(), 20);
+        assert_eq!(ema2_arrow.len(), 20);
+        assert_eq!(ema3_arrow.len(), 20);
     }
 }

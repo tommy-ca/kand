@@ -1,6 +1,9 @@
 use super::dx;
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculate the lookback period required for ADX calculation
 ///
 /// Returns the number of data points needed before the first valid ADX value can be calculated.
@@ -359,11 +362,13 @@ pub fn adx_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    adx,
+    adx_arrow,
     crate::ta::ohlcv::adx::adx_raw,
     inputs: { input_high, input_low, input_close },
     params: { opt_period: usize },
-    outputs: { output_adx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr }
+    lookback_params: { opt_period },
+    outputs: { output_adx: TAFloat, output_smoothed_plus_dm: TAFloat, output_smoothed_minus_dm: TAFloat, output_smoothed_tr: TAFloat },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]

@@ -442,11 +442,27 @@ pub fn correl_inc(
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    correl,
+    correl_arrow,
     crate::ta::stats::correl::correl_raw,
     inputs: { input_0, input_1 },
     params: { opt_period: usize },
-    outputs: { output_correl, output_sum_0, output_sum_1, output_sum_0_sq, output_sum_1_sq, output_sum_01 }
+    lookback_params: { opt_period },
+    outputs: {
+        output_correl: TAFloat,
+        output_sum_0: TAFloat,
+        output_sum_1: TAFloat,
+        output_sum_0_sq: TAFloat,
+        output_sum_1_sq: TAFloat,
+        output_sum_01: TAFloat
+    },
+    return_type: {
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray,
+        TAArrowArray
+    }
 );
 
 #[cfg(test)]

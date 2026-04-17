@@ -1,5 +1,12 @@
 use crate::{KandError, TAFloat};
 
+/// Returns the lookback period for ROCR100 without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> usize {
+    opt_period
+}
+
 /// Calculates the lookback period required for ROCR100 (Rate of Change Ratio * 100) calculation.
 ///
 /// The lookback period equals the input parameter period since ROCR100 needs historical data points
@@ -30,7 +37,22 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
             return Err(KandError::InvalidParameter);
         }
     }
-    Ok(opt_period)
+    Ok(lookback_raw(opt_period))
+}
+
+/// Computes ROCR100 without input validation for high performance.
+pub fn rocr100_raw(
+    input_price: &[TAFloat],
+    opt_period: usize,
+    output_rocr100: &mut [TAFloat],
+) {
+    let len = input_price.len();
+    let lookback = lookback_raw(opt_period);
+
+    // Calculate ROCR100 values
+    for i in lookback..len {
+        output_rocr100[i] = (input_price[i] / input_price[i - opt_period]) * 100.0;
+    }
 }
 
 /// Calculates Rate of Change Ratio * 100 (ROCR100) for a price series.
@@ -111,17 +133,24 @@ pub fn rocr100(
         }
     }
 
-    // Calculate ROCR100 values
-    for i in lookback..len {
-        output_rocr100[i] = (input_price[i] / input_price[i - opt_period]) * 100.0;
-    }
+    rocr100_raw(input_price, opt_period, output_rocr100);
 
     // Fill initial values with NAN
-    for value in output_rocr100.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for value in output_rocr100.iter_mut().take(lookback) {
+            *value = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Computes the next ROCR100 value incrementally without input validation.
+#[inline]
+#[must_use]
+pub fn rocr100_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
+    (input / prev) * 100.0
 }
 
 /// Calculates a single ROCR100 value incrementally.
@@ -159,8 +188,17 @@ pub fn rocr100_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> 
         }
     }
 
-    Ok((input / prev) * 100.0)
+    Ok(rocr100_inc_raw(input, prev))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    rocr100_arrow,
+    crate::ta::ohlcv::rocr100::rocr100_raw,
+    inputs: { input_price },
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
+);
 
 #[cfg(test)]
 mod tests {
@@ -181,6 +219,7 @@ mod tests {
         rocr100(&input_price, opt_period, &mut output_rocr100).unwrap();
 
         // First 10 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_rocr100.iter().take(10) {
             assert!(value.is_nan());
         }
@@ -207,6 +246,39 @@ mod tests {
         for i in 11..input_price.len() {
             let result = rocr100_inc(input_price[i], input_price[i - opt_period]).unwrap();
             assert_relative_eq!(result, output_rocr100[i], epsilon = 0.0001);
+        }
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn test_rocr100_arrow() {
+        use crate::ta::types::TAArrowArray;
+        let input_price = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6,
+        ];
+        let input_price_arrow = TAArrowArray::from(input_price);
+        let opt_period = 10;
+
+        let output_rocr100_arrow = rocr100_arrow(&input_price_arrow, opt_period).unwrap();
+
+        // Compare with known values
+        let expected_values = [
+            99.883_575_978_032_78,
+            100.024_133_055_471_95,
+            100.061_948_185_173_93,
+            99.973_557_008_814_31,
+            99.740_772_849_366_86,
+            99.394_688_920_027_45,
+            99.421_920_983_558_12,
+            99.323_440_722_344_05,
+            99.634_634_179_603_15,
+            99.544_972_672_781_07,
+        ];
+
+        for (i, expected) in expected_values.iter().enumerate() {
+            assert_relative_eq!(output_rocr100_arrow.value(i + 10), *expected, epsilon = 0.0001);
         }
     }
 }

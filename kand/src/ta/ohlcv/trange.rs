@@ -1,7 +1,5 @@
 use crate::{KandError, TAFloat};
 
-#[cfg(feature = "arrow")]
-use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period required for True Range (TR) calculation
 ///
@@ -197,12 +195,13 @@ pub fn trange_inc(
     Ok(trange_inc_raw(input_high, input_low, prev_close))
 }
 
-// Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
-    trange,
+    trange_arrow,
     crate::ta::ohlcv::trange::trange_raw,
     inputs: { input_high, input_low, input_close },
-    params: {}
+    params: {},
+    lookback_params: {}
 );
 
 #[cfg(test)]

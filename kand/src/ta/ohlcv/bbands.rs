@@ -1,6 +1,6 @@
 use crate::{
     KandError, TAFloat,
-    ta::{ohlcv::sma, stats::var},
+    ta::{ohlcv::sma, stats::var, types::MAType},
 };
 
 #[cfg(feature = "arrow")]
@@ -15,6 +15,7 @@ use crate::ta::types::TAArrowArray;
 ///
 /// # Arguments
 /// * `opt_period` - The time period used for calculations (must be >= 2)
+/// * `_opt_ma_type` - Moving average type
 ///
 /// # Returns
 /// * `Result<usize, KandError>` - The lookback period on success, or error on failure
@@ -25,11 +26,12 @@ use crate::ta::types::TAArrowArray;
 /// # Example
 /// ```
 /// use kand::ta::ohlcv::bbands;
+/// use kand::ta::types::MAType;
 /// let period = 20;
-/// let lookback = bbands::lookback(period).unwrap();
+/// let lookback = bbands::lookback(period, MAType::SMA).unwrap();
 /// assert_eq!(lookback, 19);
 /// ```
-pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
+pub const fn lookback(opt_period: usize, _opt_ma_type: MAType) -> Result<usize, KandError> {
     sma::lookback(opt_period)
 }
 
@@ -37,29 +39,31 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 pub fn bbands_raw(
     input_price: &[TAFloat],
     opt_period: usize,
-    opt_dev_up: TAFloat,
-    opt_dev_down: TAFloat,
+    opt_multiplier_up: TAFloat,
+    opt_multiplier_down: TAFloat,
+    _opt_ma_type: MAType,
     output_upper: &mut [TAFloat],
     output_middle: &mut [TAFloat],
     output_lower: &mut [TAFloat],
-    output_sma: &mut [TAFloat],
-    output_var: &mut [TAFloat],
-    output_sum: &mut [TAFloat],
-    output_sum_sq: &mut [TAFloat],
 ) {
     let len = input_price.len();
     let lookback = opt_period - 1;
 
+    let mut output_sma = vec![0.0; len];
+    let mut output_var = vec![0.0; len];
+    let mut output_sum = vec![0.0; len];
+    let mut output_sum_sq = vec![0.0; len];
+
     // Calculate SMA first
-    sma::sma_raw(input_price, opt_period, output_sma);
+    sma::sma_raw(input_price, opt_period, &mut output_sma);
 
     // Calculate variance
     var::var_raw(
         input_price,
         opt_period,
-        output_var,
-        output_sum,
-        output_sum_sq,
+        &mut output_var,
+        &mut output_sum,
+        &mut output_sum_sq,
     );
 
     for i in lookback..len {
@@ -67,8 +71,8 @@ pub fn bbands_raw(
         let std_dev = output_var[i].sqrt();
 
         // Calculate upper and lower bands using standard deviations
-        output_upper[i] = opt_dev_up.mul_add(std_dev, output_sma[i]);
-        output_lower[i] = opt_dev_down.mul_add(-std_dev, output_sma[i]);
+        output_upper[i] = opt_multiplier_up.mul_add(std_dev, output_sma[i]);
+        output_lower[i] = opt_multiplier_down.mul_add(-std_dev, output_sma[i]);
     }
 }
 
@@ -100,15 +104,12 @@ pub fn bbands_raw(
 /// # Arguments
 /// * `input_price` - Slice of input price values
 /// * `opt_period` - The time period for calculations (must be >= 2)
-/// * `opt_dev_up` - Number of standard deviations for upper band
-/// * `opt_dev_down` - Number of standard deviations for lower band
+/// * `opt_multiplier_up` - Number of standard deviations for upper band
+/// * `opt_multiplier_down` - Number of standard deviations for lower band
+/// * `opt_ma_type` - Moving average type
 /// * `output_upper` - Buffer to store upper band values
 /// * `output_middle` - Buffer to store middle band values
 /// * `output_lower` - Buffer to store lower band values
-/// * `output_sma` - Buffer to store SMA values
-/// * `output_var` - Buffer to store variance values
-/// * `output_sum` - Buffer to store running sum values
-/// * `output_sum_sq` - Buffer to store running sum of squares values
 ///
 /// # Returns
 /// * `Result<(), KandError>` - Empty result on success, or error on failure
@@ -123,46 +124,37 @@ pub fn bbands_raw(
 /// # Example
 /// ```
 /// use kand::ta::ohlcv::bbands;
+/// use kand::ta::types::MAType;
 /// let prices = vec![10.0, 11.0, 12.0, 13.0, 14.0];
 /// let period = 3;
 /// let mut upper = vec![0.0; 5];
 /// let mut middle = vec![0.0; 5];
 /// let mut lower = vec![0.0; 5];
-/// let mut sma = vec![0.0; 5];
-/// let mut var = vec![0.0; 5];
-/// let mut sum = vec![0.0; 5];
-/// let mut sum_sq = vec![0.0; 5];
 ///
 /// bbands::bbands(
 ///     &prices,
 ///     period,
 ///     2.0,
 ///     2.0,
+///     MAType::SMA,
 ///     &mut upper,
 ///     &mut middle,
 ///     &mut lower,
-///     &mut sma,
-///     &mut var,
-///     &mut sum,
-///     &mut sum_sq,
 /// )
 /// .unwrap();
 /// ```
 pub fn bbands(
     input_price: &[TAFloat],
     opt_period: usize,
-    opt_dev_up: TAFloat,
-    opt_dev_down: TAFloat,
+    opt_multiplier_up: TAFloat,
+    opt_multiplier_down: TAFloat,
+    opt_ma_type: MAType,
     output_upper: &mut [TAFloat],
     output_middle: &mut [TAFloat],
     output_lower: &mut [TAFloat],
-    output_sma: &mut [TAFloat],
-    output_var: &mut [TAFloat],
-    output_sum: &mut [TAFloat],
-    output_sum_sq: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_price.len();
-    let lookback = lookback(opt_period)?;
+    let lookback = lookback(opt_period, opt_ma_type)?;
 
     #[cfg(feature = "check")]
     {
@@ -180,10 +172,6 @@ pub fn bbands(
         if len != output_upper.len()
             || len != output_middle.len()
             || len != output_lower.len()
-            || len != output_sma.len()
-            || len != output_var.len()
-            || len != output_sum.len()
-            || len != output_sum_sq.len()
         {
             return Err(KandError::LengthMismatch);
         }
@@ -201,15 +189,12 @@ pub fn bbands(
     bbands_raw(
         input_price,
         opt_period,
-        opt_dev_up,
-        opt_dev_down,
+        opt_multiplier_up,
+        opt_multiplier_down,
+        opt_ma_type,
         output_upper,
         output_middle,
         output_lower,
-        output_sma,
-        output_var,
-        output_sum,
-        output_sum_sq,
     );
 
     // Fill initial values with NAN
@@ -219,10 +204,6 @@ pub fn bbands(
             output_upper[i] = TAFloat::NAN;
             output_middle[i] = TAFloat::NAN;
             output_lower[i] = TAFloat::NAN;
-            output_sma[i] = TAFloat::NAN;
-            output_var[i] = TAFloat::NAN;
-            output_sum[i] = TAFloat::NAN;
-            output_sum_sq[i] = TAFloat::NAN;
         }
     }
 
@@ -238,16 +219,16 @@ pub fn bbands_inc_raw(
     prev_sum_sq: TAFloat,
     input_old_price: TAFloat,
     opt_period: usize,
-    opt_dev_up: TAFloat,
-    opt_dev_down: TAFloat,
+    opt_multiplier_up: TAFloat,
+    opt_multiplier_down: TAFloat,
 ) -> (TAFloat, TAFloat, TAFloat, TAFloat, TAFloat, TAFloat) {
     let new_sma = sma::sma_inc_raw(input_price, input_old_price, prev_sma, opt_period);
     let (new_variance, new_sum, new_sum_sq) =
         var::var_inc_raw(input_price, prev_sum, prev_sum_sq, input_old_price, opt_period);
 
     let std_dev = new_variance.sqrt();
-    let upper = opt_dev_up.mul_add(std_dev, new_sma);
-    let lower = opt_dev_down.mul_add(-std_dev, new_sma);
+    let upper = opt_multiplier_up.mul_add(std_dev, new_sma);
+    let lower = opt_multiplier_down.mul_add(-std_dev, new_sma);
 
     (upper, new_sma, lower, new_sma, new_sum, new_sum_sq)
 }
@@ -271,8 +252,9 @@ pub fn bbands_inc_raw(
 /// * `prev_sum_sq` - The previous sum of squares for variance calculation
 /// * `input_old_price` - The oldest price value to be removed from the period
 /// * `opt_period` - The time period for calculations (must be >= 2)
-/// * `opt_dev_up` - Number of standard deviations for upper band
-/// * `opt_dev_down` - Number of standard deviations for lower band
+/// * `opt_multiplier_up` - Number of standard deviations for upper band
+/// * `opt_multiplier_down` - Number of standard deviations for lower band
+/// * `_opt_ma_type` - Moving average type
 ///
 /// # Returns
 /// * `Result<(TAFloat, TAFloat, TAFloat, TAFloat, TAFloat, TAFloat), KandError>` - A tuple containing:
@@ -290,6 +272,7 @@ pub fn bbands_inc_raw(
 /// # Example
 /// ```
 /// use kand::ta::ohlcv::bbands;
+/// use kand::ta::types::MAType;
 /// let (upper, middle, lower, sma, sum, sum_sq) = bbands::bbands_inc(
 ///     10.0,   // new price
 ///     9.5,    // previous SMA
@@ -299,6 +282,7 @@ pub fn bbands_inc_raw(
 ///     3,      // period
 ///     2.0,    // upper deviation
 ///     2.0,    // lower deviation
+///     MAType::SMA,
 /// )
 /// .unwrap();
 /// ```
@@ -309,8 +293,9 @@ pub fn bbands_inc(
     prev_sum_sq: TAFloat,
     input_old_price: TAFloat,
     opt_period: usize,
-    opt_dev_up: TAFloat,
-    opt_dev_down: TAFloat,
+    opt_multiplier_up: TAFloat,
+    opt_multiplier_down: TAFloat,
+    _opt_ma_type: MAType,
 ) -> Result<(TAFloat, TAFloat, TAFloat, TAFloat, TAFloat, TAFloat), KandError> {
     #[cfg(feature = "check")]
     {
@@ -329,7 +314,7 @@ pub fn bbands_inc(
         {
             return Err(KandError::NaNDetected);
         }
-        if opt_dev_up.is_nan() || opt_dev_down.is_nan() {
+        if opt_multiplier_up.is_nan() || opt_multiplier_down.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -341,30 +326,29 @@ pub fn bbands_inc(
         prev_sum_sq,
         input_old_price,
         opt_period,
-        opt_dev_up,
-        opt_dev_down,
+        opt_multiplier_up,
+        opt_multiplier_down,
     ))
 }
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
-    bbands,
+    bbands_arrow,
     crate::ta::ohlcv::bbands::bbands_raw,
     inputs: { input_price },
     params: {
         opt_period: usize,
-        opt_dev_up: TAFloat,
-        opt_dev_down: TAFloat
+        opt_multiplier_up: TAFloat,
+        opt_multiplier_down: TAFloat,
+        opt_ma_type: crate::ta::types::MAType
     },
+    lookback_params: { opt_period, opt_ma_type },
     outputs: {
-        output_upper,
-        output_middle,
-        output_lower,
-        output_sma,
-        output_var,
-        output_sum,
-        output_sum_sq
-    }
+        output_upper: TAFloat,
+        output_middle: TAFloat,
+        output_lower: TAFloat
+    },
+    return_type: { TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
 #[cfg(test)]
@@ -384,28 +368,21 @@ mod tests {
         ];
 
         let opt_period = 20;
-        let opt_dev_up = 2.0;
-        let opt_dev_down = 2.0;
+        let opt_multiplier_up = 2.0;
+        let opt_multiplier_down = 2.0;
         let mut output_upper = vec![0.0; input_price.len()];
         let mut output_middle = vec![0.0; input_price.len()];
         let mut output_lower = vec![0.0; input_price.len()];
-        let mut output_sma = vec![0.0; input_price.len()];
-        let mut output_var = vec![0.0; input_price.len()];
-        let mut output_sum = vec![0.0; input_price.len()];
-        let mut output_sum_sq = vec![0.0; input_price.len()];
 
         bbands(
             &input_price,
             opt_period,
-            opt_dev_up,
-            opt_dev_down,
+            opt_multiplier_up,
+            opt_multiplier_down,
+            MAType::SMA,
             &mut output_upper,
             &mut output_middle,
             &mut output_lower,
-            &mut output_sma,
-            &mut output_var,
-            &mut output_sum,
-            &mut output_sum_sq,
         )
         .unwrap();
 
@@ -415,10 +392,6 @@ mod tests {
             assert!(output_upper[i].is_nan());
             assert!(output_middle[i].is_nan());
             assert!(output_lower[i].is_nan());
-            assert!(output_sma[i].is_nan());
-            assert!(output_var[i].is_nan());
-            assert!(output_sum[i].is_nan());
-            assert!(output_sum_sq[i].is_nan());
         }
 
         // Compare with known values
@@ -455,10 +428,18 @@ mod tests {
             assert_relative_eq!(output_upper[i + 19], expected_upper[i], epsilon = 0.0001);
         }
 
-        // Test incremental calculation
-        let mut prev_sma = output_sma[19];
-        let mut prev_sum = output_sum[19];
-        let mut prev_sum_sq = output_sum_sq[19];
+        // To test incremental, we need SMA and Variance values.
+        // We'll calculate them manually for the test.
+        let mut out_sma = vec![0.0; input_price.len()];
+        let mut out_var = vec![0.0; input_price.len()];
+        let mut out_sum = vec![0.0; input_price.len()];
+        let mut out_sum_sq = vec![0.0; input_price.len()];
+        sma::sma_raw(&input_price, opt_period, &mut out_sma);
+        var::var_raw(&input_price, opt_period, &mut out_var, &mut out_sum, &mut out_sum_sq);
+
+        let mut prev_sma = out_sma[19];
+        let mut prev_sum = out_sum[19];
+        let mut prev_sum_sq = out_sum_sq[19];
 
         for i in 20..45 {
             let (upper, middle, lower, new_sma, new_sum, new_sum_sq) = bbands_inc(
@@ -468,8 +449,9 @@ mod tests {
                 prev_sum_sq,
                 input_price[i - opt_period],
                 opt_period,
-                opt_dev_up,
-                opt_dev_down,
+                opt_multiplier_up,
+                opt_multiplier_down,
+                MAType::SMA,
             )
             .unwrap();
 
@@ -498,34 +480,27 @@ mod tests {
 
         let input_arrow = TAArrowArray::from(input_price.clone());
         let opt_period = 20;
-        let opt_dev_up = 2.0;
-        let opt_dev_down = 2.0;
+        let opt_multiplier_up = 2.0;
+        let opt_multiplier_down = 2.0;
 
-        let (upper, middle, lower, _, _, _, _) =
-            bbands_arrow(&input_arrow, opt_period, opt_dev_up, opt_dev_down).unwrap();
+        let (upper, middle, lower) =
+            bbands_arrow(&input_arrow, opt_period, opt_multiplier_up, opt_multiplier_down, MAType::SMA).unwrap();
 
         assert_eq!(upper.len(), input_price.len());
 
         let mut out_upper = vec![0.0; input_price.len()];
         let mut out_middle = vec![0.0; input_price.len()];
         let mut out_lower = vec![0.0; input_price.len()];
-        let mut out_sma = vec![0.0; input_price.len()];
-        let mut out_var = vec![0.0; input_price.len()];
-        let mut out_sum = vec![0.0; input_price.len()];
-        let mut out_sum_sq = vec![0.0; input_price.len()];
 
         bbands(
             &input_price,
             opt_period,
-            opt_dev_up,
-            opt_dev_down,
+            opt_multiplier_up,
+            opt_multiplier_down,
+            MAType::SMA,
             &mut out_upper,
             &mut out_middle,
             &mut out_lower,
-            &mut out_sma,
-            &mut out_var,
-            &mut out_sum,
-            &mut out_sum_sq,
         )
         .unwrap();
 

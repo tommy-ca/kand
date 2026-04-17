@@ -1,5 +1,13 @@
 use super::atr;
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+
+/// Returns the lookback period for NATR calculation without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
+    opt_period as TAPeriod
+}
 
 /// Returns the lookback period required for NATR calculation
 ///
@@ -10,7 +18,7 @@ use crate::{KandError, TAFloat};
 /// * `opt_period` - The period used for NATR calculation. Must be >= 2.
 ///
 /// # Returns
-/// * `Result<usize, KandError>` - The number of data points needed before first valid output
+/// * `Result<TAPeriod, KandError>` - The number of data points needed before first valid output
 ///
 /// # Errors
 /// * `KandError::InvalidParameter` - If `opt_period` < 2
@@ -22,7 +30,7 @@ use crate::{KandError, TAFloat};
 /// let lookback = natr::lookback(period).unwrap();
 /// assert_eq!(lookback, 14);
 /// ```
-pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
+pub const fn lookback(opt_period: usize) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
         // Parameter range check
@@ -30,7 +38,40 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
             return Err(KandError::InvalidParameter);
         }
     }
-    Ok(opt_period)
+    Ok(lookback_raw(opt_period))
+}
+
+/// Core calculation for Normalized Average True Range (NATR) without error checking.
+///
+/// # Arguments
+/// * `input_high` - Array of high prices
+/// * `input_low` - Array of low prices
+/// * `input_close` - Array of closing prices
+/// * `opt_period` - Period for NATR calculation
+/// * `output_natr` - Output array for calculated NATR values
+pub fn natr_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    output_natr: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = lookback_raw(opt_period) as usize;
+
+    // Calculate ATR first
+    let mut atr_values = vec![0.0; len];
+    atr::atr_raw(input_high, input_low, input_close, opt_period, &mut atr_values);
+
+    // Calculate NATR = (ATR / Close) * 100
+    for i in lookback..len {
+        output_natr[i] = (atr_values[i] / input_close[i]) * 100.0;
+    }
+
+    // Fill initial values with NAN up to lookback period
+    for value in output_natr.iter_mut().take(lookback) {
+        *value = TAFloat::NAN;
+    }
 }
 
 /// Calculates Normalized Average True Range (NATR) for the entire input array
@@ -88,7 +129,7 @@ pub fn natr(
     output_natr: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
-    let lookback = lookback(opt_period)?;
+    let lookback = lookback(opt_period)? as usize;
 
     #[cfg(feature = "check")]
     {
@@ -118,27 +159,24 @@ pub fn natr(
         }
     }
 
-    // Calculate ATR first
-    let mut atr_values = vec![0.0; len];
-    atr::atr(
-        input_high,
-        input_low,
-        input_close,
-        opt_period,
-        &mut atr_values,
-    )?;
-
-    // Calculate NATR = (ATR / Close) * 100
-    for i in lookback..len {
-        output_natr[i] = (atr_values[i] / input_close[i]) * 100.0;
-    }
-
-    // Fill initial values with NAN up to lookback period
-    for value in output_natr.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
-    }
+    natr_raw(input_high, input_low, input_close, opt_period, output_natr);
 
     Ok(())
+}
+
+/// Core incremental calculation for NATR value without error checking.
+#[inline]
+#[must_use]
+pub fn natr_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+    prev_close: TAFloat,
+    prev_atr: TAFloat,
+    opt_period: usize,
+) -> TAFloat {
+    let output_atr = atr::atr_inc_raw(input_high, input_low, prev_close, prev_atr, opt_period);
+    (output_atr / input_close) * 100.0
 }
 
 /// Calculates the latest NATR value incrementally
@@ -211,9 +249,24 @@ pub fn natr_inc(
         }
     }
 
-    let output_atr = atr::atr_inc(input_high, input_low, prev_close, prev_atr, opt_period)?;
-    Ok((output_atr / input_close) * 100.0)
+    Ok(natr_inc_raw(
+        input_high,
+        input_low,
+        input_close,
+        prev_close,
+        prev_atr,
+        opt_period,
+    ))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    natr_arrow,
+    crate::ta::ohlcv::natr::natr_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
+);
 
 #[cfg(test)]
 mod tests {
@@ -295,5 +348,25 @@ mod tests {
             .unwrap();
             assert_relative_eq!(output_natr_inc, output_natr[i], epsilon = 0.00001);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_natr_arrow() {
+        let input_high = vec![10.0, 12.0, 15.0, 14.0, 13.0];
+        let input_low = vec![8.0, 9.0, 11.0, 10.0, 9.0];
+        let input_close = vec![9.0, 11.0, 14.0, 12.0, 11.0];
+        let period = 2;
+
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let result = natr_arrow(&high_arrow, &low_arrow, &close_arrow, period).unwrap();
+
+        assert_eq!(result.len(), 5);
+        assert!(result.value(0).is_nan());
+        assert!(result.value(1).is_nan());
+        assert!(result.value(2).is_finite());
     }
 }

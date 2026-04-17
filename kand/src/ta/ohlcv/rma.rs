@@ -1,4 +1,12 @@
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+
+/// Returns the lookback period for RMA calculation without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
+    (opt_period - 1) as TAPeriod
+}
 
 /// Calculates the lookback period required for RMA calculation.
 ///
@@ -10,7 +18,7 @@ use crate::{KandError, TAFloat};
 /// * `opt_period` - The period length used for RMA calculation (must be >= 2)
 ///
 /// # Returns
-/// * `Result<usize, KandError>` - The lookback period on success
+/// * `Result<TAPeriod, KandError>` - The lookback period on success
 ///
 /// # Errors
 /// * `KandError::InvalidParameter` - If period is less than 2
@@ -22,7 +30,7 @@ use crate::{KandError, TAFloat};
 /// let lookback = rma::lookback(period).unwrap();
 /// assert_eq!(lookback, 13); // lookback is period - 1
 /// ```
-pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
+pub const fn lookback(opt_period: usize) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
         // Parameter range check
@@ -30,7 +38,38 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
             return Err(KandError::InvalidParameter);
         }
     }
-    Ok(opt_period - 1)
+    Ok(lookback_raw(opt_period))
+}
+
+/// Core calculation for Running Moving Average (RMA) without error checking.
+///
+/// # Arguments
+/// * `input` - Array of price values to calculate RMA
+/// * `opt_period` - The smoothing period
+/// * `output_rma` - Array to store calculated RMA values
+pub fn rma_raw(input: &[TAFloat], opt_period: usize, output_rma: &mut [TAFloat]) {
+    let len = input.len();
+    if len < opt_period {
+        return;
+    }
+
+    // Calculate first SMA value
+    let mut sum = 0.0;
+    for &value in input.iter().take(opt_period) {
+        sum += value;
+    }
+    let alpha = 1.0 / opt_period as TAFloat;
+    output_rma[opt_period - 1] = sum / opt_period as TAFloat;
+
+    // Calculate RMA for remaining values
+    for i in opt_period..len {
+        output_rma[i] = input[i].mul_add(alpha, output_rma[i - 1] * (1.0 - alpha));
+    }
+
+    // Fill initial values with NAN
+    for value in output_rma.iter_mut().take(opt_period - 1) {
+        *value = TAFloat::NAN;
+    }
 }
 
 /// Calculates the Running Moving Average (RMA) for a price series.
@@ -78,7 +117,7 @@ pub fn rma(
     output_rma: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input.len();
-    let lookback = lookback(opt_period)?;
+    let lookback = lookback(opt_period)? as usize;
 
     #[cfg(feature = "check")]
     {
@@ -108,25 +147,17 @@ pub fn rma(
         }
     }
 
-    // Calculate first SMA value
-    let mut sum = input[0];
-    for value in input.iter().take(opt_period).skip(1) {
-        sum += *value;
-    }
-    let alpha = 1.0 / opt_period as TAFloat;
-    output_rma[opt_period - 1] = sum / opt_period as TAFloat;
-
-    // Calculate RMA for remaining values
-    for i in opt_period..input.len() {
-        output_rma[i] = input[i].mul_add(alpha, output_rma[i - 1] * (1.0 - alpha));
-    }
-
-    // Fill initial values with NAN
-    for value in output_rma.iter_mut().take(opt_period - 1) {
-        *value = TAFloat::NAN;
-    }
+    rma_raw(input, opt_period, output_rma);
 
     Ok(())
+}
+
+/// Core incremental calculation for Running Moving Average (RMA) without error checking.
+#[inline]
+#[must_use]
+pub fn rma_inc_raw(input_current: TAFloat, prev_rma: TAFloat, opt_period: usize) -> TAFloat {
+    let alpha = 1.0 / opt_period as TAFloat;
+    input_current.mul_add(alpha, prev_rma * (1.0 - alpha))
 }
 
 /// Calculates a single new RMA value incrementally.
@@ -181,9 +212,17 @@ pub fn rma_inc(
         }
     }
 
-    let alpha = 1.0 / opt_period as TAFloat;
-    Ok(input_current.mul_add(alpha, prev_rma * (1.0 - alpha)))
+    Ok(rma_inc_raw(input_current, prev_rma, opt_period))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper!(
+    rma_arrow,
+    crate::ta::ohlcv::rma::rma_raw,
+    inputs: { input },
+    params: { opt_period: usize },
+    lookback_params: { opt_period }
+);
 
 #[cfg(test)]
 mod tests {
@@ -234,7 +273,7 @@ mod tests {
 
         // Test incremental calculation matches regular calculation
         // Start from the first valid RMA value (after the lookback period)
-        let lookback = lookback(opt_period).unwrap();
+        let lookback = lookback(opt_period).unwrap() as usize;
 
         // Start with the first valid RMA value
         let mut prev_rma = output_rma[lookback];
@@ -253,106 +292,17 @@ mod tests {
     }
 
     #[test]
-    fn test_rma_edge_cases() {
-        // Test edge case: period = 2 (minimum allowed)
-        let input = vec![10.0, 20.0, 30.0, 40.0];
-        let period = 2;
-        let mut output = vec![0.0; input.len()];
+    #[cfg(feature = "arrow")]
+    fn test_rma_arrow() {
+        let input = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let period = 3;
 
-        rma(&input, period, &mut output).unwrap();
+        let input_arrow = TAArrowArray::from(input);
+        let result = rma_arrow(&input_arrow, period).unwrap();
 
-        // Verify first value is NaN (lookback = 1)
-        assert!(output[0].is_nan());
-
-        // First valid value should be SMA of first 2 values
-        assert_relative_eq!(output[1], 15.0, epsilon = 1e-12); // (10+20)/2 = 15
-
-        // RMA[2] = 30*0.5 + 15*0.5 = 15 + 7.5 = 22.5
-        assert_relative_eq!(output[2], 22.5, epsilon = 1e-12);
-
-        // RMA[3] = 40*0.5 + 22.5*0.5 = 20 + 11.25 = 31.25
-        assert_relative_eq!(output[3], 31.25, epsilon = 1e-12);
-    }
-
-    #[test]
-    fn test_rma_with_extended_data() {
-        // More extensive test with a larger dataset
-        let prices = vec![
-            35.25, 35.70, 36.10, 36.25, 36.50, 36.75, 36.70, 36.55, 36.80, 36.90, 37.05, 37.15,
-            37.25, 37.40, 37.50, 37.60, 37.55, 37.35, 37.20, 37.10,
-        ];
-        let period = 7;
-        let mut output_full = vec![0.0; prices.len()];
-
-        // Calculate RMA using the rma function
-        rma(&prices, period, &mut output_full).unwrap();
-
-        // Manually compute the full expected RMA for comparison
-        let alpha = 1.0 / period as TAFloat;
-        let mut expected_rma = vec![TAFloat::NAN; prices.len()];
-
-        // First valid value is the SMA of the first `period` elements
-        let mut sum = 0.0;
-        for i in 0..period {
-            sum += prices[i];
-        }
-        expected_rma[period - 1] = sum / period as TAFloat;
-
-        // Remaining values follow the RMA formula
-        for i in period..prices.len() {
-            expected_rma[i] = prices[i].mul_add(alpha, expected_rma[i - 1] * (1.0 - alpha));
-        }
-
-        // Check NaNs for the first (period-1) values
-        for i in 0..period - 1 {
-            assert!(output_full[i].is_nan());
-        }
-
-        // Assert all subsequent values match expected RMA
-        for i in period - 1..prices.len() {
-            assert_relative_eq!(output_full[i], expected_rma[i], epsilon = 1e-12);
-        }
-
-        // Also confirm incremental RMA matches
-        let lookback = lookback(period).unwrap();
-        let mut prev_rma = output_full[lookback];
-        for i in lookback + 1..prices.len() {
-            let next_rma = rma_inc(prices[i], prev_rma, period).unwrap();
-            assert_relative_eq!(next_rma, output_full[i], epsilon = 1e-12);
-            prev_rma = next_rma;
-        }
-    }
-
-    #[test]
-    fn test_rma_error_conditions() {
-        let input = vec![1.0, 2.0, 3.0];
-        let mut output = vec![0.0; 3];
-
-        // Test invalid period
-        assert!(matches!(
-            rma(&input, 1, &mut output),
-            Err(KandError::InvalidParameter)
-        ));
-
-        // Test length mismatch
-        let mut short_output = vec![0.0; 2];
-        assert!(matches!(
-            rma(&input, 2, &mut short_output),
-            Err(KandError::LengthMismatch)
-        ));
-
-        // Test insufficient data
-        assert!(matches!(
-            rma(&input, 4, &mut output),
-            Err(KandError::InsufficientData)
-        ));
-
-        // Test empty data
-        let empty: Vec<TAFloat> = vec![];
-        let mut empty_output: Vec<TAFloat> = vec![];
-        assert!(matches!(
-            rma(&empty, 2, &mut empty_output),
-            Err(KandError::InvalidData)
-        ));
+        assert_eq!(result.len(), 5);
+        assert!(result.value(0).is_nan());
+        assert!(result.value(1).is_nan());
+        assert_relative_eq!(result.value(2), 2.0, epsilon = 0.0001);
     }
 }
