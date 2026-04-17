@@ -3,6 +3,9 @@ use crate::{
     helper::{highest_bars, lowest_bars},
 };
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for Williams %R calculation
 ///
 /// # Description
@@ -32,6 +35,38 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Williams %R without input validation for high performance.
+pub fn willr_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    output: &mut [TAFloat],
+    output_highest_high: &mut [TAFloat],
+    output_lowest_low: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = opt_period - 1;
+
+    for i in lookback..len {
+        let highest_idx = highest_bars(input_high, i, opt_period).unwrap();
+        let lowest_idx = lowest_bars(input_low, i, opt_period).unwrap();
+
+        let highest_high = input_high[i - highest_idx];
+        let lowest_low = input_low[i - lowest_idx];
+
+        output_highest_high[i] = highest_high;
+        output_lowest_low[i] = lowest_low;
+
+        let denom = highest_high - lowest_low;
+        if denom == 0.0 {
+            output[i] = 0.0;
+        } else {
+            output[i] = (highest_high - input_close[i]) / denom * -100.0;
+        }
+    }
 }
 
 /// Calculates Williams %R (Williams Percent Range) for the entire price series
@@ -133,28 +168,24 @@ pub fn willr(
         }
     }
 
-    for i in lookback..len {
-        let highest_idx = highest_bars(input_high, i, opt_period)?;
-        let lowest_idx = lowest_bars(input_low, i, opt_period)?;
+    willr_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        output,
+        output_highest_high,
+        output_lowest_low,
+    );
 
-        let highest_high = input_high[i - highest_idx];
-        let lowest_low = input_low[i - lowest_idx];
-
-        output_highest_high[i] = highest_high;
-        output_lowest_low[i] = lowest_low;
-
-        let denom = highest_high - lowest_low;
-        if denom == 0.0 {
-            output[i] = 0.0;
-        } else {
-            output[i] = (highest_high - input_close[i]) / denom * -100.0;
+    // Fill initial values with NAN
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output[i] = TAFloat::NAN;
+            output_highest_high[i] = TAFloat::NAN;
+            output_lowest_low[i] = TAFloat::NAN;
         }
-    }
-
-    for i in 0..lookback {
-        output[i] = TAFloat::NAN;
-        output_highest_high[i] = TAFloat::NAN;
-        output_lowest_low[i] = TAFloat::NAN;
     }
 
     Ok(())
@@ -261,6 +292,15 @@ pub fn willr_inc(
     Ok((willr, new_highest_high, new_lowest_low))
 }
 
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    willr,
+    crate::ta::ohlcv::willr::willr_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize },
+    outputs: { output, output_highest_high, output_lowest_low }
+);
+
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
@@ -301,6 +341,7 @@ mod tests {
         .unwrap();
 
         // First 13 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for i in 0..13 {
             assert!(output[i].is_nan());
             assert!(output_highest_high[i].is_nan());
@@ -346,6 +387,62 @@ mod tests {
 
             prev_highest_high = highest_high;
             prev_lowest_low = lowest_low;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_willr_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let (result_arrow, _, _) =
+            willr_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
+
+        assert_eq!(result_arrow.len(), input_high.len());
+
+        let mut out = vec![0.0; input_high.len()];
+        let mut out_hh = vec![0.0; input_high.len()];
+        let mut out_ll = vec![0.0; input_high.len()];
+
+        willr(
+            &input_high,
+            &input_low,
+            &input_close,
+            opt_period,
+            &mut out,
+            &mut out_hh,
+            &mut out_ll,
+        )
+        .unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 13 {
+                #[cfg(feature = "allow-nan")]
+                assert!(result_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(result_arrow.value(i), out[i], epsilon = 0.0001);
+            }
         }
     }
 }

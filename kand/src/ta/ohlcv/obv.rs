@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for On Balance Volume (OBV) calculation
 ///
 /// # Description
@@ -19,6 +22,25 @@ use crate::{KandError, TAFloat};
 /// ```
 pub const fn lookback() -> Result<usize, KandError> {
     Ok(0)
+}
+
+/// Calculates OBV without input validation for high performance.
+pub fn obv_raw(input_close: &[TAFloat], input_volume: &[TAFloat], output_obv: &mut [TAFloat]) {
+    let len = input_close.len();
+
+    let mut obv = input_volume[0];
+    output_obv[0] = obv;
+
+    for i in 1..len {
+        obv = if input_close[i] > input_close[i - 1] {
+            obv + input_volume[i]
+        } else if input_close[i] < input_close[i - 1] {
+            obv - input_volume[i]
+        } else {
+            obv
+        };
+        output_obv[i] = obv;
+    }
 }
 
 /// Calculate On Balance Volume (OBV) for the entire input array
@@ -105,21 +127,26 @@ pub fn obv(
         }
     }
 
-    let mut obv = input_volume[lookback];
-    output_obv[lookback] = obv;
-
-    for i in (lookback + 1)..len {
-        obv = if input_close[i] > input_close[i - 1] {
-            obv + input_volume[i]
-        } else if input_close[i] < input_close[i - 1] {
-            obv - input_volume[i]
-        } else {
-            obv
-        };
-        output_obv[i] = obv;
-    }
+    obv_raw(input_close, input_volume, output_obv);
 
     Ok(())
+}
+
+/// Calculate latest On Balance Volume (OBV) value incrementally without validation
+#[must_use]
+pub fn obv_inc_raw(
+    input_curr_close: TAFloat,
+    prev_close: TAFloat,
+    input_volume: TAFloat,
+    prev_obv: TAFloat,
+) -> TAFloat {
+    if input_curr_close > prev_close {
+        prev_obv + input_volume
+    } else if input_curr_close < prev_close {
+        prev_obv - input_volume
+    } else {
+        prev_obv
+    }
 }
 
 /// Calculate latest On Balance Volume (OBV) value incrementally
@@ -169,14 +196,21 @@ pub fn obv_inc(
         }
     }
 
-    Ok(if input_curr_close > prev_close {
-        prev_obv + input_volume
-    } else if input_curr_close < prev_close {
-        prev_obv - input_volume
-    } else {
-        prev_obv
-    })
+    Ok(obv_inc_raw(
+        input_curr_close,
+        prev_close,
+        input_volume,
+        prev_obv,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    obv,
+    crate::ta::ohlcv::obv::obv_raw,
+    inputs: { input_close, input_volume },
+    params: {}
+);
 
 #[cfg(test)]
 mod tests {
@@ -222,6 +256,37 @@ mod tests {
             .unwrap();
             assert_relative_eq!(result, output_obv[i], epsilon = 0.00001);
             prev_obv = result;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_obv_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6,
+        ];
+        let input_volume = vec![
+            1055.365, 756.488, 682.152, 1197.747, 425.97, 859.638, 741.925, 888.477, 1043.333,
+            467.901, 387.47, 566.099, 672.296, 834.915, 1854.024, 3670.795, 3761.198, 1605.442,
+            1726.574, 934.713,
+        ];
+
+        let close_arrow = TAArrowArray::from(input_close.clone());
+        let volume_arrow = TAArrowArray::from(input_volume.clone());
+
+        let result = obv_arrow(&close_arrow, &volume_arrow).unwrap();
+
+        assert_eq!(result.len(), input_close.len());
+
+        let mut out_obv = vec![0.0; input_close.len()];
+        obv(&input_close, &input_volume, &mut out_obv).unwrap();
+
+        for i in 0..input_close.len() {
+            assert_relative_eq!(result.value(i), out_obv[i], epsilon = 0.00001);
         }
     }
 }
