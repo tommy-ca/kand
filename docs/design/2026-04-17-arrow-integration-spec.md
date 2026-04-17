@@ -16,7 +16,18 @@ Every indicator must expose a three-tier implementation:
     - Must respect `offset()` and reject `nulls`.
 
 ### 1.2 Python & WASM Bindings
-[Unchanged from previous version]
+#### 1.2.1 Python Bindings (`kand-py`)
+- **PyCapsule Handshake:** Use `pyo3-arrow` (v0.11.0) to implement the Arrow PyCapsule interface.
+- **Zero-Copy Entry Points:** New `_arrow` suffixed functions are added to the Python module.
+- **Macro Scaling Strategy:**
+  - **`kand_py_arrow_wrapper!`**: Generates Python bindings for single-output Arrow functions.
+  - **`kand_py_arrow_wrapper_multi!`**: Generates Python bindings for multi-output Arrow functions, returning Python tuples of `PyArray`. 
+  - Supports output counts from 2 to 7 to cover all complex indicators (MACD, BBands, ADX, etc.).
+  - Releases the GIL during computation using `py.allow_threads`.
+
+#### 1.2.2 WebAssembly Bindings (`kand-wasm`)
+- **WasmBuffer Protocol:** A `WasmBuffer<T>` struct manages pre-allocated, memory-growth-resilient memory.
+- **Protocol Contract:** JS requests pointer, writes data, calls Rust, and reads results from the shared view.
 
 ## 2. Test-Driven Development (TDD) Standard
 Every Arrow-native implementation must be preceded or accompanied by a test case that:

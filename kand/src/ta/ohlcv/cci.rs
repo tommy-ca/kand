@@ -1,6 +1,9 @@
 use super::{sma, typprice};
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for CCI calculation.
 ///
 /// # Description
@@ -33,6 +36,45 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates CCI without input validation for high performance.
+pub fn cci_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    output_cci: &mut [TAFloat],
+    output_tp: &mut [TAFloat],
+    output_tp_sma: &mut [TAFloat],
+    output_mean_dev: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = opt_period - 1;
+
+    // Calculate typical prices
+    typprice::typprice_raw(input_high, input_low, input_close, output_tp);
+
+    // Calculate SMA of typical prices
+    sma::sma_raw(output_tp, opt_period, output_tp_sma);
+
+    // Calculate mean deviation
+    let factor = 0.015;
+    for i in lookback..len {
+        let mut mean_dev = 0.0;
+        for j in 0..opt_period {
+            mean_dev += (output_tp[i - j] - output_tp_sma[i]).abs();
+        }
+        mean_dev /= opt_period as TAFloat;
+        output_mean_dev[i] = mean_dev;
+
+        // Calculate CCI
+        output_cci[i] = if mean_dev == 0.0 {
+            0.0
+        } else {
+            (output_tp[i] - output_tp_sma[i]) / (factor * mean_dev)
+        };
+    }
 }
 
 /// Calculates the Commodity Channel Index (CCI) for a price series.
@@ -149,39 +191,67 @@ pub fn cci(
             }
         }
     }
-    // Calculate typical prices
-    typprice::typprice(input_high, input_low, input_close, output_tp)?;
 
-    // Calculate SMA of typical prices
-    sma::sma(output_tp, opt_period, output_tp_sma)?;
-
-    // Calculate mean deviation
-    let factor = 0.015;
-    for i in lookback..len {
-        let mut mean_dev = 0.0;
-        for j in 0..opt_period {
-            mean_dev += (output_tp[i - j] - output_tp_sma[i]).abs();
-        }
-        mean_dev /= opt_period as TAFloat;
-        output_mean_dev[i] = mean_dev;
-
-        // Calculate CCI
-        output_cci[i] = if mean_dev == 0.0 {
-            0.0
-        } else {
-            (output_tp[i] - output_tp_sma[i]) / (factor * mean_dev)
-        };
-    }
+    cci_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        output_cci,
+        output_tp,
+        output_tp_sma,
+        output_mean_dev,
+    );
 
     // Fill all output arrays with NAN initially
-    for i in 0..lookback {
-        output_cci[i] = TAFloat::NAN;
-        output_tp[i] = TAFloat::NAN;
-        output_tp_sma[i] = TAFloat::NAN;
-        output_mean_dev[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_cci[i] = TAFloat::NAN;
+            output_tp[i] = TAFloat::NAN;
+            output_tp_sma[i] = TAFloat::NAN;
+            output_mean_dev[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates the next CCI value incrementally without validation.
+#[must_use]
+pub fn cci_inc_raw(
+    prev_sma_tp: TAFloat,
+    input_new_high: TAFloat,
+    input_new_low: TAFloat,
+    input_new_close: TAFloat,
+    input_old_high: TAFloat,
+    input_old_low: TAFloat,
+    input_old_close: TAFloat,
+    opt_period: usize,
+    tp_buffer: &mut Vec<TAFloat>,
+) -> TAFloat {
+    let new_tp = (input_new_high + input_new_low + input_new_close) / 3.0;
+    let old_tp = (input_old_high + input_old_low + input_old_close) / 3.0;
+
+    let sma_tp = sma::sma_inc_raw(new_tp, old_tp, prev_sma_tp, opt_period);
+
+    if tp_buffer.len() == opt_period {
+        tp_buffer.remove(0);
+    }
+    tp_buffer.push(new_tp);
+
+    let mut mean_dev = 0.0;
+    for &tp in tp_buffer.iter() {
+        mean_dev += (tp - sma_tp).abs();
+    }
+    mean_dev /= opt_period as TAFloat;
+
+    let factor = 0.015;
+    if mean_dev.abs() <= TAFloat::EPSILON {
+        0.0
+    } else {
+        (new_tp - sma_tp) / (factor * mean_dev)
+    }
 }
 
 /// Calculates the next CCI value using an incremental approach.
@@ -207,7 +277,6 @@ pub fn cci(
 ///
 /// # Arguments
 /// * `prev_sma_tp` - Previous SMA value of typical prices
-/// * `prev_mean_dev` - Previous mean deviation value
 /// * `input_new_high` - New high price
 /// * `input_new_low` - New low price
 /// * `input_new_close` - New close price
@@ -285,34 +354,27 @@ pub fn cci_inc(
         }
     }
 
-    // Calculate new and old typical prices
-    let new_tp = (input_new_high + input_new_low + input_new_close) / 3.0;
-    let old_tp = (input_old_high + input_old_low + input_old_close) / 3.0;
-
-    // Calculate new SMA of typical prices
-    let sma_tp = sma::sma_inc(prev_sma_tp, new_tp, old_tp, opt_period)?;
-
-    // Update circular buffer - remove oldest and add newest TP
-    if tp_buffer.len() == opt_period {
-        tp_buffer.remove(0);
-    }
-    tp_buffer.push(new_tp);
-
-    // Recalculate mean deviation using all points in buffer against new SMA
-    let mut mean_dev = 0.0;
-    for &tp in tp_buffer.iter() {
-        mean_dev += (tp - sma_tp).abs();
-    }
-    mean_dev /= opt_period as TAFloat;
-
-    // Calculate CCI using constant factor 0.015
-    let factor = 0.015;
-    Ok(if mean_dev.abs() <= TAFloat::EPSILON {
-        0.0
-    } else {
-        (new_tp - sma_tp) / (factor * mean_dev)
-    })
+    Ok(cci_inc_raw(
+        prev_sma_tp,
+        input_new_high,
+        input_new_low,
+        input_new_close,
+        input_old_high,
+        input_old_low,
+        input_old_close,
+        opt_period,
+        tp_buffer,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    cci,
+    crate::ta::ohlcv::cci::cci_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize },
+    outputs: { output_cci, output_tp, output_tp_sma, output_mean_dev }
+);
 
 #[cfg(test)]
 mod tests {
@@ -320,7 +382,6 @@ mod tests {
 
     use super::*;
 
-    // Basic functionality tests
     #[test]
     fn test_cci_calculation() {
         let input_high = vec![
@@ -357,6 +418,7 @@ mod tests {
         .unwrap();
 
         // First 13 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for i in 0..13 {
             assert!(output_cci[i].is_nan());
             assert!(output_tp[i].is_nan());
@@ -409,6 +471,64 @@ mod tests {
 
             // Compare with full calculation
             assert_relative_eq!(result, output_cci[i], epsilon = 0.00001);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_cci_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let (cci_arrow, _, _, _) =
+            cci_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
+
+        assert_eq!(cci_arrow.len(), input_high.len());
+
+        let mut out_cci = vec![0.0; input_high.len()];
+        let mut out_tp = vec![0.0; input_high.len()];
+        let mut out_tp_sma = vec![0.0; input_high.len()];
+        let mut out_mean_dev = vec![0.0; input_high.len()];
+
+        cci(
+            &input_high,
+            &input_low,
+            &input_close,
+            opt_period,
+            &mut out_cci,
+            &mut out_tp,
+            &mut out_tp_sma,
+            &mut out_mean_dev,
+        )
+        .unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 13 {
+                #[cfg(feature = "allow-nan")]
+                assert!(cci_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(cci_arrow.value(i), out_cci[i], epsilon = 0.0001);
+            }
         }
     }
 }

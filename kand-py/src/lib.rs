@@ -35,6 +35,8 @@ fn kand(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ta::ohlcv::bop::bop_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cci::cci_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cci::cci_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::cci::cci_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_doji::cdl_doji_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_doji::cdl_doji_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::cdl_dragonfly_doji::cdl_dragonfly_doji_py, m)?)?;
@@ -68,6 +70,8 @@ fn kand(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ta::ohlcv::medprice::medprice_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::medprice::medprice_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::mfi::mfi_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::mfi::mfi_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::midpoint::midpoint_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::midpoint::midpoint_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::midprice::midprice_py, m)?)?;
@@ -125,6 +129,8 @@ fn kand(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ta::ohlcv::trix::trix_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::typprice::typprice_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::typprice::typprice_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::typprice::typprice_arrow, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::vegas::vegas_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::vegas::vegas_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::wclprice::wclprice_py, m)?)?;

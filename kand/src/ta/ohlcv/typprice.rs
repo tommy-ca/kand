@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for Typical Price calculation.
 ///
 /// Determines the number of data points needed to calculate the first valid Typical Price value.
@@ -18,6 +21,19 @@ use crate::{KandError, TAFloat};
 /// ```
 pub const fn lookback() -> Result<usize, KandError> {
     Ok(0)
+}
+
+/// Calculates Typical Price without input validation for high performance.
+pub fn typprice_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    output_typprice: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    for i in 0..len {
+        output_typprice[i] = (input_high[i] + input_low[i] + input_close[i]) / 3.0;
+    }
 }
 
 /// Calculates Typical Price for a series of OHLCV data.
@@ -91,12 +107,15 @@ pub fn typprice(
         }
     }
 
-    // Calculate typical price
-    for i in 0..len {
-        output_typprice[i] = (input_high[i] + input_low[i] + input_close[i]) / 3.0;
-    }
+    typprice_raw(input_high, input_low, input_close, output_typprice);
 
     Ok(())
+}
+
+/// Calculates a single Typical Price value incrementally without validation.
+#[must_use]
+pub fn typprice_inc_raw(input_high: TAFloat, input_low: TAFloat, input_close: TAFloat) -> TAFloat {
+    (input_high + input_low + input_close) / 3.0
 }
 
 /// Calculates a single Typical Price value incrementally.
@@ -138,8 +157,16 @@ pub fn typprice_inc(
         }
     }
 
-    Ok((input_high + input_low + input_close) / 3.0)
+    Ok(typprice_inc_raw(input_high, input_low, input_close))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    typprice,
+    crate::ta::ohlcv::typprice::typprice_raw,
+    inputs: { input_high, input_low, input_close },
+    params: {}
+);
 
 #[cfg(test)]
 mod tests {
@@ -183,5 +210,26 @@ mod tests {
             let result = typprice_inc(input_high[i], input_low[i], input_close[i]).unwrap();
             assert_relative_eq!(result, output_typprice[i], epsilon = 0.0001);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_typprice_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![24.20, 24.07, 24.04];
+        let input_low = vec![23.85, 23.72, 23.64];
+        let input_close = vec![23.89, 23.95, 23.67];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+
+        let result = typprice_arrow(&high_arrow, &low_arrow, &close_arrow).unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert_relative_eq!(result.value(0), 23.98, epsilon = 0.00001);
+        assert_relative_eq!(result.value(1), 23.913333, epsilon = 0.00001);
+        assert_relative_eq!(result.value(2), 23.783333, epsilon = 0.00001);
     }
 }

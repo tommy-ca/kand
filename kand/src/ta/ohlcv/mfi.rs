@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat, ta::ohlcv::typprice};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for Money Flow Index (MFI) calculation.
 ///
 /// # Description
@@ -30,6 +33,55 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period)
+}
+
+/// Calculates MFI without input validation for high performance.
+pub fn mfi_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    input_volume: &[TAFloat],
+    opt_period: usize,
+    output_mfi: &mut [TAFloat],
+    output_typ_prices: &mut [TAFloat],
+    output_money_flows: &mut [TAFloat],
+    output_pos_flows: &mut [TAFloat],
+    output_neg_flows: &mut [TAFloat],
+) {
+    let len = input_high.len();
+
+    // Calculate typical prices
+    typprice::typprice_raw(input_high, input_low, input_close, output_typ_prices);
+
+    // Initialize money flows
+    for i in 0..len {
+        output_money_flows[i] = output_typ_prices[i] * input_volume[i];
+    }
+
+    // Calculate MFI for each period
+    for i in opt_period..len {
+        let mut pos_flow = 0.0;
+        let mut neg_flow = 0.0;
+
+        // Calculate positive and negative money flows over the period
+        for j in (i - opt_period + 1)..=i {
+            if output_typ_prices[j] > output_typ_prices[j - 1] {
+                pos_flow += output_money_flows[j];
+            } else if output_typ_prices[j] < output_typ_prices[j - 1] {
+                neg_flow += output_money_flows[j];
+            }
+        }
+
+        output_pos_flows[i] = pos_flow;
+        output_neg_flows[i] = neg_flow;
+
+        let total_flow = pos_flow + neg_flow;
+        if total_flow < 1.0 {
+            output_mfi[i] = 0.0;
+        } else {
+            output_mfi[i] = 100.0 * (pos_flow / total_flow);
+        }
+    }
 }
 
 /// Calculates Money Flow Index (MFI) for a price series.
@@ -143,52 +195,55 @@ pub fn mfi(
         }
     }
 
-    // Calculate typical prices
-    typprice::typprice(input_high, input_low, input_close, output_typ_prices)?;
-
-    // Initialize money flows
-    for i in 0..len {
-        output_money_flows[i] = output_typ_prices[i] * input_volume[i];
-    }
-
-    // Calculate MFI for each period
-    for i in opt_period..len {
-        let mut pos_flow = 0.0;
-        let mut neg_flow = 0.0;
-
-        // Calculate positive and negative money flows over the period
-        for j in (i - opt_period + 1)..=i {
-            if output_typ_prices[j] > output_typ_prices[j - 1] {
-                pos_flow += output_money_flows[j];
-            } else if output_typ_prices[j] < output_typ_prices[j - 1] {
-                neg_flow += output_money_flows[j];
+    #[cfg(feature = "check-nan")]
+    {
+        for i in 0..len {
+            if input_high[i].is_nan()
+                || input_low[i].is_nan()
+                || input_close[i].is_nan()
+                || input_volume[i].is_nan()
+            {
+                return Err(KandError::NaNDetected);
             }
         }
-
-        output_pos_flows[i] = pos_flow;
-        output_neg_flows[i] = neg_flow;
-
-        // Calculate MFI using the optimized formula:
-        // MFI = 100 * (posSumMF/(posSumMF+negSumMF))
-        let total_flow = pos_flow + neg_flow;
-        if total_flow < 1.0 {
-            output_mfi[i] = 0.0;
-        } else {
-            output_mfi[i] = 100.0 * (pos_flow / total_flow);
-        }
     }
 
+    mfi_raw(
+        input_high,
+        input_low,
+        input_close,
+        input_volume,
+        opt_period,
+        output_mfi,
+        output_typ_prices,
+        output_money_flows,
+        output_pos_flows,
+        output_neg_flows,
+    );
+
     // Set initial values to NaN
-    for i in 0..opt_period {
-        output_mfi[i] = TAFloat::NAN;
-        output_pos_flows[i] = TAFloat::NAN;
-        output_neg_flows[i] = TAFloat::NAN;
-        output_typ_prices[i] = TAFloat::NAN;
-        output_money_flows[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..opt_period {
+            output_mfi[i] = TAFloat::NAN;
+            output_pos_flows[i] = TAFloat::NAN;
+            output_neg_flows[i] = TAFloat::NAN;
+            output_typ_prices[i] = TAFloat::NAN;
+            output_money_flows[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    mfi,
+    crate::ta::ohlcv::mfi::mfi_raw,
+    inputs: { input_high, input_low, input_close, input_volume },
+    params: { opt_period: usize },
+    outputs: { output_mfi, output_typ_prices, output_money_flows, output_pos_flows, output_neg_flows }
+);
 
 #[cfg(test)]
 mod tests {
@@ -244,6 +299,7 @@ mod tests {
         .unwrap();
 
         // First 13 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_mfi.iter().take(14) {
             assert!(value.is_nan());
         }
@@ -270,6 +326,77 @@ mod tests {
 
         for (i, expected) in expected_values.iter().enumerate() {
             assert_relative_eq!(output_mfi[i + 14], *expected, epsilon = 0.0001);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_mfi_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4, 35150.4, 35123.9,
+            35110.0, 35092.1, 35179.2,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0, 35073.0, 35055.0,
+            35084.0, 35060.0, 35073.1,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3,
+        ];
+        let input_volume = vec![
+            1055.365, 756.488, 682.152, 1197.747, 425.97, 859.638, 741.925, 888.477, 1043.333,
+            467.901, 387.47, 566.099, 672.296, 834.915, 1854.024, 3670.795, 3761.198, 1605.442,
+            1726.574, 934.713, 2199.061, 2349.823, 837.218, 1000.638, 1218.202, 2573.668, 1098.409,
+            609.582, 670.489, 1637.998,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+        let volume_arrow = TAArrowArray::from(input_volume.clone());
+        let opt_period = 14;
+
+        let (mfi_arrow, _, _, _, _) =
+            mfi_arrow(&high_arrow, &low_arrow, &close_arrow, &volume_arrow, opt_period).unwrap();
+
+        assert_eq!(mfi_arrow.len(), input_high.len());
+
+        let mut out_mfi = vec![0.0; input_high.len()];
+        let mut out_typ = vec![0.0; input_high.len()];
+        let mut out_flow = vec![0.0; input_high.len()];
+        let mut out_pos = vec![0.0; input_high.len()];
+        let mut out_neg = vec![0.0; input_high.len()];
+
+        mfi(
+            &input_high,
+            &input_low,
+            &input_close,
+            &input_volume,
+            opt_period,
+            &mut out_mfi,
+            &mut out_typ,
+            &mut out_flow,
+            &mut out_pos,
+            &mut out_neg,
+        )
+        .unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 14 {
+                #[cfg(feature = "allow-nan")]
+                assert!(mfi_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(mfi_arrow.value(i), out_mfi[i], epsilon = 0.0001);
+            }
         }
     }
 }
