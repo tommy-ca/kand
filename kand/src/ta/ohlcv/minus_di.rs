@@ -29,6 +29,83 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period)
 }
 
+/// Calculates Minus Directional Indicator (-DI) without input validation for high performance.
+pub fn minus_di_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    output_minus_di: &mut [TAFloat],
+    output_smoothed_minus_dm: &mut [TAFloat],
+    output_smoothed_tr: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = opt_period;
+
+    // Calculate initial -DM and TR sums
+    let mut minus_dm_sum = 0.0;
+    let mut tr_sum = 0.0;
+    let mut prev_high = input_high[0];
+    let mut prev_low = input_low[0];
+    let mut prev_close = input_close[0];
+
+    // Calculate first period-1 -DM1 and TR1 values
+    for i in 1..opt_period {
+        let high_diff = input_high[i] - prev_high;
+        let low_diff = prev_low - input_low[i];
+
+        let minus_dm1 = if low_diff > high_diff && low_diff > 0.0 {
+            low_diff
+        } else {
+            0.0
+        };
+
+        minus_dm_sum += minus_dm1;
+
+        let tr1 = trange::trange_inc_raw(input_high[i], input_low[i], prev_close);
+        tr_sum += tr1;
+
+        prev_high = input_high[i];
+        prev_low = input_low[i];
+        prev_close = input_close[i];
+    }
+
+    let hundred = 100.0;
+    let period_t = opt_period as TAFloat;
+
+    // Initialize smoothed values
+    let mut curr_smoothed_minus_dm = minus_dm_sum;
+    let mut curr_smoothed_tr = tr_sum;
+
+    // Calculate remaining -DI values using Wilder's smoothing
+    for i in lookback..len {
+        let high_diff = input_high[i] - input_high[i - 1];
+        let low_diff = input_low[i - 1] - input_low[i];
+
+        let minus_dm1 = if low_diff > high_diff && low_diff > 0.0 {
+            low_diff
+        } else {
+            0.0
+        };
+
+        let tr1 = trange::trange_inc_raw(input_high[i], input_low[i], input_close[i - 1]);
+
+        // Apply Wilder's smoothing
+        curr_smoothed_minus_dm =
+            curr_smoothed_minus_dm - (curr_smoothed_minus_dm / period_t) + minus_dm1;
+        curr_smoothed_tr = curr_smoothed_tr - (curr_smoothed_tr / period_t) + tr1;
+
+        output_smoothed_minus_dm[i] = curr_smoothed_minus_dm;
+        output_smoothed_tr[i] = curr_smoothed_tr;
+
+        output_minus_di[i] = if curr_smoothed_tr == 0.0 {
+            0.0
+        } else {
+            hundred * curr_smoothed_minus_dm / curr_smoothed_tr
+        };
+    }
+}
+
 /// Calculates the Minus Directional Indicator (-DI) for the entire input array.
 ///
 /// The -DI is a component of the Directional Movement System that measures the strength of downward price movement.
@@ -149,78 +226,68 @@ pub fn minus_di(
         }
     }
 
-    // Calculate initial -DM and TR sums
-    let mut minus_dm_sum = 0.0;
-    let mut tr_sum = 0.0;
-    let mut prev_high = input_high[0];
-    let mut prev_low = input_low[0];
-    let mut prev_close = input_close[0];
-
-    // Calculate first period-1 -DM1 and TR1 values
-    for i in 1..opt_period {
-        let high_diff = input_high[i] - prev_high;
-        let low_diff = prev_low - input_low[i];
-
-        let minus_dm1 = if low_diff > high_diff && low_diff > 0.0 {
-            low_diff
-        } else {
-            0.0
-        };
-
-        minus_dm_sum += minus_dm1;
-
-        let tr1 = trange::trange_inc(input_high[i], input_low[i], prev_close)?;
-        tr_sum += tr1;
-
-        prev_high = input_high[i];
-        prev_low = input_low[i];
-        prev_close = input_close[i];
-    }
-
-    // Calculate first -DI value
-    let hundred = 100.0;
-    let period_t = opt_period as TAFloat;
-
-    // Initialize smoothed values
-    let mut curr_smoothed_minus_dm = minus_dm_sum;
-    let mut curr_smoothed_tr = tr_sum;
-
-    // Calculate remaining -DI values using Wilder's smoothing
-    for i in lookback..len {
-        let high_diff = input_high[i] - input_high[i - 1];
-        let low_diff = input_low[i - 1] - input_low[i];
-
-        let minus_dm1 = if low_diff > high_diff && low_diff > 0.0 {
-            low_diff
-        } else {
-            0.0
-        };
-
-        let tr1 = trange::trange_inc(input_high[i], input_low[i], input_close[i - 1])?;
-
-        // Apply Wilder's smoothing
-        curr_smoothed_minus_dm =
-            curr_smoothed_minus_dm - (curr_smoothed_minus_dm / period_t) + minus_dm1;
-        curr_smoothed_tr = curr_smoothed_tr - (curr_smoothed_tr / period_t) + tr1;
-
-        output_smoothed_minus_dm[i] = curr_smoothed_minus_dm;
-        output_smoothed_tr[i] = curr_smoothed_tr;
-
-        output_minus_di[i] = if curr_smoothed_tr == 0.0 {
-            0.0
-        } else {
-            hundred * curr_smoothed_minus_dm / curr_smoothed_tr
-        };
-    }
+    minus_di_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        output_minus_di,
+        output_smoothed_minus_dm,
+        output_smoothed_tr,
+    );
 
     // Fill initial values with NAN
-    for i in 0..lookback {
-        output_minus_di[i] = TAFloat::NAN;
-        output_smoothed_minus_dm[i] = TAFloat::NAN;
-        output_smoothed_tr[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_minus_di[i] = TAFloat::NAN;
+            output_smoothed_minus_dm[i] = TAFloat::NAN;
+            output_smoothed_tr[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates the latest -DI value incrementally without input validation.
+#[must_use]
+pub fn minus_di_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    prev_high: TAFloat,
+    prev_low: TAFloat,
+    prev_close: TAFloat,
+    prev_smoothed_minus_dm: TAFloat,
+    prev_smoothed_tr: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat) {
+    let high_diff = input_high - prev_high;
+    let low_diff = prev_low - input_low;
+
+    let minus_dm = if low_diff > high_diff && low_diff > 0.0 {
+        low_diff
+    } else {
+        0.0
+    };
+
+    let tr = trange::trange_inc_raw(input_high, input_low, prev_close);
+    let period_t = opt_period as TAFloat;
+
+    let output_smoothed_minus_dm =
+        prev_smoothed_minus_dm - (prev_smoothed_minus_dm / period_t) + minus_dm;
+    let output_smoothed_tr = prev_smoothed_tr - (prev_smoothed_tr / period_t) + tr;
+
+    let output_minus_di = if output_smoothed_tr == 0.0 {
+        0.0
+    } else {
+        100.0 * output_smoothed_minus_dm / output_smoothed_tr
+    };
+
+    (
+        output_minus_di,
+        output_smoothed_minus_dm,
+        output_smoothed_tr,
+    )
 }
 
 /// Calculates the latest -DI value incrementally using previous smoothed values.
@@ -316,34 +383,26 @@ pub fn minus_di_inc(
         }
     }
 
-    let high_diff = input_high - prev_high;
-    let low_diff = prev_low - input_low;
-
-    let minus_dm = if low_diff > high_diff && low_diff > 0.0 {
-        low_diff
-    } else {
-        0.0
-    };
-
-    let tr = trange::trange_inc(input_high, input_low, prev_close)?;
-    let period_t = opt_period as TAFloat;
-
-    let output_smoothed_minus_dm =
-        prev_smoothed_minus_dm - (prev_smoothed_minus_dm / period_t) + minus_dm;
-    let output_smoothed_tr = prev_smoothed_tr - (prev_smoothed_tr / period_t) + tr;
-
-    let output_minus_di = if output_smoothed_tr == 0.0 {
-        0.0
-    } else {
-        100.0 * output_smoothed_minus_dm / output_smoothed_tr
-    };
-
-    Ok((
-        output_minus_di,
-        output_smoothed_minus_dm,
-        output_smoothed_tr,
+    Ok(minus_di_inc_raw(
+        input_high,
+        input_low,
+        prev_high,
+        prev_low,
+        prev_close,
+        prev_smoothed_minus_dm,
+        prev_smoothed_tr,
+        opt_period,
     ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    minus_di,
+    crate::ta::ohlcv::minus_di::minus_di_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize },
+    outputs: { output_minus_di, output_smoothed_minus_dm, output_smoothed_tr }
+);
 
 #[cfg(test)]
 mod tests {
@@ -384,11 +443,6 @@ mod tests {
             &mut output_smoothed_tr,
         )
         .unwrap();
-
-        // First opt_period values should be NaN
-        for value in output_minus_di.iter().take(opt_period) {
-            assert!(value.is_nan());
-        }
 
         // Check first valid value
         assert_relative_eq!(
@@ -438,6 +492,66 @@ mod tests {
             assert_relative_eq!(minus_di, output_minus_di[i], epsilon = 0.00001);
             prev_smoothed_minus_dm = new_smoothed_minus_dm;
             prev_smoothed_tr = new_smoothed_tr;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_minus_di_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let (minus_di_arrow, _, _) =
+            minus_di_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
+
+        assert_eq!(minus_di_arrow.len(), input_high.len());
+
+        let mut out_minus_di = vec![0.0; input_high.len()];
+        let mut out_smoothed_minus_dm = vec![0.0; input_high.len()];
+        let mut out_smoothed_tr = vec![0.0; input_high.len()];
+
+        minus_di(
+            &input_high,
+            &input_low,
+            &input_close,
+            opt_period,
+            &mut out_minus_di,
+            &mut out_smoothed_minus_dm,
+            &mut out_smoothed_tr,
+        )
+        .unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 14 {
+                #[cfg(feature = "allow-nan")]
+                assert!(minus_di_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(
+                    minus_di_arrow.value(i),
+                    out_minus_di[i],
+                    epsilon = 0.00001
+                );
+            }
         }
     }
 }

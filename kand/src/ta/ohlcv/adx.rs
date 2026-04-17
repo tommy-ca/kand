@@ -33,6 +33,52 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period * 2 - 1)
 }
 
+/// Calculate Average Directional Index (ADX) without input validation for high performance.
+pub fn adx_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    output_adx: &mut [TAFloat],
+    output_smoothed_plus_dm: &mut [TAFloat],
+    output_smoothed_minus_dm: &mut [TAFloat],
+    output_smoothed_tr: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = opt_period * 2 - 1;
+
+    let mut dx_values = vec![0.0; len];
+
+    // Calculate DX values
+    dx::dx_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        &mut dx_values,
+        output_smoothed_plus_dm,
+        output_smoothed_minus_dm,
+        output_smoothed_tr,
+    );
+
+    // Calculate initial ADX as simple average of first period DX values
+    let mut sum = 0.0;
+    for value in dx_values
+        .iter()
+        .take(lookback + 1)
+        .skip(lookback + 1 - opt_period)
+    {
+        sum += *value;
+    }
+    output_adx[lookback] = sum / opt_period as TAFloat;
+
+    // Calculate remaining ADX values using Wilder's smoothing
+    let period_t = opt_period as TAFloat;
+    for i in (lookback + 1)..len {
+        output_adx[i] = output_adx[i - 1].mul_add(period_t - 1.0, dx_values[i]) / period_t;
+    }
+}
+
 /// Calculate Average Directional Index (ADX) for the entire input array
 ///
 /// ADX measures the strength of a trend, regardless of its direction. Values range from 0 to 100,
@@ -154,49 +200,70 @@ pub fn adx(
         }
     }
 
-    let mut dx_values = vec![0.0; len];
-
-    // Calculate DX values
-    dx::dx(
+    adx_raw(
         input_high,
         input_low,
         input_close,
         opt_period,
-        &mut dx_values,
+        output_adx,
         output_smoothed_plus_dm,
         output_smoothed_minus_dm,
         output_smoothed_tr,
-    )?;
-
-    // Calculate initial ADX as simple average of first period DX values
-    let mut sum = 0.0;
-    for value in dx_values
-        .iter()
-        .take(lookback + 1)
-        .skip(lookback + 1 - opt_period)
-    {
-        sum += *value;
-    }
-    output_adx[lookback] = sum / opt_period as TAFloat;
-
-    // Calculate remaining ADX values using Wilder's smoothing
-    let period_t = opt_period as TAFloat;
-    for i in (lookback + 1)..len {
-        output_adx[i] = output_adx[i - 1].mul_add(period_t - 1.0, dx_values[i]) / period_t;
-    }
+    );
 
     // Fill initial values with NAN
-    for item in output_adx.iter_mut().take(opt_period * 2 - 1) {
-        *item = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for item in output_adx.iter_mut().take(lookback) {
+            *item = TAFloat::NAN;
+        }
     }
 
     Ok(())
 }
 
+/// Calculate the latest ADX value incrementally without input validation.
+#[must_use]
+pub fn adx_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    prev_high: TAFloat,
+    prev_low: TAFloat,
+    prev_close: TAFloat,
+    prev_adx: TAFloat,
+    prev_smoothed_plus_dm: TAFloat,
+    prev_smoothed_minus_dm: TAFloat,
+    prev_smoothed_tr: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat, TAFloat) {
+    let (dx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr) =
+        dx::dx_inc_raw(
+            input_high,
+            input_low,
+            prev_high,
+            prev_low,
+            prev_close,
+            prev_smoothed_plus_dm,
+            prev_smoothed_minus_dm,
+            prev_smoothed_tr,
+            opt_period,
+        );
+
+    let period_t = opt_period as TAFloat;
+    let output_adx = prev_adx.mul_add(period_t - 1.0, dx) / period_t;
+
+    (
+        output_adx,
+        output_smoothed_plus_dm,
+        output_smoothed_minus_dm,
+        output_smoothed_tr,
+    )
+}
+
 /// Calculate the latest ADX value incrementally
 ///
 /// This function calculates only the most recent ADX value using the previous values and the latest prices.
-/// It is optimized for real-time calculations where only the latest value needs to be updated.
+/// It is optimized for real-time calculations where only the latest value is updated.
 ///
 /// # Arguments
 /// * `input_high` - Current period's high price
@@ -276,28 +343,28 @@ pub fn adx_inc(
         }
     }
 
-    let (dx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr) = dx::dx_inc(
+    Ok(adx_inc_raw(
         input_high,
         input_low,
         prev_high,
         prev_low,
         prev_close,
+        prev_adx,
         prev_smoothed_plus_dm,
         prev_smoothed_minus_dm,
         prev_smoothed_tr,
         opt_period,
-    )?;
-
-    let period_t = opt_period as TAFloat;
-    let output_adx = prev_adx.mul_add(period_t - 1.0, dx) / period_t;
-
-    Ok((
-        output_adx,
-        output_smoothed_plus_dm,
-        output_smoothed_minus_dm,
-        output_smoothed_tr,
     ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    adx,
+    crate::ta::ohlcv::adx::adx_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize },
+    outputs: { output_adx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr }
+);
 
 #[cfg(test)]
 mod tests {
@@ -351,6 +418,7 @@ mod tests {
         .unwrap();
 
         // First (2*period-1) values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_adx.iter().take(2 * opt_period - 1) {
             assert!(value.is_nan());
         }
@@ -420,6 +488,73 @@ mod tests {
                 epsilon = 0.00001
             );
             assert_relative_eq!(new_smoothed_tr, output_smoothed_tr[i], epsilon = 0.00001);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_adx_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4, 35150.4, 35123.9,
+            35110.0, 35092.1, 35179.2, 35244.9, 35150.2, 35136.0, 35133.6, 35188.0, 35215.3,
+            35221.9, 35219.2, 35234.0, 35216.7, 35197.9, 35178.4, 35183.4, 35129.7, 35149.1,
+            35129.3, 35125.5, 35114.5, 35120.1, 35129.4,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0, 35073.0, 35055.0,
+            35084.0, 35060.0, 35073.1, 35090.0, 35072.0, 35078.0, 35088.0, 35124.8, 35169.4,
+            35138.0, 35141.0, 35182.0, 35151.1, 35158.4, 35140.0, 35087.0, 35085.8, 35114.7,
+            35086.0, 35090.6, 35074.1, 35078.4, 35100.0,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1, 35215.3,
+            35154.0, 35216.3, 35211.8, 35158.4, 35172.0, 35176.7, 35113.3, 35114.7, 35129.3,
+            35094.6, 35114.4, 35094.5, 35116.0, 35105.4,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let (adx_arrow, _, _, _) =
+            adx_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
+
+        assert_eq!(adx_arrow.len(), input_high.len());
+
+        let mut out_adx = vec![0.0; input_high.len()];
+        let mut out_plus_dm = vec![0.0; input_high.len()];
+        let mut out_minus_dm = vec![0.0; input_high.len()];
+        let mut out_tr = vec![0.0; input_high.len()];
+
+        adx(
+            &input_high,
+            &input_low,
+            &input_close,
+            opt_period,
+            &mut out_adx,
+            &mut out_plus_dm,
+            &mut out_minus_dm,
+            &mut out_tr,
+        )
+        .unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 27 {
+                #[cfg(feature = "allow-nan")]
+                assert!(adx_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(adx_arrow.value(i), out_adx[i], epsilon = 0.00001);
+            }
         }
     }
 }

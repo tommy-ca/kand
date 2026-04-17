@@ -34,6 +34,51 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period)
 }
 
+/// Calculate Directional Movement Index (DX) without input validation for high performance.
+pub fn dx_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    output_dx: &mut [TAFloat],
+    output_smoothed_plus_dm: &mut [TAFloat],
+    output_smoothed_minus_dm: &mut [TAFloat],
+    output_smoothed_tr: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = opt_period;
+
+    let mut plus_di_values = vec![0.0; len];
+    let mut minus_di_values = vec![0.0; len];
+
+    // Calculate +DI and -DI
+    plus_di::plus_di_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        &mut plus_di_values,
+        output_smoothed_plus_dm,
+        output_smoothed_tr,
+    );
+    minus_di::minus_di_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        &mut minus_di_values,
+        output_smoothed_minus_dm,
+        output_smoothed_tr,
+    );
+
+    // Calculate DX
+    for i in lookback..len {
+        let plus_di = plus_di_values[i];
+        let minus_di = minus_di_values[i];
+        output_dx[i] = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di);
+    }
+}
+
 /// Calculate Directional Movement Index (DX) for the entire input array
 ///
 /// # Description
@@ -142,42 +187,70 @@ pub fn dx(
         }
     }
 
-    let mut plus_di_values = vec![0.0; len];
-    let mut minus_di_values = vec![0.0; len];
-
-    // Calculate +DI and -DI
-    plus_di::plus_di(
+    dx_raw(
         input_high,
         input_low,
         input_close,
         opt_period,
-        &mut plus_di_values,
+        output_dx,
         output_smoothed_plus_dm,
-        output_smoothed_tr,
-    )?;
-    minus_di::minus_di(
-        input_high,
-        input_low,
-        input_close,
-        opt_period,
-        &mut minus_di_values,
         output_smoothed_minus_dm,
         output_smoothed_tr,
-    )?;
-
-    // Calculate DX
-    for i in lookback..len {
-        let plus_di = plus_di_values[i];
-        let minus_di = minus_di_values[i];
-        output_dx[i] = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di);
-    }
+    );
 
     // Fill initial values with NAN
-    for item in output_dx.iter_mut().take(lookback) {
-        *item = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for item in output_dx.iter_mut().take(lookback) {
+            *item = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculate the latest DX value incrementally without input validation.
+#[must_use]
+pub fn dx_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    prev_high: TAFloat,
+    prev_low: TAFloat,
+    prev_close: TAFloat,
+    prev_smoothed_plus_dm: TAFloat,
+    prev_smoothed_minus_dm: TAFloat,
+    prev_smoothed_tr: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat, TAFloat) {
+    let (plus_di, output_smoothed_plus_dm, output_smoothed_tr) = plus_di::plus_di_inc_raw(
+        input_high,
+        input_low,
+        prev_high,
+        prev_low,
+        prev_close,
+        prev_smoothed_plus_dm,
+        prev_smoothed_tr,
+        opt_period,
+    );
+
+    let (minus_di, output_smoothed_minus_dm, _) = minus_di::minus_di_inc_raw(
+        input_high,
+        input_low,
+        prev_high,
+        prev_low,
+        prev_close,
+        prev_smoothed_minus_dm,
+        output_smoothed_tr,
+        opt_period,
+    );
+
+    let output_dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di);
+    (
+        output_dx,
+        output_smoothed_plus_dm,
+        output_smoothed_minus_dm,
+        output_smoothed_tr,
+    )
 }
 
 /// Calculate the latest DX value incrementally
@@ -277,36 +350,27 @@ pub fn dx_inc(
         }
     }
 
-    let (plus_di, output_smoothed_plus_dm, output_smoothed_tr) = plus_di::plus_di_inc(
+    Ok(dx_inc_raw(
         input_high,
         input_low,
         prev_high,
         prev_low,
         prev_close,
         prev_smoothed_plus_dm,
-        prev_smoothed_tr,
-        opt_period,
-    )?;
-
-    let (minus_di, output_smoothed_minus_dm, _) = minus_di::minus_di_inc(
-        input_high,
-        input_low,
-        prev_high,
-        prev_low,
-        prev_close,
         prev_smoothed_minus_dm,
         prev_smoothed_tr,
         opt_period,
-    )?;
-
-    let output_dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di);
-    Ok((
-        output_dx,
-        output_smoothed_plus_dm,
-        output_smoothed_minus_dm,
-        output_smoothed_tr,
     ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    dx,
+    crate::ta::ohlcv::dx::dx_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize },
+    outputs: { output_dx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr }
+);
 
 #[cfg(test)]
 mod tests {
@@ -351,6 +415,7 @@ mod tests {
         .unwrap();
 
         // First opt_period values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_dx.iter().take(opt_period) {
             assert!(value.is_nan());
         }
@@ -395,6 +460,64 @@ mod tests {
                 epsilon = 0.00001
             );
             assert_relative_eq!(new_smoothed_tr, output_smoothed_tr[i], epsilon = 0.00001);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_dx_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let (dx_arrow, _, _, _) =
+            dx_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
+
+        assert_eq!(dx_arrow.len(), input_high.len());
+
+        let mut out_dx = vec![0.0; input_high.len()];
+        let mut out_plus_dm = vec![0.0; input_high.len()];
+        let mut out_minus_dm = vec![0.0; input_high.len()];
+        let mut out_tr = vec![0.0; input_high.len()];
+
+        dx(
+            &input_high,
+            &input_low,
+            &input_close,
+            opt_period,
+            &mut out_dx,
+            &mut out_plus_dm,
+            &mut out_minus_dm,
+            &mut out_tr,
+        )
+        .unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 14 {
+                #[cfg(feature = "allow-nan")]
+                assert!(dx_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(dx_arrow.value(i), out_dx[i], epsilon = 0.00001);
+            }
         }
     }
 }

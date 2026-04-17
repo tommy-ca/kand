@@ -23,48 +23,40 @@ The current `kand` bindings suffer from memory copy overhead. By integrating `ar
 
 ## Implementation Units
 
-### Phase 1: Normalization & Foundation
+### Phase 1: Normalization & Foundation (COMPLETED)
+- [x] Unit 1.1: Foundation established (`arrow` feature, type aliases).
+- [x] Unit 1.2: SMA POC across core, python, wasm.
+- [x] Unit 1.3: Multi-output macro defined.
 
-- [ ] **Unit 1.1: Project-Wide Normalization**
-  **Goal:** Ensure every indicator in `kand/src/ta/ohlcv/` and `kand/src/ta/stats/` has a public `_raw` variant.
-  **Files:** `kand/src/ta/**/*.rs`
-  **Approach:** Extract core logic from current safe wrappers into `_raw` functions taking slices. This is a prerequisite for macro-based Arrow wrapping.
-  **Test scenarios:** Verify existing tests still pass and use the new `_raw` internally.
+### Phase 2: Batch-Driven TDD Scaling
+Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
 
-- [ ] **Unit 1.2: Core Arrow Foundation**
-  **Goal:** Add `arrow` feature, dependency, and type aliases.
-  **Files:** `kand/Cargo.toml`, `Cargo.toml`, `kand/src/ta/types.rs`
-  **Approach:** Add `arrow = { version = "56.0", optional = true }`. Define `TAArrowArray` and `TAArrowBuilder` aliases that switch based on `f32`/`f64` features.
+- [ ] **Unit 2.1: Batch 2 - BBands & ADX (Multi-Output Focus)**
+  **Goal:** Refactor BBands and ADX to use multi-output macros and normalize core logic.
+  **Files:** `kand/src/ta/ohlcv/bbands.rs`, `kand/src/ta/ohlcv/adx.rs`
+  **Approach (TDD):**
+  1. Define spec for Arrow result structs.
+  2. Write Arrow parity tests (offset, alignment).
+  3. Implement `_raw` and `_arrow` variants.
+  4. Perform semantic commit.
 
-### Phase 2: Implementation & Bindings
+- [ ] **Unit 2.2: Batch 3 - Momentum & Volatility (RSI, ATR, etc.)**
+  **Goal:** Systematic normalization of remaining OHLCV indicators.
+  **Files:** `kand/src/ta/ohlcv/rsi.rs` (Done), `kand/src/ta/ohlcv/atr.rs` (Done), others.
 
-- [ ] **Unit 2.1: SMA Arrow Implementation (POC)**
-  **Goal:** Implement `sma_arrow` in the core library and test for correctness and alignment.
-  **Files:** `kand/src/ta/ohlcv/sma.rs`
-  **Approach:** Follow the pattern: Validate -> Handle Offsets -> Allocate Aligned -> Call `sma_raw` -> Return `PrimitiveArray`.
-  **Verification:** Use `MutableBuffer::is_aligned` or check address modulo 64.
+- [ ] **Unit 2.3: Batch 4 - Stats (StdDev, Var, etc.)**
+  **Goal:** Normalize and wrap statistics functions.
+  **Files:** `kand/src/ta/stats/*.rs`
 
-- [ ] **Unit 2.2: Python PyCapsule Binding**
-  **Goal:** Integrate `pyo3-arrow` (v0.11.0) and expose `sma_arrow_py`.
-  **Files:** `kand-py/Cargo.toml`, `kand-py/src/ta/ohlcv/sma.rs`
-  **Approach:** Implement the `PyArray` handshake. Ensure Polars/PyArrow can consume the output without copying.
+### Phase 3: Bindings & Audit
 
-- [ ] **Unit 2.3: WASM Shared Buffer Manager**
-  **Goal:** Implement a growth-resilient `WasmBuffer` and expose `sma_wasm_zero_copy`.
-  **Files:** `kand-wasm/src/ta/ohlcv/sma.rs`, `kand-wasm/src/lib.rs`
-  **Approach:** Managed `Vec<T>` with exposed pointer. JS side logic for view refreshing.
+- [ ] **Unit 3.1: Python Binding Auto-Scaling**
+  **Goal:** Develop `kand_py_arrow_wrapper!` macro to scale `kand-py` without manual boilerplate.
+  **Files:** `kand-py/src/ta/ohlcv/*.rs`
 
-### Phase 3: Scaling & Audit
-
-- [ ] **Unit 3.1: Macro Scaling (Core & Python)**
-  **Goal:** Develop and apply macros to generate Arrow variants for all normalized indicators.
-  **Files:** `kand/src/helper/arrow_macro.rs`, `kand-py/src/ta/ohlcv/*.rs`
-  **Approach:** Standardize result structs for multi-output indicators (MACD, BBands).
-
-- [ ] **Unit 3.2: Zero-Copy Performance Audit**
-  **Goal:** Run benchmarks and memory profiling to verify zero-copy goals.
-  **Files:** `kand-py/python/benches/bench_arrow.py`
-  **Approach:** Compare throughput of `sma_py` (Numpy-based) vs `sma_arrow_py` (Arrow-based) for 10M rows.
+- [ ] **Unit 3.2: Performance & Security Audit**
+  **Goal:** Final pass with specialized agents to verify zero-copy and memory safety.
+  **Files:** `docs/audits/*.md`
 
 ## Risks & Dependencies
 - **WASM Memory Growth:** Critical that JS refreshes views.

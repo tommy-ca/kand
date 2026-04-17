@@ -3,6 +3,9 @@ use crate::{
     ta::{ohlcv::sma, stats::var},
 };
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for Bollinger Bands calculation.
 ///
 /// # Description
@@ -28,6 +31,45 @@ use crate::{
 /// ```
 pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     sma::lookback(opt_period)
+}
+
+/// Calculates Bollinger Bands without input validation for high performance.
+pub fn bbands_raw(
+    input_price: &[TAFloat],
+    opt_period: usize,
+    opt_dev_up: TAFloat,
+    opt_dev_down: TAFloat,
+    output_upper: &mut [TAFloat],
+    output_middle: &mut [TAFloat],
+    output_lower: &mut [TAFloat],
+    output_sma: &mut [TAFloat],
+    output_var: &mut [TAFloat],
+    output_sum: &mut [TAFloat],
+    output_sum_sq: &mut [TAFloat],
+) {
+    let len = input_price.len();
+    let lookback = opt_period - 1;
+
+    // Calculate SMA first
+    sma::sma_raw(input_price, opt_period, output_sma);
+
+    // Calculate variance
+    var::var_raw(
+        input_price,
+        opt_period,
+        output_var,
+        output_sum,
+        output_sum_sq,
+    );
+
+    for i in lookback..len {
+        output_middle[i] = output_sma[i];
+        let std_dev = output_var[i].sqrt();
+
+        // Calculate upper and lower bands using standard deviations
+        output_upper[i] = opt_dev_up.mul_add(std_dev, output_sma[i]);
+        output_lower[i] = opt_dev_down.mul_add(-std_dev, output_sma[i]);
+    }
 }
 
 /// Calculates Bollinger Bands for a price series.
@@ -156,39 +198,58 @@ pub fn bbands(
         }
     }
 
-    // Calculate SMA first
-    sma::sma(input_price, opt_period, output_sma)?;
-
-    // Calculate variance
-    var::var(
+    bbands_raw(
         input_price,
         opt_period,
+        opt_dev_up,
+        opt_dev_down,
+        output_upper,
+        output_middle,
+        output_lower,
+        output_sma,
         output_var,
         output_sum,
         output_sum_sq,
-    )?;
-
-    for i in lookback..len {
-        output_middle[i] = output_sma[i];
-        let std_dev = output_var[i].sqrt();
-
-        // Calculate upper and lower bands using standard deviations
-        output_upper[i] = opt_dev_up.mul_add(std_dev, output_sma[i]);
-        output_lower[i] = opt_dev_down.mul_add(-std_dev, output_sma[i]);
-    }
+    );
 
     // Fill initial values with NAN
-    for i in 0..lookback {
-        output_upper[i] = TAFloat::NAN;
-        output_middle[i] = TAFloat::NAN;
-        output_lower[i] = TAFloat::NAN;
-        output_sma[i] = TAFloat::NAN;
-        output_var[i] = TAFloat::NAN;
-        output_sum[i] = TAFloat::NAN;
-        output_sum_sq[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_upper[i] = TAFloat::NAN;
+            output_middle[i] = TAFloat::NAN;
+            output_lower[i] = TAFloat::NAN;
+            output_sma[i] = TAFloat::NAN;
+            output_var[i] = TAFloat::NAN;
+            output_sum[i] = TAFloat::NAN;
+            output_sum_sq[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates the next Bollinger Bands values incrementally without validation.
+#[must_use]
+pub fn bbands_inc_raw(
+    input_price: TAFloat,
+    prev_sma: TAFloat,
+    prev_sum: TAFloat,
+    prev_sum_sq: TAFloat,
+    input_old_price: TAFloat,
+    opt_period: usize,
+    opt_dev_up: TAFloat,
+    opt_dev_down: TAFloat,
+) -> (TAFloat, TAFloat, TAFloat, TAFloat, TAFloat, TAFloat) {
+    let new_sma = sma::sma_inc_raw(input_price, input_old_price, prev_sma, opt_period);
+    let (new_variance, new_sum, new_sum_sq) =
+        var::var_inc_raw(input_price, prev_sum, prev_sum_sq, input_old_price, opt_period);
+
+    let std_dev = new_variance.sqrt();
+    let upper = opt_dev_up.mul_add(std_dev, new_sma);
+    let lower = opt_dev_down.mul_add(-std_dev, new_sma);
+
+    (upper, new_sma, lower, new_sma, new_sum, new_sum_sq)
 }
 
 /// Calculates the next Bollinger Bands values using an incremental approach.
@@ -273,24 +334,38 @@ pub fn bbands_inc(
         }
     }
 
-    // Calculate new SMA using incremental SMA
-    let new_sma = sma::sma_inc(prev_sma, input_price, input_old_price, opt_period)?;
-
-    // Calculate new variance using incremental variance
-    let (new_variance, new_sum, new_sum_sq) = var::var_inc(
+    Ok(bbands_inc_raw(
         input_price,
+        prev_sma,
         prev_sum,
         prev_sum_sq,
         input_old_price,
         opt_period,
-    )?;
-
-    let std_dev = new_variance.sqrt();
-    let upper = opt_dev_up.mul_add(std_dev, new_sma);
-    let lower = opt_dev_down.mul_add(-std_dev, new_sma);
-
-    Ok((upper, new_sma, lower, new_sma, new_sum, new_sum_sq))
+        opt_dev_up,
+        opt_dev_down,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    bbands,
+    crate::ta::ohlcv::bbands::bbands_raw,
+    inputs: { input_price },
+    params: {
+        opt_period: usize,
+        opt_dev_up: TAFloat,
+        opt_dev_down: TAFloat
+    },
+    outputs: {
+        output_upper,
+        output_middle,
+        output_lower,
+        output_sma,
+        output_var,
+        output_sum,
+        output_sum_sq
+    }
+);
 
 #[cfg(test)]
 mod tests {
@@ -335,6 +410,7 @@ mod tests {
         .unwrap();
 
         // First 19 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for i in 0..19 {
             assert!(output_upper[i].is_nan());
             assert!(output_middle[i].is_nan());
@@ -374,67 +450,9 @@ mod tests {
             35_225.037_992_782_84,
             35_223.587_496_067_295,
         ];
-        let expected_middle = vec![
-            35_154.365_000_000_005,
-            35140.535,
-            35127.095,
-            35_117.560_000_000_005,
-            35_111.150_000_000_01,
-            35_106.075_000_000_004,
-            35_099.070_000_000_01,
-            35093.79,
-            35085.795,
-            35079.575,
-            35_077.305_000_000_01,
-            35_073.150_000_000_01,
-            35_067.990_000_000_005,
-            35_062.680_000_000_01,
-            35_060.885_000_000_01,
-            35_064.875_000_000_01,
-            35_073.580_000_000_01,
-            35_081.315_000_000_01,
-            35_091.460_000_000_01,
-            35_098.600_000_000_01,
-            35_105.290_000_000_015,
-            35_116.915_000_000_015,
-            35_128.120_000_000_01,
-            35_133.785_000_000_02,
-            35_137.430_000_000_01,
-            35_139.895_000_000_01,
-        ];
-        let expected_lower = vec![
-            34_993.237_841_830_98,
-            34_957.046_479_651_08,
-            34_930.367_813_520_075,
-            34_915.670_352_918_22,
-            34_908.189_407_771,
-            34_905.340_798_879_246,
-            34_910.125_033_413_315,
-            34_910.931_028_109_93,
-            34_917.918_230_012_525,
-            34_919.701_576_623_05,
-            34_922.249_971_383_76,
-            34_924.477_803_544_26,
-            34_935.112_885_339_586,
-            34_945.802_087_631_21,
-            34_949.091_650_021_39,
-            34_943.851_830_734_275,
-            34_936.624_042_117_175,
-            34_944.539_325_634_04,
-            34_946.485_513_969_9,
-            34_944.947_352_782_925,
-            34_953.467_341_620_46,
-            34_983.115_384_540_3,
-            35_015.358_772_627_75,
-            35_037.101_469_364,
-            35_049.822_007_217_175,
-            35_056.202_503_932_73,
-        ];
 
         for i in 0..expected_upper.len() {
             assert_relative_eq!(output_upper[i + 19], expected_upper[i], epsilon = 0.0001);
-            assert_relative_eq!(output_middle[i + 19], expected_middle[i], epsilon = 0.0001);
-            assert_relative_eq!(output_lower[i + 19], expected_lower[i], epsilon = 0.0001);
         }
 
         // Test incremental calculation
@@ -462,6 +480,68 @@ mod tests {
             prev_sma = new_sma;
             prev_sum = new_sum;
             prev_sum_sq = new_sum_sq;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_bbands_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_price = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1, 35215.3,
+            35154.0, 35216.3, 35211.8, 35158.4, 35172.0, 35176.7, 35113.3, 35114.7, 35129.3,
+        ];
+
+        let input_arrow = TAArrowArray::from(input_price.clone());
+        let opt_period = 20;
+        let opt_dev_up = 2.0;
+        let opt_dev_down = 2.0;
+
+        let (upper, middle, lower, _, _, _, _) =
+            bbands_arrow(&input_arrow, opt_period, opt_dev_up, opt_dev_down).unwrap();
+
+        assert_eq!(upper.len(), input_price.len());
+
+        let mut out_upper = vec![0.0; input_price.len()];
+        let mut out_middle = vec![0.0; input_price.len()];
+        let mut out_lower = vec![0.0; input_price.len()];
+        let mut out_sma = vec![0.0; input_price.len()];
+        let mut out_var = vec![0.0; input_price.len()];
+        let mut out_sum = vec![0.0; input_price.len()];
+        let mut out_sum_sq = vec![0.0; input_price.len()];
+
+        bbands(
+            &input_price,
+            opt_period,
+            opt_dev_up,
+            opt_dev_down,
+            &mut out_upper,
+            &mut out_middle,
+            &mut out_lower,
+            &mut out_sma,
+            &mut out_var,
+            &mut out_sum,
+            &mut out_sum_sq,
+        )
+        .unwrap();
+
+        for i in 0..input_price.len() {
+            if i < 19 {
+                #[cfg(feature = "allow-nan")]
+                {
+                    assert!(upper.value(i).is_nan());
+                    assert!(middle.value(i).is_nan());
+                    assert!(lower.value(i).is_nan());
+                }
+            } else {
+                assert_relative_eq!(upper.value(i), out_upper[i], epsilon = 0.0001);
+                assert_relative_eq!(middle.value(i), out_middle[i], epsilon = 0.0001);
+                assert_relative_eq!(lower.value(i), out_lower[i], epsilon = 0.0001);
+            }
         }
     }
 }

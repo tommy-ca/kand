@@ -32,6 +32,46 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period - 1)
 }
 
+/// Calculates Variance without input validation for high performance.
+pub fn var_raw(
+    input_prices: &[TAFloat],
+    opt_period: usize,
+    output_var: &mut [TAFloat],
+    output_sum: &mut [TAFloat],
+    output_sum_sq: &mut [TAFloat],
+) {
+    let len = input_prices.len();
+    let lookback = opt_period - 1;
+
+    // Calculate initial values
+    let mut sum = 0.0;
+    let mut sum_sq = 0.0;
+    for val in input_prices.iter().take(opt_period) {
+        sum += *val;
+        sum_sq += *val * *val;
+    }
+
+    let period_t = opt_period as TAFloat;
+    let mean = sum / period_t;
+    output_var[lookback] = sum.mul_add(-mean, sum_sq) / period_t;
+    output_sum[lookback] = sum;
+    output_sum_sq[lookback] = sum_sq;
+
+    // Calculate remaining VAR values incrementally
+    for i in opt_period..len {
+        let old_val = input_prices[i - opt_period];
+        let new_val = input_prices[i];
+
+        sum = sum - old_val + new_val;
+        sum_sq = new_val.mul_add(new_val, old_val.mul_add(-old_val, sum_sq));
+
+        let mean = sum / period_t;
+        output_var[i] = sum.mul_add(-mean, sum_sq) / period_t;
+        output_sum[i] = sum;
+        output_sum_sq[i] = sum_sq;
+    }
+}
+
 /// Calculates Variance (VAR) for an entire price series.
 ///
 /// # Description
@@ -111,11 +151,6 @@ pub fn var(
             return Err(KandError::LengthMismatch);
         }
 
-        // Parameter range check
-        if opt_period < 2 {
-            return Err(KandError::InvalidParameter);
-        }
-
         // Data sufficiency check
         if len <= lookback {
             return Err(KandError::InsufficientData);
@@ -132,42 +167,41 @@ pub fn var(
         }
     }
 
-    // Calculate initial values
-    let mut sum = 0.0;
-    let mut sum_sq = 0.0;
-    for val in input_prices.iter().take(opt_period) {
-        sum += *val;
-        sum_sq += *val * *val;
-    }
-
-    let period_t = opt_period as TAFloat;
-    let mean = sum / period_t;
-    output_var[lookback] = sum.mul_add(-mean, sum_sq) / period_t;
-    output_sum[lookback] = sum;
-    output_sum_sq[lookback] = sum_sq;
-
-    // Calculate remaining VAR values incrementally
-    for i in opt_period..len {
-        let old_val = input_prices[i - opt_period];
-        let new_val = input_prices[i];
-
-        sum = sum - old_val + new_val;
-        sum_sq = new_val.mul_add(new_val, old_val.mul_add(-old_val, sum_sq));
-
-        let mean = sum / period_t;
-        output_var[i] = sum.mul_add(-mean, sum_sq) / period_t;
-        output_sum[i] = sum;
-        output_sum_sq[i] = sum_sq;
-    }
+    var_raw(input_prices, opt_period, output_var, output_sum, output_sum_sq);
 
     // Fill initial values with NAN
-    for i in 0..lookback {
-        output_var[i] = TAFloat::NAN;
-        output_sum[i] = TAFloat::NAN;
-        output_sum_sq[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_var[i] = TAFloat::NAN;
+            output_sum[i] = TAFloat::NAN;
+            output_sum_sq[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates the latest Variance value without input validation.
+#[must_use]
+pub fn var_inc_raw(
+    input_price: TAFloat,
+    prev_sum: TAFloat,
+    prev_sum_sq: TAFloat,
+    input_old_price: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat) {
+    let new_sum = prev_sum - input_old_price + input_price;
+    let new_sum_sq = input_price.mul_add(
+        input_price,
+        input_old_price.mul_add(-input_old_price, prev_sum_sq),
+    );
+
+    let period_t = opt_period as TAFloat;
+    let mean = new_sum / period_t;
+    let var = new_sum.mul_add(-mean, new_sum_sq) / period_t;
+
+    (var, new_sum, new_sum_sq)
 }
 
 /// Calculates the latest Variance value using incremental computation.
@@ -229,18 +263,23 @@ pub fn var_inc(
         }
     }
 
-    let new_sum = prev_sum - input_old_price + input_price;
-    let new_sum_sq = input_price.mul_add(
+    Ok(var_inc_raw(
         input_price,
-        input_old_price.mul_add(-input_old_price, prev_sum_sq),
-    );
-
-    let period_t = opt_period as TAFloat;
-    let mean = new_sum / period_t;
-    let var = new_sum.mul_add(-mean, new_sum_sq) / period_t;
-
-    Ok((var, new_sum, new_sum_sq))
+        prev_sum,
+        prev_sum_sq,
+        input_old_price,
+        opt_period,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    var,
+    crate::ta::stats::var::var_raw,
+    inputs: { input_prices },
+    params: { opt_period: usize },
+    outputs: { output_var, output_sum, output_sum_sq }
+);
 
 #[cfg(test)]
 mod tests {
@@ -270,6 +309,7 @@ mod tests {
         .unwrap();
 
         // First 13 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for i in 0..13 {
             assert!(output_var[i].is_nan());
             assert!(output_sum[i].is_nan());
@@ -314,6 +354,47 @@ mod tests {
             assert_relative_eq!(new_sum_sq, output_sum_sq[i], epsilon = 0.0001);
             prev_sum = new_sum;
             prev_sum_sq = new_sum_sq;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_var_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ];
+
+        let input_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let (var, _, _) = var_arrow(&input_arrow, opt_period).unwrap();
+
+        assert_eq!(var.len(), input_close.len());
+
+        let mut out_var = vec![0.0; input_close.len()];
+        let mut out_sum = vec![0.0; input_close.len()];
+        let mut out_sum_sq = vec![0.0; input_close.len()];
+
+        var(
+            &input_close,
+            opt_period,
+            &mut out_var,
+            &mut out_sum,
+            &mut out_sum_sq,
+        )
+        .unwrap();
+
+        for i in 0..input_close.len() {
+            if i < 13 {
+                #[cfg(feature = "allow-nan")]
+                assert!(var.value(i).is_nan());
+            } else {
+                assert_relative_eq!(var.value(i), out_var[i], epsilon = 0.0001);
+            }
         }
     }
 }
