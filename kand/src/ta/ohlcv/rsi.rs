@@ -32,6 +32,75 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period)
 }
 
+/// Calculates RSI without input validation for high performance.
+pub fn rsi_raw(
+    input_prices: &[TAFloat],
+    opt_period: usize,
+    output_rsi: &mut [TAFloat],
+    output_avg_gain: &mut [TAFloat],
+    output_avg_loss: &mut [TAFloat],
+) {
+    let len = input_prices.len();
+    let lookback = opt_period;
+
+    let mut gains = 0.0;
+    let mut losses = 0.0;
+
+    // Calculate initial gains/losses sum
+    for i in 1..=lookback {
+        let diff = input_prices[i] - input_prices[i - 1];
+        if diff > 0.0 {
+            gains += diff;
+        } else {
+            losses += diff.abs();
+        }
+    }
+
+    // Calculate first RSI value
+    let first_avg_gain = gains / opt_period as TAFloat;
+    let first_avg_loss = losses / opt_period as TAFloat;
+
+    output_avg_gain[lookback] = first_avg_gain;
+    output_avg_loss[lookback] = first_avg_loss;
+
+    if first_avg_loss == 0.0 {
+        output_rsi[lookback] = 100.0;
+    } else {
+        let rs = first_avg_gain / first_avg_loss;
+        output_rsi[lookback] = 100.0 - (100.0 / (1.0 + rs));
+    }
+
+    // Calculate remaining RSI values using smoothed averages
+    let mut prev_avg_gain = first_avg_gain;
+    let mut prev_avg_loss = first_avg_loss;
+    let smoothing = opt_period as TAFloat;
+
+    for i in lookback + 1..len {
+        let diff = input_prices[i] - input_prices[i - 1];
+        let (curr_gain, curr_loss) = if diff > 0.0 {
+            (diff, 0.0)
+        } else {
+            (0.0, diff.abs())
+        };
+
+        let curr_avg_gain = prev_avg_gain.mul_add(smoothing - 1.0, curr_gain) / smoothing;
+        let curr_avg_loss = prev_avg_loss.mul_add(smoothing - 1.0, curr_loss) / smoothing;
+
+        output_avg_gain[i] = curr_avg_gain;
+        output_avg_loss[i] = curr_avg_loss;
+
+        if curr_avg_loss == 0.0 {
+            output_rsi[i] = 100.0;
+        } else {
+            let rs = curr_avg_gain / curr_avg_loss;
+            output_rsi[i] = 100.0 - (100.0 / (1.0 + rs));
+        }
+
+        prev_avg_gain = curr_avg_gain;
+        prev_avg_loss = curr_avg_loss;
+    }
+}
+
 /// Calculates Relative Strength Index (RSI) for a price series.
 ///
 /// RSI is a momentum oscillator that measures the speed and magnitude of recent price changes
@@ -134,71 +203,55 @@ pub fn rsi(
         }
     }
 
-    let mut gains = 0.0;
-    let mut losses = 0.0;
-
-    // Calculate initial gains/losses sum
-    for i in 1..=lookback {
-        let diff = input_prices[i] - input_prices[i - 1];
-        if diff > 0.0 {
-            gains += diff;
-        } else {
-            losses += diff.abs();
-        }
-    }
-
-    // Calculate first RSI value
-    let first_avg_gain = gains / opt_period as TAFloat;
-    let first_avg_loss = losses / opt_period as TAFloat;
-
-    output_avg_gain[lookback] = first_avg_gain;
-    output_avg_loss[lookback] = first_avg_loss;
-
-    if first_avg_loss == 0.0 {
-        output_rsi[lookback] = 100.0;
-    } else {
-        let rs = first_avg_gain / first_avg_loss;
-        output_rsi[lookback] = 100.0 - (100.0 / (1.0 + rs));
-    }
-
-    // Calculate remaining RSI values using smoothed averages
-    let mut prev_avg_gain = first_avg_gain;
-    let mut prev_avg_loss = first_avg_loss;
-    let smoothing = opt_period as TAFloat;
-
-    for i in lookback + 1..len {
-        let diff = input_prices[i] - input_prices[i - 1];
-        let (curr_gain, curr_loss) = if diff > 0.0 {
-            (diff, 0.0)
-        } else {
-            (0.0, diff.abs())
-        };
-
-        let curr_avg_gain = prev_avg_gain.mul_add(smoothing - 1.0, curr_gain) / smoothing;
-        let curr_avg_loss = prev_avg_loss.mul_add(smoothing - 1.0, curr_loss) / smoothing;
-
-        output_avg_gain[i] = curr_avg_gain;
-        output_avg_loss[i] = curr_avg_loss;
-
-        if curr_avg_loss == 0.0 {
-            output_rsi[i] = 100.0;
-        } else {
-            let rs = curr_avg_gain / curr_avg_loss;
-            output_rsi[i] = 100.0 - (100.0 / (1.0 + rs));
-        }
-
-        prev_avg_gain = curr_avg_gain;
-        prev_avg_loss = curr_avg_loss;
-    }
+    rsi_raw(
+        input_prices,
+        opt_period,
+        output_rsi,
+        output_avg_gain,
+        output_avg_loss,
+    );
 
     // Fill initial values with NAN
-    for i in 0..lookback {
-        output_rsi[i] = TAFloat::NAN;
-        output_avg_gain[i] = TAFloat::NAN;
-        output_avg_loss[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_rsi[i] = TAFloat::NAN;
+            output_avg_gain[i] = TAFloat::NAN;
+            output_avg_loss[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates the latest RSI value incrementally without validation.
+#[must_use]
+pub fn rsi_inc_raw(
+    input_curr_price: TAFloat,
+    prev_price: TAFloat,
+    prev_avg_gain: TAFloat,
+    prev_avg_loss: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat) {
+    let diff = input_curr_price - prev_price;
+    let (curr_gain, curr_loss) = if diff > 0.0 {
+        (diff, 0.0)
+    } else {
+        (0.0, diff.abs())
+    };
+
+    let smoothing = opt_period as TAFloat;
+    let output_avg_gain = prev_avg_gain.mul_add(smoothing - 1.0, curr_gain) / smoothing;
+    let output_avg_loss = prev_avg_loss.mul_add(smoothing - 1.0, curr_loss) / smoothing;
+
+    let output_rsi = if output_avg_loss == 0.0 {
+        100.0
+    } else {
+        let rs = output_avg_gain / output_avg_loss;
+        100.0 - (100.0 / (1.0 + rs))
+    };
+
+    (output_rsi, output_avg_gain, output_avg_loss)
 }
 
 /// Calculates the latest RSI value incrementally using previous average gain and loss values.
@@ -269,26 +322,23 @@ pub fn rsi_inc(
         }
     }
 
-    let diff = input_curr_price - prev_price;
-    let (curr_gain, curr_loss) = if diff > 0.0 {
-        (diff, 0.0)
-    } else {
-        (0.0, diff.abs())
-    };
-
-    let smoothing = opt_period as TAFloat;
-    let output_avg_gain = prev_avg_gain.mul_add(smoothing - 1.0, curr_gain) / smoothing;
-    let output_avg_loss = prev_avg_loss.mul_add(smoothing - 1.0, curr_loss) / smoothing;
-
-    let output_rsi = if output_avg_loss == 0.0 {
-        100.0
-    } else {
-        let rs = output_avg_gain / output_avg_loss;
-        100.0 - (100.0 / (1.0 + rs))
-    };
-
-    Ok((output_rsi, output_avg_gain, output_avg_loss))
+    Ok(rsi_inc_raw(
+        input_curr_price,
+        prev_price,
+        prev_avg_gain,
+        prev_avg_loss,
+        opt_period,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    rsi,
+    crate::ta::ohlcv::rsi::rsi_raw,
+    inputs: { input_prices },
+    params: { opt_period: usize },
+    outputs: { output_rsi, output_avg_gain, output_avg_loss }
+);
 
 #[cfg(test)]
 mod tests {
@@ -320,6 +370,7 @@ mod tests {
         .unwrap();
 
         // Verify first 14 values are NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_rsi.iter().take(opt_period) {
             assert!(value.is_nan());
         }

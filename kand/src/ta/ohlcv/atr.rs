@@ -34,6 +34,37 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period)
 }
 
+/// Calculates Average True Range (ATR) without input validation for high performance.
+pub fn atr_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    output_atr: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = opt_period;
+
+    // Calculate first TR values and initial ATR (SMA of TR)
+    let mut tr_sum = 0.0;
+    let mut prev_close = input_close[0];
+
+    for i in 1..=lookback {
+        // Use trange_inc_raw
+        let tr = trange::trange_inc_raw(input_high[i], input_low[i], prev_close);
+        tr_sum += tr;
+        prev_close = input_close[i];
+    }
+    output_atr[lookback] = tr_sum / (opt_period as TAFloat);
+
+    // Calculate remaining ATR values using RMA
+    for i in (lookback + 1)..len {
+        let tr = trange::trange_inc_raw(input_high[i], input_low[i], input_close[i - 1]);
+        output_atr[i] =
+            output_atr[i - 1].mul_add((opt_period - 1) as TAFloat, tr) / (opt_period as TAFloat);
+    }
+}
+
 /// Calculates Average True Range (ATR) for an entire price series.
 ///
 /// # Description
@@ -127,23 +158,7 @@ pub fn atr(
         }
     }
 
-    // Calculate first TR values and initial ATR (SMA of TR)
-    let mut tr_sum = 0.0;
-    let mut prev_close = input_close[0];
-
-    for i in 1..=lookback {
-        let tr = trange::trange_inc(input_high[i], input_low[i], prev_close)?;
-        tr_sum += tr;
-        prev_close = input_close[i];
-    }
-    output_atr[lookback] = tr_sum / (opt_period as TAFloat);
-
-    // Calculate remaining ATR values using RMA
-    for i in (lookback + 1)..len {
-        let tr = trange::trange_inc(input_high[i], input_low[i], input_close[i - 1])?;
-        output_atr[i] =
-            output_atr[i - 1].mul_add((opt_period - 1) as TAFloat, tr) / (opt_period as TAFloat);
-    }
+    atr_raw(input_high, input_low, input_close, opt_period, output_atr);
 
     // Fill initial values with NAN
     for value in output_atr.iter_mut().take(lookback) {
@@ -151,6 +166,19 @@ pub fn atr(
     }
 
     Ok(())
+}
+
+/// Calculates the next ATR value without input validation.
+#[must_use]
+pub fn atr_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    prev_close: TAFloat,
+    prev_atr: TAFloat,
+    opt_period: usize,
+) -> TAFloat {
+    let tr = trange::trange_inc_raw(input_high, input_low, prev_close);
+    prev_atr.mul_add((opt_period - 1) as TAFloat, tr) / (opt_period as TAFloat)
 }
 
 /// Calculates the next ATR value using the previous ATR value and current price data.
@@ -214,9 +242,22 @@ pub fn atr_inc(
         }
     }
 
-    let tr = trange::trange_inc(input_high, input_low, prev_close)?;
-    Ok(prev_atr.mul_add((opt_period - 1) as TAFloat, tr) / (opt_period as TAFloat))
+    Ok(atr_inc_raw(
+        input_high,
+        input_low,
+        prev_close,
+        prev_atr,
+        opt_period,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    atr,
+    crate::ta::ohlcv::atr::atr_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize }
+);
 
 #[cfg(test)]
 mod tests {
@@ -233,7 +274,7 @@ mod tests {
             35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
         ];
         let input_low = vec![
-            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35202.8, 35175.0,
             35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
             35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0,
         ];

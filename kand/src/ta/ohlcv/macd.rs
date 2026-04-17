@@ -345,3 +345,22 @@ pub fn macd_inc(
         opt_signal_period,
     ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    macd,
+    crate::ta::ohlcv::macd::macd_raw,
+    inputs: { input_price },
+    params: {
+        opt_fast_period: usize,
+        opt_slow_period: usize,
+        opt_signal_period: usize
+    },
+    outputs: {
+        output_macd_line,
+        output_signal_line,
+        output_histogram,
+        output_fast_ema,
+        output_slow_ema
+    }
+);
