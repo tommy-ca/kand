@@ -1,5 +1,8 @@
 use crate::{TAFloat, error::KandError, helper::period_to_k};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for DEMA calculation.
 ///
 /// # Description
@@ -29,6 +32,51 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(2 * (opt_period - 1))
+}
+
+/// Calculates Double Exponential Moving Average (DEMA) without input validation for high performance.
+pub fn dema_raw(
+    input: &[TAFloat],
+    opt_period: usize,
+    output_dema: &mut [TAFloat],
+    output_ema1: &mut [TAFloat],
+    output_ema2: &mut [TAFloat],
+) {
+    let len = input.len();
+    let alpha = 2.0 / (opt_period + 1) as TAFloat;
+
+    // Calculate initial SMA for first EMA
+    let mut sum = input[0];
+    for price in input.iter().take(opt_period).skip(1) {
+        sum += *price;
+    }
+    let mut prev_ema1 = sum / opt_period as TAFloat;
+    output_ema1[opt_period - 1] = prev_ema1;
+
+    // Calculate first EMA series
+    for i in opt_period..len {
+        prev_ema1 = input[i].mul_add(alpha, prev_ema1 * (1.0 - alpha));
+        output_ema1[i] = prev_ema1;
+    }
+
+    // Initialize second EMA with SMA of first EMA
+    let mut sum = output_ema1[opt_period - 1];
+    for value in output_ema1.iter().take(opt_period * 2 - 1).skip(opt_period) {
+        sum += *value;
+    }
+    let mut prev_ema2 = sum / opt_period as TAFloat;
+    output_ema2[opt_period * 2 - 2] = prev_ema2;
+
+    // Calculate second EMA series (EMA of EMA)
+    for i in opt_period * 2 - 1..len {
+        prev_ema2 = output_ema1[i].mul_add(alpha, prev_ema2 * (1.0 - alpha));
+        output_ema2[i] = prev_ema2;
+    }
+
+    // Calculate DEMA = 2 * EMA1 - EMA2
+    for i in 0..len {
+        output_dema[i] = 2.0f64.mul_add(output_ema1[i], -output_ema2[i]);
+    }
 }
 
 /// Calculates Double Exponential Moving Average (DEMA) for a price series.
@@ -121,48 +169,36 @@ pub fn dema(
         }
     }
 
-    let alpha = period_to_k(opt_period)?;
-
-    // Calculate initial SMA for first EMA
-    let mut sum = input[0];
-    for price in input.iter().take(opt_period).skip(1) {
-        sum += *price;
-    }
-    let mut prev_ema1 = sum / opt_period as TAFloat;
-    output_ema1[opt_period - 1] = prev_ema1;
-
-    // Calculate first EMA series
-    for i in opt_period..len {
-        prev_ema1 = input[i].mul_add(alpha, prev_ema1 * (1.0 - alpha));
-        output_ema1[i] = prev_ema1;
-    }
-    // Initialize second EMA with SMA of first EMA
-    let mut sum = output_ema1[opt_period - 1];
-    for value in output_ema1.iter().take(opt_period * 2 - 1).skip(opt_period) {
-        sum += *value;
-    }
-    let mut prev_ema2 = sum / opt_period as TAFloat;
-    output_ema2[opt_period * 2 - 2] = prev_ema2;
-
-    // Calculate second EMA series (EMA of EMA)
-    for i in opt_period * 2 - 1..len {
-        prev_ema2 = output_ema1[i].mul_add(alpha, prev_ema2 * (1.0 - alpha));
-        output_ema2[i] = prev_ema2;
-    }
-
-    // Calculate DEMA = 2 * EMA1 - EMA2
-    for i in 0..len {
-        output_dema[i] = 2.0f64.mul_add(output_ema1[i], -output_ema2[i]);
-    }
+    dema_raw(input, opt_period, output_dema, output_ema1, output_ema2);
 
     // Fill initial values with NAN
-    for i in 0..lookback {
-        output_dema[i] = TAFloat::NAN;
-        output_ema1[i] = TAFloat::NAN;
-        output_ema2[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_dema[i] = TAFloat::NAN;
+            output_ema1[i] = TAFloat::NAN;
+            output_ema2[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates a single new DEMA value incrementally without validation.
+#[must_use]
+pub fn dema_inc_raw(
+    input_price: TAFloat,
+    prev_ema1: TAFloat,
+    prev_ema2: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat) {
+    let alpha = 2.0 / (opt_period + 1) as TAFloat;
+
+    let new_ema1 = input_price.mul_add(alpha, prev_ema1 * (1.0 - alpha));
+    let new_ema2 = new_ema1.mul_add(alpha, prev_ema2 * (1.0 - alpha));
+    let dema = 2.0f64.mul_add(new_ema1, -new_ema2);
+
+    (dema, new_ema1, new_ema2)
 }
 
 /// Calculates a single new DEMA value incrementally using previous EMAs.
@@ -224,14 +260,17 @@ pub fn dema_inc(
         }
     }
 
-    let alpha = period_to_k(opt_period)?;
-
-    let new_ema1 = input_price.mul_add(alpha, prev_ema1 * (1.0 - alpha));
-    let new_ema2 = new_ema1.mul_add(alpha, prev_ema2 * (1.0 - alpha));
-    let dema = 2.0f64.mul_add(new_ema1, -new_ema2);
-
-    Ok((dema, new_ema1, new_ema2))
+    Ok(dema_inc_raw(input_price, prev_ema1, prev_ema2, opt_period))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    dema,
+    crate::ta::ohlcv::dema::dema_raw,
+    inputs: { input },
+    params: { opt_period: usize },
+    outputs: { output_dema, output_ema1, output_ema2 }
+);
 
 #[cfg(test)]
 mod tests {
@@ -261,6 +300,7 @@ mod tests {
         .unwrap();
 
         // First 8 values should be NaN (lookback = 2 * (period - 1) = 8)
+        #[cfg(feature = "allow-nan")]
         for value in output_dema.iter().take(8) {
             assert!(value.is_nan());
         }
@@ -300,6 +340,46 @@ mod tests {
 
             prev_ema1 = new_ema1;
             prev_ema2 = new_ema2;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_dema_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6,
+        ];
+        let input_arrow = TAArrowArray::from(input.clone());
+        let opt_period = 5;
+
+        let (dema_arrow, _, _) = dema_arrow(&input_arrow, opt_period).unwrap();
+
+        assert_eq!(dema_arrow.len(), input.len());
+
+        let mut out_dema = vec![0.0; input.len()];
+        let mut out_ema1 = vec![0.0; input.len()];
+        let mut out_ema2 = vec![0.0; input.len()];
+
+        dema(
+            &input,
+            opt_period,
+            &mut out_dema,
+            &mut out_ema1,
+            &mut out_ema2,
+        )
+        .unwrap();
+
+        for i in 0..input.len() {
+            if i < 8 {
+                #[cfg(feature = "allow-nan")]
+                assert!(dema_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(dema_arrow.value(i), out_dema[i], epsilon = 0.0001);
+            }
         }
     }
 }

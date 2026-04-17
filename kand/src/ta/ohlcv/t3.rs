@@ -1,5 +1,8 @@
 use crate::{TAFloat, error::KandError};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for T3 indicator
 ///
 /// # Arguments
@@ -19,6 +22,130 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(6 * (opt_period - 1))
+}
+
+/// Calculates T3 without input validation for high performance.
+pub fn t3_raw(
+    input: &[TAFloat],
+    opt_period: usize,
+    opt_vfactor: TAFloat,
+    output: &mut [TAFloat],
+    output_ema1: &mut [TAFloat],
+    output_ema2: &mut [TAFloat],
+    output_ema3: &mut [TAFloat],
+    output_ema4: &mut [TAFloat],
+    output_ema5: &mut [TAFloat],
+    output_ema6: &mut [TAFloat],
+) {
+    let len = input.len();
+    let lookback = 6 * (opt_period - 1);
+
+    let a = opt_vfactor;
+    let a2 = a * a;
+    let a3 = a2 * a;
+
+    let c1 = -a3;
+    let c2 = 3.0 * (a2 + a3);
+    let c3 = 3.0f64.mul_add(-a3, (-6.0f64).mul_add(a2, -(3.0 * a)));
+    let c4 = 3.0f64.mul_add(a2, 3.0f64.mul_add(a, 1.0) + a3);
+
+    let k = 2.0 / (opt_period + 1) as TAFloat;
+    let one_minus_k = 1.0 - k;
+
+    let mut today = 0;
+
+    let mut temp = 0.0;
+    for _ in 0..opt_period {
+        temp += input[today];
+        today += 1;
+    }
+    let mut e1 = temp / (opt_period as TAFloat);
+
+    temp = e1;
+    for _ in 1..opt_period {
+        e1 = k.mul_add(input[today], one_minus_k * e1);
+        temp += e1;
+        today += 1;
+    }
+    let mut e2 = temp / (opt_period as TAFloat);
+
+    temp = e2;
+    for _ in 1..opt_period {
+        e1 = k.mul_add(input[today], one_minus_k * e1);
+        e2 = k.mul_add(e1, one_minus_k * e2);
+        temp += e2;
+        today += 1;
+    }
+    let mut e3 = temp / (opt_period as TAFloat);
+
+    temp = e3;
+    for _ in 1..opt_period {
+        e1 = k.mul_add(input[today], one_minus_k * e1);
+        e2 = k.mul_add(e1, one_minus_k * e2);
+        e3 = k.mul_add(e2, one_minus_k * e3);
+        temp += e3;
+        today += 1;
+    }
+    let mut e4 = temp / (opt_period as TAFloat);
+
+    temp = e4;
+    for _ in 1..opt_period {
+        e1 = k.mul_add(input[today], one_minus_k * e1);
+        e2 = k.mul_add(e1, one_minus_k * e2);
+        e3 = k.mul_add(e2, one_minus_k * e3);
+        e4 = k.mul_add(e3, one_minus_k * e4);
+        temp += e4;
+        today += 1;
+    }
+    let mut e5 = temp / (opt_period as TAFloat);
+
+    temp = e5;
+    for _ in 1..opt_period {
+        e1 = k.mul_add(input[today], one_minus_k * e1);
+        e2 = k.mul_add(e1, one_minus_k * e2);
+        e3 = k.mul_add(e2, one_minus_k * e3);
+        e4 = k.mul_add(e3, one_minus_k * e4);
+        e5 = k.mul_add(e4, one_minus_k * e5);
+        temp += e5;
+        today += 1;
+    }
+    let mut e6 = temp / (opt_period as TAFloat);
+
+    while today <= lookback {
+        e1 = k.mul_add(input[today], one_minus_k * e1);
+        e2 = k.mul_add(e1, one_minus_k * e2);
+        e3 = k.mul_add(e2, one_minus_k * e3);
+        e4 = k.mul_add(e3, one_minus_k * e4);
+        e5 = k.mul_add(e4, one_minus_k * e5);
+        e6 = k.mul_add(e5, one_minus_k * e6);
+        today += 1;
+    }
+
+    output[lookback] = c4.mul_add(e3, c3.mul_add(e4, c1.mul_add(e6, c2 * e5)));
+    output_ema1[lookback] = e1;
+    output_ema2[lookback] = e2;
+    output_ema3[lookback] = e3;
+    output_ema4[lookback] = e4;
+    output_ema5[lookback] = e5;
+    output_ema6[lookback] = e6;
+
+    while today < len {
+        e1 = k.mul_add(input[today], one_minus_k * e1);
+        e2 = k.mul_add(e1, one_minus_k * e2);
+        e3 = k.mul_add(e2, one_minus_k * e3);
+        e4 = k.mul_add(e3, one_minus_k * e4);
+        e5 = k.mul_add(e4, one_minus_k * e5);
+        e6 = k.mul_add(e5, one_minus_k * e6);
+
+        output[today] = c4.mul_add(e3, c3.mul_add(e4, c1.mul_add(e6, c2 * e5)));
+        output_ema1[today] = e1;
+        output_ema2[today] = e2;
+        output_ema3[today] = e3;
+        output_ema4[today] = e4;
+        output_ema5[today] = e5;
+        output_ema6[today] = e6;
+        today += 1;
+    }
 }
 
 /// Calculates T3 (Triple Exponential Moving Average) indicator for a price series
@@ -150,137 +277,80 @@ pub fn t3(
         }
     }
 
-    let a = opt_vfactor as TAFloat;
+    t3_raw(
+        input,
+        opt_period,
+        opt_vfactor,
+        output,
+        output_ema1,
+        output_ema2,
+        output_ema3,
+        output_ema4,
+        output_ema5,
+        output_ema6,
+    );
+
+    // Mark the unstable period indices with NaN.
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output[i] = TAFloat::NAN;
+            output_ema1[i] = TAFloat::NAN;
+            output_ema2[i] = TAFloat::NAN;
+            output_ema3[i] = TAFloat::NAN;
+            output_ema4[i] = TAFloat::NAN;
+            output_ema5[i] = TAFloat::NAN;
+            output_ema6[i] = TAFloat::NAN;
+        }
+    }
+
+    Ok(())
+}
+
+/// Calculates the latest T3 value incrementally without input validation.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+#[must_use]
+pub fn t3_inc_raw(
+    input_price: TAFloat,
+    prev_ema1: TAFloat,
+    prev_ema2: TAFloat,
+    prev_ema3: TAFloat,
+    prev_ema4: TAFloat,
+    prev_ema5: TAFloat,
+    prev_ema6: TAFloat,
+    opt_period: usize,
+    opt_vfactor: TAFloat,
+) -> (
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+    TAFloat,
+) {
+    let k = 2.0 / (opt_period + 1) as TAFloat;
+    let one_minus_k = 1.0 - k;
+
+    let ema1 = input_price.mul_add(k, prev_ema1 * one_minus_k);
+    let ema2 = ema1.mul_add(k, prev_ema2 * one_minus_k);
+    let ema3 = ema2.mul_add(k, prev_ema3 * one_minus_k);
+    let ema4 = ema3.mul_add(k, prev_ema4 * one_minus_k);
+    let ema5 = ema4.mul_add(k, prev_ema5 * one_minus_k);
+    let ema6 = ema5.mul_add(k, prev_ema6 * one_minus_k);
+
+    let a = opt_vfactor;
     let a2 = a * a;
     let a3 = a2 * a;
 
-    // Calculate coefficients consistent with TA-Lib
     let c1 = -a3;
     let c2 = 3.0 * (a2 + a3);
     let c3 = 3.0f64.mul_add(-a3, (-6.0f64).mul_add(a2, -(3.0 * a)));
     let c4 = 3.0f64.mul_add(a2, 3.0f64.mul_add(a, 1.0) + a3);
 
-    let k = crate::helper::period_to_k(opt_period)?;
-    let one_minus_k = 1.0 - k;
+    let t3 = c4.mul_add(ema3, c3.mul_add(ema4, c1.mul_add(ema6, c2 * ema5)));
 
-    // Sequential initialization mimicking TA-Lib's warm-up process.
-    // "today" will serve as our pointer into the input array.
-    let mut today = 0;
-
-    // Initialize EMA1 with a simple moving average (SMA) of the first 'opt_period' values.
-    let mut temp = 0.0;
-    for _ in 0..opt_period {
-        temp += input[today];
-        today += 1;
-    }
-    let mut e1 = temp / (opt_period as TAFloat);
-
-    // Initialize EMA2 using the next (opt_period - 1) values.
-    temp = e1;
-    for _ in 1..opt_period {
-        e1 = k.mul_add(input[today], one_minus_k * e1);
-        temp += e1;
-        today += 1;
-    }
-    let mut e2 = temp / (opt_period as TAFloat);
-
-    // Initialize EMA3.
-    temp = e2;
-    for _ in 1..opt_period {
-        e1 = k.mul_add(input[today], one_minus_k * e1);
-        e2 = k.mul_add(e1, one_minus_k * e2);
-        temp += e2;
-        today += 1;
-    }
-    let mut e3 = temp / (opt_period as TAFloat);
-
-    // Initialize EMA4.
-    temp = e3;
-    for _ in 1..opt_period {
-        e1 = k.mul_add(input[today], one_minus_k * e1);
-        e2 = k.mul_add(e1, one_minus_k * e2);
-        e3 = k.mul_add(e2, one_minus_k * e3);
-        temp += e3;
-        today += 1;
-    }
-    let mut e4 = temp / (opt_period as TAFloat);
-
-    // Initialize EMA5.
-    temp = e4;
-    for _ in 1..opt_period {
-        e1 = k.mul_add(input[today], one_minus_k * e1);
-        e2 = k.mul_add(e1, one_minus_k * e2);
-        e3 = k.mul_add(e2, one_minus_k * e3);
-        e4 = k.mul_add(e3, one_minus_k * e4);
-        temp += e4;
-        today += 1;
-    }
-    let mut e5 = temp / (opt_period as TAFloat);
-
-    // Initialize EMA6.
-    temp = e5;
-    for _ in 1..opt_period {
-        e1 = k.mul_add(input[today], one_minus_k * e1);
-        e2 = k.mul_add(e1, one_minus_k * e2);
-        e3 = k.mul_add(e2, one_minus_k * e3);
-        e4 = k.mul_add(e3, one_minus_k * e4);
-        e5 = k.mul_add(e4, one_minus_k * e5);
-        temp += e5;
-        today += 1;
-    }
-    let mut e6 = temp / (opt_period as TAFloat);
-
-    // Skip the remainder of the unstable period (if any).
-    while today <= lookback {
-        e1 = k.mul_add(input[today], one_minus_k * e1);
-        e2 = k.mul_add(e1, one_minus_k * e2);
-        e3 = k.mul_add(e2, one_minus_k * e3);
-        e4 = k.mul_add(e3, one_minus_k * e4);
-        e5 = k.mul_add(e4, one_minus_k * e5);
-        e6 = k.mul_add(e5, one_minus_k * e6);
-        today += 1;
-    }
-
-    // Write the first valid output at index = lookback.
-    output[lookback] = c4.mul_add(e3, c3.mul_add(e4, c1.mul_add(e6, c2 * e5)));
-    output_ema1[lookback] = e1;
-    output_ema2[lookback] = e2;
-    output_ema3[lookback] = e3;
-    output_ema4[lookback] = e4;
-    output_ema5[lookback] = e5;
-    output_ema6[lookback] = e6;
-
-    // Process the remaining data points.
-    while today < len {
-        e1 = k.mul_add(input[today], one_minus_k * e1);
-        e2 = k.mul_add(e1, one_minus_k * e2);
-        e3 = k.mul_add(e2, one_minus_k * e3);
-        e4 = k.mul_add(e3, one_minus_k * e4);
-        e5 = k.mul_add(e4, one_minus_k * e5);
-        e6 = k.mul_add(e5, one_minus_k * e6);
-
-        output[today] = c4.mul_add(e3, c3.mul_add(e4, c1.mul_add(e6, c2 * e5)));
-        output_ema1[today] = e1;
-        output_ema2[today] = e2;
-        output_ema3[today] = e3;
-        output_ema4[today] = e4;
-        output_ema5[today] = e5;
-        output_ema6[today] = e6;
-        today += 1;
-    }
-
-    // Mark the unstable period indices with NaN.
-    for i in 0..lookback {
-        output[i] = TAFloat::NAN;
-        output_ema1[i] = TAFloat::NAN;
-        output_ema2[i] = TAFloat::NAN;
-        output_ema3[i] = TAFloat::NAN;
-        output_ema4[i] = TAFloat::NAN;
-        output_ema5[i] = TAFloat::NAN;
-        output_ema6[i] = TAFloat::NAN;
-    }
-
-    Ok(())
+    (t3, ema1, ema2, ema3, ema4, ema5, ema6)
 }
 
 /// Calculates the latest T3 value incrementally using previous EMA values
@@ -375,32 +445,27 @@ pub fn t3_inc(
         }
     }
 
-    let k = crate::helper::period_to_k(opt_period)?;
-    let one_minus_k = 1.0 - k;
-
-    // Calculate new EMA values
-    let ema1 = input_price.mul_add(k, prev_ema1 * one_minus_k);
-    let ema2 = ema1.mul_add(k, prev_ema2 * one_minus_k);
-    let ema3 = ema2.mul_add(k, prev_ema3 * one_minus_k);
-    let ema4 = ema3.mul_add(k, prev_ema4 * one_minus_k);
-    let ema5 = ema4.mul_add(k, prev_ema5 * one_minus_k);
-    let ema6 = ema5.mul_add(k, prev_ema6 * one_minus_k);
-
-    // Calculate coefficients
-    let a = opt_vfactor as TAFloat;
-    let a2 = a * a;
-    let a3 = a2 * a;
-
-    let c1 = -a3;
-    let c2 = 3.0 * (a2 + a3);
-    let c3 = 3.0f64.mul_add(-a3, (-6.0f64).mul_add(a2, -(3.0 * a)));
-    let c4 = 3.0f64.mul_add(a2, 3.0f64.mul_add(a, 1.0) + a3);
-
-    // Calculate T3
-    let t3 = c4.mul_add(ema3, c3.mul_add(ema4, c1.mul_add(ema6, c2 * ema5)));
-
-    Ok((t3, ema1, ema2, ema3, ema4, ema5, ema6))
+    Ok(t3_inc_raw(
+        input_price,
+        prev_ema1,
+        prev_ema2,
+        prev_ema3,
+        prev_ema4,
+        prev_ema5,
+        prev_ema6,
+        opt_period,
+        opt_vfactor,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    t3,
+    crate::ta::ohlcv::t3::t3_raw,
+    inputs: { input },
+    params: { opt_period: usize, opt_vfactor: TAFloat },
+    outputs: { output, output_ema1, output_ema2, output_ema3, output_ema4, output_ema5, output_ema6 }
+);
 
 #[cfg(test)]
 mod tests {
@@ -443,6 +508,7 @@ mod tests {
         .unwrap();
 
         // First 24 values should be NaN (lookback = 6 * (period - 1) = 24)
+        #[cfg(feature = "allow-nan")]
         for value in output.iter().take(24) {
             assert!(value.is_nan());
         }
@@ -503,6 +569,57 @@ mod tests {
             prev_ema4 = ema4;
             prev_ema5 = ema5;
             prev_ema6 = ema6;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_t3_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1,
+        ];
+        let input_arrow = TAArrowArray::from(input.clone());
+        let opt_period = 5;
+        let opt_vfactor = 0.7;
+
+        let (t3_arrow, _, _, _, _, _, _) = t3_arrow(&input_arrow, opt_period, opt_vfactor).unwrap();
+
+        assert_eq!(t3_arrow.len(), input.len());
+
+        let mut out = vec![0.0; input.len()];
+        let mut out_ema1 = vec![0.0; input.len()];
+        let mut out_ema2 = vec![0.0; input.len()];
+        let mut out_ema3 = vec![0.0; input.len()];
+        let mut out_ema4 = vec![0.0; input.len()];
+        let mut out_ema5 = vec![0.0; input.len()];
+        let mut out_ema6 = vec![0.0; input.len()];
+
+        t3(
+            &input,
+            opt_period,
+            opt_vfactor,
+            &mut out,
+            &mut out_ema1,
+            &mut out_ema2,
+            &mut out_ema3,
+            &mut out_ema4,
+            &mut out_ema5,
+            &mut out_ema6,
+        )
+        .unwrap();
+
+        for i in 0..input.len() {
+            if i < 24 {
+                #[cfg(feature = "allow-nan")]
+                assert!(t3_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(t3_arrow.value(i), out[i], epsilon = 0.0001);
+            }
         }
     }
 }

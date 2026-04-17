@@ -31,22 +31,24 @@ The current `kand` bindings suffer from memory copy overhead. By integrating `ar
 ### Phase 2: Batch-Driven TDD Scaling
 Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
 
-- [ ] **Unit 2.1: Batch 2 - BBands & ADX (Multi-Output Focus)**
-  **Goal:** Refactor BBands and ADX to use multi-output macros and normalize core logic.
-  **Files:** `kand/src/ta/ohlcv/bbands.rs`, `kand/src/ta/ohlcv/adx.rs`
+- [x] **Unit 2.1: Batch 1 & 2 - Core & Multi-Output (COMPLETED)**
+  - Done: SMA, EMA, MACD, RSI, ATR, BBands, ADX, DX, Plus DI, Minus DI, Var.
+
+- [ ] **Unit 2.2: Batch 3 - Trend & Volatility Extensions**
+  **Goal:** Refactor DEMA, TEMA, T3, TRIMA, WMA to use the normalization pattern and Arrow macros.
+  **Files:** `kand/src/ta/ohlcv/{dema, tema, t3, trima, wma}.rs`
   **Approach (TDD):**
-  1. Define spec for Arrow result structs.
-  2. Write Arrow parity tests (offset, alignment).
-  3. Implement `_raw` and `_arrow` variants.
-  4. Perform semantic commit.
+  1. Write Arrow parity tests for each.
+  2. Implement `_raw` and `_arrow` variants.
+  3. Perform semantic commit.
 
-- [ ] **Unit 2.2: Batch 3 - Momentum & Volatility (RSI, ATR, etc.)**
-  **Goal:** Systematic normalization of remaining OHLCV indicators.
-  **Files:** `kand/src/ta/ohlcv/rsi.rs` (Done), `kand/src/ta/ohlcv/atr.rs` (Done), others.
+- [ ] **Unit 2.3: Batch 4 - Momentum & Volume**
+  **Goal:** Normalize CCI, MFI, OBV, WillR, etc.
+  **Files:** `kand/src/ta/ohlcv/{cci, mfi, obv, willr}.rs`
 
-- [ ] **Unit 2.3: Batch 4 - Stats (StdDev, Var, etc.)**
-  **Goal:** Normalize and wrap statistics functions.
-  **Files:** `kand/src/ta/stats/*.rs`
+- [ ] **Unit 2.4: Batch 5 - Stats & Others**
+  **Goal:** Normalize and wrap remaining stats and helper functions.
+  **Files:** `kand/src/ta/stats/{stddev, sum, max, min, correl}.rs`
 
 ### Phase 3: Bindings & Audit
 

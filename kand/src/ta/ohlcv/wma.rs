@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for Weighted Moving Average (WMA).
 ///
 /// # Description
@@ -31,6 +34,26 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Weighted Moving Average (WMA) without input validation for high performance.
+pub fn wma_raw(input: &[TAFloat], opt_period: usize, output: &mut [TAFloat]) {
+    let len = input.len();
+    let lookback = opt_period - 1;
+    let denominator = (opt_period * (opt_period + 1)) as TAFloat / 2.0;
+
+    // Calculate WMA for each window
+    for i in lookback..len {
+        let mut weighted_sum = 0.0;
+        let mut weight = opt_period as TAFloat;
+
+        for j in 0..opt_period {
+            weighted_sum += input[i - j] * weight;
+            weight -= 1.0;
+        }
+
+        output[i] = weighted_sum / denominator;
+    }
 }
 
 /// Calculates Weighted Moving Average (WMA) for a price series.
@@ -100,28 +123,32 @@ pub fn wma(input: &[TAFloat], opt_period: usize, output: &mut [TAFloat]) -> Resu
         }
     }
 
-    // Calculate denominator (sum of weights)
-    let denominator = (opt_period * (opt_period + 1)) as TAFloat / 2.0;
+    wma_raw(input, opt_period, output);
 
     // Fill initial values with NAN
-    for value in output.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
-    }
-
-    // Calculate WMA for each window
-    for i in lookback..len {
-        let mut weighted_sum = 0.0;
-        let mut weight = opt_period as TAFloat;
-
-        for j in 0..opt_period {
-            weighted_sum += input[i - j] * weight;
-            weight -= 1.0;
+    #[cfg(feature = "allow-nan")]
+    {
+        for value in output.iter_mut().take(lookback) {
+            *value = TAFloat::NAN;
         }
-
-        output[i] = weighted_sum / denominator;
     }
 
     Ok(())
+}
+
+/// Calculates the next WMA value incrementally without input validation.
+#[must_use]
+pub fn wma_inc_raw(input_window: &[TAFloat], opt_period: usize) -> TAFloat {
+    let denominator = (opt_period * (opt_period + 1)) as TAFloat / 2.0;
+    let mut weighted_sum = 0.0;
+    let mut weight = opt_period as TAFloat;
+
+    for &value in input_window {
+        weighted_sum += value * weight;
+        weight -= 1.0;
+    }
+
+    weighted_sum / denominator
 }
 
 /// Calculates the next WMA value incrementally.
@@ -179,17 +206,16 @@ pub fn wma_inc(input_window: &[TAFloat], opt_period: usize) -> Result<TAFloat, K
         }
     }
 
-    let denominator = (opt_period * (opt_period + 1)) as TAFloat / 2.0;
-    let mut weighted_sum = 0.0;
-    let mut weight = opt_period as TAFloat;
-
-    for &value in input_window {
-        weighted_sum += value * weight;
-        weight -= 1.0;
-    }
-
-    Ok(weighted_sum / denominator)
+    Ok(wma_inc_raw(input_window, opt_period))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    wma,
+    crate::ta::ohlcv::wma::wma_raw,
+    inputs: { input },
+    params: { opt_period: usize }
+);
 
 #[cfg(test)]
 mod tests {
@@ -213,6 +239,7 @@ mod tests {
         wma(&input, opt_period, &mut output).unwrap();
 
         // First 29 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output.iter().take(29) {
             assert!(value.is_nan());
         }
@@ -245,6 +272,38 @@ mod tests {
                 .collect();
             let result = wma_inc(&window, opt_period).unwrap();
             assert_relative_eq!(result, output[i], epsilon = 0.0001);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_wma_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1, 35215.3,
+            35154.0, 35216.3, 35211.8, 35158.4,
+        ];
+        let input_arrow = TAArrowArray::from(input.clone());
+        let opt_period = 30;
+
+        let wma_arrow = wma_arrow(&input_arrow, opt_period).unwrap();
+
+        assert_eq!(wma_arrow.len(), input.len());
+
+        let mut out = vec![0.0; input.len()];
+        wma(&input, opt_period, &mut out).unwrap();
+
+        for i in 0..input.len() {
+            if i < 29 {
+                #[cfg(feature = "allow-nan")]
+                assert!(wma_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(wma_arrow.value(i), out[i], epsilon = 0.0001);
+            }
         }
     }
 }

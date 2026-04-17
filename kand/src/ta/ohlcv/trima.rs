@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for Triangular Moving Average (TRIMA) calculation.
 ///
 /// # Description
@@ -30,6 +33,50 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Triangular Moving Average (TRIMA) without input validation for high performance.
+pub fn trima_raw(
+    input: &[TAFloat],
+    opt_period: usize,
+    output_sma1: &mut [TAFloat],
+    output_sma2: &mut [TAFloat],
+) {
+    let len = input.len();
+    let lookback = opt_period - 1;
+
+    let (n, m) = if opt_period % 2 == 1 {
+        let n = opt_period.div_ceil(2);
+        (n, n)
+    } else {
+        let n = (opt_period / 2) + 1;
+        let m = opt_period / 2;
+        (n, m)
+    };
+
+    // First SMA calculation
+    let mut sum = 0.0;
+    for value in input.iter().take(n) {
+        sum += *value;
+    }
+    output_sma1[n - 1] = sum / (n as TAFloat);
+
+    for i in n..len {
+        sum = sum + input[i] - input[i - n];
+        output_sma1[i] = sum / (n as TAFloat);
+    }
+
+    // Second SMA calculation
+    sum = 0.0;
+    for value in output_sma1.iter().take(m) {
+        sum += *value;
+    }
+    output_sma2[m - 1] = sum / (m as TAFloat);
+
+    for i in m..len {
+        sum = sum + output_sma1[i] - output_sma1[i - m];
+        output_sma2[i] = sum / (m as TAFloat);
+    }
 }
 
 /// Calculates Triangular Moving Average (TRIMA) for a price series.
@@ -120,6 +167,30 @@ pub fn trima(
         }
     }
 
+    trima_raw(input, opt_period, output_sma1, output_sma2);
+
+    // Fill initial values with NAN
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_sma1[i] = TAFloat::NAN;
+            output_sma2[i] = TAFloat::NAN;
+        }
+    }
+
+    Ok(())
+}
+
+/// Calculates the next TRIMA value incrementally without input validation.
+#[must_use]
+pub fn trima_inc_raw(
+    prev_sma1: TAFloat,
+    prev_sma2: TAFloat,
+    input_new_price: TAFloat,
+    input_old_price: TAFloat,
+    input_old_sma1: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat) {
     let (n, m) = if opt_period % 2 == 1 {
         let n = opt_period.div_ceil(2);
         (n, n)
@@ -129,37 +200,13 @@ pub fn trima(
         (n, m)
     };
 
-    // First SMA calculation
-    let mut sum = 0.0;
-    for value in input.iter().take(n) {
-        sum += *value;
-    }
-    output_sma1[n - 1] = sum / (n as TAFloat);
+    let n_t = n as TAFloat;
+    let m_t = m as TAFloat;
 
-    for i in n..len {
-        sum = sum + input[i] - input[i - n];
-        output_sma1[i] = sum / (n as TAFloat);
-    }
+    let new_sma1 = prev_sma1 + (input_new_price - input_old_price) / n_t;
+    let new_sma2 = prev_sma2 + (new_sma1 - input_old_sma1) / m_t;
 
-    // Second SMA calculation
-    sum = 0.0;
-    for value in output_sma1.iter().take(m) {
-        sum += *value;
-    }
-    output_sma2[m - 1] = sum / (m as TAFloat);
-
-    for i in m..len {
-        sum = sum + output_sma1[i] - output_sma1[i - m];
-        output_sma2[i] = sum / (m as TAFloat);
-    }
-
-    // Fill initial values with NAN
-    for i in 0..lookback {
-        output_sma1[i] = TAFloat::NAN;
-        output_sma2[i] = TAFloat::NAN;
-    }
-
-    Ok(())
+    (new_sma1, new_sma2)
 }
 
 /// Calculates the next TRIMA value incrementally using previous SMA values.
@@ -239,26 +286,24 @@ pub fn trima_inc(
         }
     }
 
-    let (n, m) = if opt_period % 2 == 1 {
-        let n = opt_period.div_ceil(2);
-        (n, n)
-    } else {
-        let n = (opt_period / 2) + 1;
-        let m = opt_period / 2;
-        (n, m)
-    };
-
-    let n_t = n as TAFloat;
-    let m_t = m as TAFloat;
-
-    // Incremental update for the first SMA using the correct window length (n)
-    let new_sma1 = prev_sma1 + (input_new_price - input_old_price) / n_t;
-
-    // Incremental update for the second SMA using the correct window length (m)
-    let new_sma2 = prev_sma2 + (new_sma1 - input_old_sma1) / m_t;
-
-    Ok((new_sma1, new_sma2))
+    Ok(trima_inc_raw(
+        prev_sma1,
+        prev_sma2,
+        input_new_price,
+        input_old_price,
+        input_old_sma1,
+        opt_period,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    trima,
+    crate::ta::ohlcv::trima::trima_raw,
+    inputs: { input },
+    params: { opt_period: usize },
+    outputs: { output_sma1, output_sma2 }
+);
 
 #[cfg(test)]
 mod tests {
@@ -364,6 +409,7 @@ mod tests {
         trima(&input, opt_period, &mut output_sma1, &mut output_sma2).unwrap();
 
         // First 29 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for i in 0..29 {
             assert!(output_sma1[i].is_nan());
             assert!(output_sma2[i].is_nan());
@@ -396,6 +442,47 @@ mod tests {
             assert_relative_eq!(new_sma2, output_sma2[i], epsilon = 0.0001);
             prev_sma1 = new_sma1;
             prev_sma2 = new_sma2;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_trima_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1, 35215.3,
+            35154.0, 35216.3, 35211.8, 35158.4, 35172.0, 35176.7, 35113.3, 35114.7, 35129.3,
+            35094.6, 35114.4, 35094.5, 35116.0, 35105.4, 35050.7, 35031.3, 35008.1, 35021.4,
+            35048.4, 35080.1, 35043.6, 34962.7, 34970.1, 34980.1, 34930.6, 35000.0, 34998.0,
+            35024.7, 34982.1, 34972.3, 34971.6, 34953.0, 34937.0, 34964.3, 34975.1, 34995.1,
+            34989.0, 34942.9, 34895.2, 34830.4, 34925.1, 34888.6, 34910.3, 34917.6, 34940.0,
+            35005.4, 34980.1, 34966.8, 34976.1, 34948.6, 34969.3, 34996.5, 35004.0, 35011.0,
+            35059.2, 35036.1, 35062.3, 35067.7, 35087.9, 35076.7, 35041.6, 34993.3, 34974.5,
+            34990.2,
+        ];
+        let input_arrow = TAArrowArray::from(input.clone());
+        let opt_period = 30;
+
+        let (_, trima_arrow) = trima_arrow(&input_arrow, opt_period).unwrap();
+
+        assert_eq!(trima_arrow.len(), input.len());
+
+        let mut out_sma1 = vec![0.0; input.len()];
+        let mut out_sma2 = vec![0.0; input.len()];
+
+        trima(&input, opt_period, &mut out_sma1, &mut out_sma2).unwrap();
+
+        for i in 0..input.len() {
+            if i < 29 {
+                #[cfg(feature = "allow-nan")]
+                assert!(trima_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(trima_arrow.value(i), out_sma2[i], epsilon = 0.0001);
+            }
         }
     }
 }

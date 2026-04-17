@@ -26,4 +26,11 @@ Every Arrow-native implementation must be preceded or accompanied by a test case
 4.  **Alignment Check:** Proves that output buffers are 64-byte aligned (verified via `MutableBuffer` address).
 
 ## 3. Macro Strategy
-[Unchanged from previous version]
+To support 50+ indicators efficiently, two primary macros are utilized:
+- **`kand_arrow_wrapper!`**: Automates Arrow variants for single-output indicators.
+- **`kand_arrow_wrapper_multi!`**: Automates Arrow variants for multi-output indicators (e.g., MACD, BBands).
+  - Handles the allocation of multiple `MutableBuffer` instances.
+  - Returns a tuple of `TAArrowArray`.
+  - Ensures numerical and validation parity across all outputs.
+
+Multi-output indicators should standardize their `_raw` function to take mutable slices for each output in a predictable order.
