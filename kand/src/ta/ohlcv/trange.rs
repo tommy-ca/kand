@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for True Range (TR) calculation
 ///
 /// # Description
@@ -23,6 +26,24 @@ use crate::{KandError, TAFloat};
 /// ```
 pub const fn lookback() -> Result<usize, KandError> {
     Ok(1)
+}
+
+/// Calculates True Range (TR) without input validation for high performance.
+pub fn trange_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    output_trange: &mut [TAFloat],
+) {
+    let len = input_high.len();
+
+    // First value is NAN since we need previous close
+    output_trange[0] = TAFloat::NAN;
+
+    // Calculate True Range for remaining values
+    for i in 1..len {
+        output_trange[i] = trange_inc_raw(input_high[i], input_low[i], input_close[i - 1]);
+    }
 }
 
 /// Calculates True Range (TR) values for a series of price data
@@ -112,23 +133,19 @@ pub fn trange(
         }
     }
 
-    // First value is NAN since we need previous close
-    output_trange[0] = TAFloat::NAN;
-
-    // Calculate True Range for remaining values
-    for i in 1..len {
-        let h_l = input_high[i] - input_low[i];
-        let h_pc = (input_high[i] - input_close[i - 1]).abs();
-        let l_pc = (input_low[i] - input_close[i - 1]).abs();
-        output_trange[i] = h_l.max(h_pc).max(l_pc);
-    }
-
-    // Fill initial values with NAN
-    for value in output_trange.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
-    }
+    trange_raw(input_high, input_low, input_close, output_trange);
 
     Ok(())
+}
+
+/// Calculates a single True Range value incrementally without validation.
+#[inline]
+#[must_use]
+pub fn trange_inc_raw(input_high: TAFloat, input_low: TAFloat, prev_close: TAFloat) -> TAFloat {
+    let h_l = input_high - input_low;
+    let h_pc = (input_high - prev_close).abs();
+    let l_pc = (input_low - prev_close).abs();
+    h_l.max(h_pc).max(l_pc)
 }
 
 /// Calculates a single True Range value for the most recent period
@@ -177,11 +194,16 @@ pub fn trange_inc(
         }
     }
 
-    let h_l = input_high - input_low;
-    let h_pc = (input_high - prev_close).abs();
-    let l_pc = (input_low - prev_close).abs();
-    Ok(h_l.max(h_pc).max(l_pc))
+    Ok(trange_inc_raw(input_high, input_low, prev_close))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    trange,
+    crate::ta::ohlcv::trange::trange_raw,
+    inputs: { input_high, input_low, input_close },
+    params: {}
+);
 
 #[cfg(test)]
 mod tests {
@@ -210,5 +232,28 @@ mod tests {
             let result = trange_inc(input_high[i], input_low[i], input_close[i - 1]).unwrap();
             assert_relative_eq!(result, output_trange[i], epsilon = 0.00001);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_trange_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![35266.0, 35247.5, 35235.7, 35190.8, 35182.0];
+        let input_low = vec![35216.1, 35206.5, 35180.0, 35130.7, 35153.6];
+        let input_close = vec![35216.1, 35221.4, 35190.7, 35170.0, 35181.5];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+
+        let result = trange_arrow(&high_arrow, &low_arrow, &close_arrow).unwrap();
+
+        assert_eq!(result.len(), 5);
+        assert!(result.value(0).is_nan());
+        assert_relative_eq!(result.value(1), 41.0, epsilon = 0.00001);
+        assert_relative_eq!(result.value(2), 55.7, epsilon = 0.00001);
+        assert_relative_eq!(result.value(3), 60.1, epsilon = 0.00001);
+        assert_relative_eq!(result.value(4), 28.4, epsilon = 0.00001);
     }
 }

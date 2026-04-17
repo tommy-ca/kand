@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for Minus Directional Movement (-DM) calculation.
 ///
 /// # Description
@@ -31,6 +34,47 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Minus DM without input validation for high performance.
+pub fn minus_dm_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    opt_period: usize,
+    output_dm: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = opt_period - 1;
+
+    // Calculate first -DM values and initial -DM (sum of -DM1)
+    let mut dm_sum = 0.0;
+
+    for i in 1..opt_period {
+        let high_diff = input_high[i] - input_high[i - 1];
+        let low_diff = input_low[i - 1] - input_low[i];
+
+        let dm = if low_diff > high_diff && low_diff > 0.0 {
+            low_diff
+        } else {
+            0.0
+        };
+        dm_sum += dm;
+    }
+    output_dm[lookback] = dm_sum;
+
+    // Calculate remaining -DM values using Wilder's smoothing
+    for i in opt_period..len {
+        let high_diff = input_high[i] - input_high[i - 1];
+        let low_diff = input_low[i - 1] - input_low[i];
+
+        let dm = if low_diff > high_diff && low_diff > 0.0 {
+            low_diff
+        } else {
+            0.0
+        };
+
+        output_dm[i] = output_dm[i - 1] - (output_dm[i - 1] / opt_period as TAFloat) + dm;
+    }
 }
 
 /// Calculates Minus Directional Movement (-DM) for a price series.
@@ -124,42 +168,39 @@ pub fn minus_dm(
         }
     }
 
-    // Calculate first -DM values and initial -DM (sum of -DM1)
-    let mut dm_sum = 0.0;
-
-    for i in 1..opt_period {
-        let high_diff = input_high[i] - input_high[i - 1];
-        let low_diff = input_low[i - 1] - input_low[i];
-
-        let dm = if low_diff > high_diff && low_diff > 0.0 {
-            low_diff
-        } else {
-            0.0
-        };
-        dm_sum += dm;
-    }
-    output_dm[lookback] = dm_sum;
-
-    // Calculate remaining -DM values using Wilder's smoothing
-    for i in opt_period..len {
-        let high_diff = input_high[i] - input_high[i - 1];
-        let low_diff = input_low[i - 1] - input_low[i];
-
-        let dm = if low_diff > high_diff && low_diff > 0.0 {
-            low_diff
-        } else {
-            0.0
-        };
-
-        output_dm[i] = output_dm[i - 1] - (output_dm[i - 1] / opt_period as TAFloat) + dm;
-    }
+    minus_dm_raw(input_high, input_low, opt_period, output_dm);
 
     // Fill initial values with NAN
-    for value in output_dm.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for value in output_dm.iter_mut().take(lookback) {
+            *value = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates the next Minus DM value incrementally without validation
+#[must_use]
+pub fn minus_dm_inc_raw(
+    input_high: TAFloat,
+    prev_high: TAFloat,
+    input_low: TAFloat,
+    prev_low: TAFloat,
+    prev_minus_dm: TAFloat,
+    opt_period: usize,
+) -> TAFloat {
+    let high_diff = input_high - prev_high;
+    let low_diff = prev_low - input_low;
+
+    let dm = if low_diff > high_diff && low_diff > 0.0 {
+        low_diff
+    } else {
+        0.0
+    };
+
+    prev_minus_dm - (prev_minus_dm / opt_period as TAFloat) + dm
 }
 
 /// Calculates the next Minus DM value incrementally.
@@ -244,17 +285,23 @@ pub fn minus_dm_inc(
         }
     }
 
-    let high_diff = input_high - prev_high;
-    let low_diff = prev_low - input_low;
-
-    let dm = if low_diff > high_diff && low_diff > 0.0 {
-        low_diff
-    } else {
-        0.0
-    };
-
-    Ok(prev_minus_dm - (prev_minus_dm / opt_period as TAFloat) + dm)
+    Ok(minus_dm_inc_raw(
+        input_high,
+        prev_high,
+        input_low,
+        prev_low,
+        prev_minus_dm,
+        opt_period,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    minus_dm,
+    crate::ta::ohlcv::minus_dm::minus_dm_raw,
+    inputs: { input_high, input_low },
+    params: { opt_period: usize }
+);
 
 #[cfg(test)]
 mod tests {
@@ -262,30 +309,24 @@ mod tests {
 
     use super::*;
 
-    // Basic functionality tests
     #[test]
     fn test_minus_dm_calculation() {
         let input_high = vec![
             35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
             35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
             35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4, 35150.4, 35123.9,
-            35110.0, 35092.1,
+            35110.0, 35092.1, 35179.2,
         ];
         let input_low = vec![
             35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
             35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
             35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0, 35073.0, 35055.0,
-            35084.0, 35060.0,
+            35084.0, 35060.0, 35073.1,
         ];
         let opt_period = 14;
         let mut output_dm = vec![0.0; input_high.len()];
 
         minus_dm(&input_high, &input_low, opt_period, &mut output_dm).unwrap();
-
-        // First period-1 values should be NaN
-        for value in output_dm.iter().take(opt_period - 1) {
-            assert!(value.is_nan());
-        }
 
         // Test subsequent values
         let expected_values = [
@@ -326,6 +367,45 @@ mod tests {
             .unwrap();
             assert_relative_eq!(result, output_dm[i], epsilon = 0.0001);
             prev_dm = result;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_minus_dm_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4, 35150.4, 35123.9,
+            35110.0, 35092.1, 35179.2,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0, 35073.0, 35055.0,
+            35084.0, 35060.0, 35073.1,
+        ];
+        let opt_period = 14;
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+
+        let result = minus_dm_arrow(&high_arrow, &low_arrow, opt_period).unwrap();
+
+        assert_eq!(result.len(), input_high.len());
+
+        let mut out = vec![0.0; input_high.len()];
+        minus_dm(&input_high, &input_low, opt_period, &mut out).unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 13 {
+                #[cfg(feature = "allow-nan")]
+                assert!(result.value(i).is_nan());
+            } else {
+                assert_relative_eq!(result.value(i), out[i], epsilon = 0.0001);
+            }
         }
     }
 }
