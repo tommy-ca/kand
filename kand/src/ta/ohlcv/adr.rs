@@ -1,5 +1,12 @@
 use super::sma;
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+/// Returns the lookback period for ADR without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: TAPeriod) -> TAPeriod {
+    opt_period - 1
+}
 
 /// Returns the lookback period required for Average Daily Range (ADR) calculation.
 ///
@@ -17,8 +24,37 @@ use crate::{KandError, TAFloat};
 /// assert_eq!(lookback, 13);
 /// ```
 #[must_use]
-pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
-    sma::lookback(opt_period)
+pub const fn lookback(opt_period: TAPeriod) -> Result<TAPeriod, KandError> {
+    #[cfg(feature = "check")]
+    {
+        if opt_period < 2 {
+            return Err(KandError::InvalidParameter);
+        }
+    }
+    Ok(lookback_raw(opt_period))
+}
+
+/// Computes ADR without input validation for high performance.
+pub fn adr_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    opt_period: TAPeriod,
+    output_adr: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = lookback_raw(opt_period);
+
+    let mut sum = 0.0;
+    for i in 0..opt_period {
+        sum += input_high[i] - input_low[i];
+    }
+    let period_float = opt_period as TAFloat;
+    output_adr[lookback] = sum / period_float;
+
+    for i in lookback + 1..len {
+        sum = sum + (input_high[i] - input_low[i]) - (input_high[i - opt_period] - input_low[i - opt_period]);
+        output_adr[i] = sum / period_float;
+    }
 }
 
 /// Calculates the Average Daily Range (ADR) for the entire price series.
@@ -60,7 +96,7 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 pub fn adr(
     input_high: &[TAFloat],
     input_low: &[TAFloat],
-    opt_period: usize,
+    opt_period: TAPeriod,
     output_adr: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
@@ -90,15 +126,33 @@ pub fn adr(
         }
     }
 
-    let mut ranges = Vec::with_capacity(len);
-    ranges.extend(
-        input_high
-            .iter()
-            .zip(input_low.iter())
-            .map(|(&h, &l)| h - l),
-    );
+    adr_raw(input_high, input_low, opt_period, output_adr);
 
-    sma::sma(&ranges, opt_period, output_adr)
+    // Fill initial values with NAN
+    #[cfg(feature = "allow-nan")]
+    {
+        for value in output_adr.iter_mut().take(lookback) {
+            *value = TAFloat::NAN;
+        }
+    }
+
+    Ok(())
+}
+
+/// Computes the next ADR value incrementally without input validation.
+#[inline]
+#[must_use]
+pub fn adr_inc_raw(
+    prev_adr: TAFloat,
+    input_new_high: TAFloat,
+    input_new_low: TAFloat,
+    input_old_high: TAFloat,
+    input_old_low: TAFloat,
+    opt_period: TAPeriod,
+) -> TAFloat {
+    let new_range = input_new_high - input_new_low;
+    let old_range = input_old_high - input_old_low;
+    sma::sma_inc_raw(new_range, old_range, prev_adr, opt_period)
 }
 
 /// Calculates the latest Average Daily Range (ADR) value incrementally using the previous ADR value.
@@ -131,14 +185,13 @@ pub fn adr(
 ///
 /// let next_adr = adr::adr_inc(prev_adr, new_high, new_low, old_high, old_low, period).unwrap();
 /// ```
-#[must_use]
 pub fn adr_inc(
     prev_adr: TAFloat,
     input_new_high: TAFloat,
     input_new_low: TAFloat,
     input_old_high: TAFloat,
     input_old_low: TAFloat,
-    opt_period: usize,
+    opt_period: TAPeriod,
 ) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check")]
     {
@@ -159,10 +212,14 @@ pub fn adr_inc(
         }
     }
 
-    let new_range = input_new_high - input_new_low;
-    let old_range = input_old_high - input_old_low;
-
-    sma::sma_inc(prev_adr, new_range, old_range, opt_period)
+    Ok(adr_inc_raw(
+        prev_adr,
+        input_new_high,
+        input_new_low,
+        input_old_high,
+        input_old_low,
+        opt_period,
+    ))
 }
 
 #[cfg(test)]
@@ -320,7 +377,7 @@ mod tests {
             }
         }
 
-        let lookback = lookback(period).unwrap();
+        let lookback = lookback_raw(period);
         let mut prev_adr = output_adr[lookback];
 
         for i in (lookback + 1)..input_high.len() {

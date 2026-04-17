@@ -1,4 +1,11 @@
-use crate::{KandError, TAFloat, helper::period_to_k};
+use crate::{KandError, TAFloat, TAPeriod, helper::period_to_k};
+
+/// Returns the lookback period for EMA without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(opt_period: TAPeriod) -> TAPeriod {
+    opt_period - 1
+}
 
 /// Returns the lookback period required for EMA calculation.
 ///
@@ -9,7 +16,7 @@ use crate::{KandError, TAFloat, helper::period_to_k};
 /// # Arguments
 /// * `opt_period` - The time period for EMA calculation. Must be >= 2.
 ///
-/// # Returnss
+/// # Returns
 /// * `Result<usize, KandError>` - The lookback period on success, or error on failure.
 ///
 /// # Errors
@@ -22,7 +29,7 @@ use crate::{KandError, TAFloat, helper::period_to_k};
 /// let lookback = ema::lookback(period).unwrap();
 /// assert_eq!(lookback, 13); // lookback is period - 1
 /// ```
-pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
+pub const fn lookback(opt_period: TAPeriod) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
         // Parameter range check
@@ -30,7 +37,38 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
             return Err(KandError::InvalidParameter);
         }
     }
-    Ok(opt_period - 1)
+    Ok(lookback_raw(opt_period))
+}
+
+/// Computes EMA without input validation for high performance.
+pub fn ema_raw(
+    input_prices: &[TAFloat],
+    opt_period: TAPeriod,
+    opt_k: Option<TAFloat>,
+    output_ema: &mut [TAFloat],
+) {
+    let len = input_prices.len();
+    let lookback = lookback_raw(opt_period);
+
+    // Calculate initial SMA
+    let mut sum = input_prices[0];
+    for value in input_prices.iter().take(opt_period).skip(1) {
+        sum += *value;
+    }
+    let mut prev_ma = sum / (opt_period as TAFloat);
+    output_ema[lookback] = prev_ma;
+
+    // Get multiplier - either custom or default
+    let multiplier = match opt_k {
+        Some(k) => k,
+        None => 2.0 / (opt_period + 1) as TAFloat,
+    };
+
+    // Calculate EMA
+    for i in opt_period..len {
+        prev_ma = (input_prices[i] - prev_ma).mul_add(multiplier, prev_ma);
+        output_ema[i] = prev_ma;
+    }
 }
 
 /// Calculates Exponential Moving Average (EMA) for a price series.
@@ -80,7 +118,7 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 /// ```
 pub fn ema(
     input_prices: &[TAFloat],
-    opt_period: usize,
+    opt_period: TAPeriod,
     opt_k: Option<TAFloat>,
     output_ema: &mut [TAFloat],
 ) -> Result<(), KandError> {
@@ -115,32 +153,28 @@ pub fn ema(
         }
     }
 
-    // Calculate initial SMA
-    let mut sum = input_prices[0];
-    for value in input_prices.iter().take(opt_period).skip(1) {
-        sum += *value;
-    }
-    let mut prev_ma = sum / (opt_period as TAFloat);
-    output_ema[lookback] = prev_ma;
-
-    // Get multiplier - either custom or default
-    let multiplier = match opt_k {
-        Some(k) => k,
-        None => period_to_k(opt_period)?,
-    };
-
-    // Calculate EMA
-    for i in opt_period..len {
-        prev_ma = (input_prices[i] - prev_ma).mul_add(multiplier, prev_ma);
-        output_ema[i] = prev_ma;
-    }
+    ema_raw(input_prices, opt_period, opt_k, output_ema);
 
     // Fill initial values with NAN
-    for value in output_ema.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for value in output_ema.iter_mut().take(lookback) {
+            *value = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Computes the next EMA value incrementally without input validation.
+#[inline]
+#[must_use]
+pub fn ema_inc_raw(
+    input_price: TAFloat,
+    prev_ema: TAFloat,
+    multiplier: TAFloat,
+) -> TAFloat {
+    (input_price - prev_ema).mul_add(multiplier, prev_ema)
 }
 
 /// Calculates a single EMA value incrementally using the previous EMA.
@@ -182,7 +216,7 @@ pub fn ema(
 pub fn ema_inc(
     input_price: TAFloat,
     prev_ema: TAFloat,
-    opt_period: usize,
+    opt_period: TAPeriod,
     opt_k: Option<TAFloat>,
 ) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check")]
@@ -205,7 +239,7 @@ pub fn ema_inc(
         Some(k) => k,
         None => period_to_k(opt_period)?,
     };
-    Ok((input_price - prev_ema).mul_add(multiplier, prev_ema))
+    Ok(ema_inc_raw(input_price, prev_ema, multiplier))
 }
 
 #[cfg(test)]
@@ -229,6 +263,7 @@ mod tests {
         ema(&input_prices, opt_period, None, &mut output_ema).unwrap();
 
         // First 13 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_ema.iter().take(13) {
             assert!(value.is_nan());
         }

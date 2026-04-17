@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period for Simple Moving Average (SMA) without input validation.
 ///
 /// Assumes valid inputs; returns `opt_period - 1`.
@@ -159,6 +162,14 @@ pub fn sma_inc(
     Ok(sma_inc_raw(input, prev_input, prev_sma, opt_period))
 }
 
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    sma,
+    crate::ta::ohlcv::sma::sma_raw,
+    inputs: { input },
+    params: { opt_period: TAPeriod }
+);
+
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
@@ -242,6 +253,24 @@ mod tests {
             let result = sma_inc(INPUT_DATA[i], INPUT_DATA[i - PERIOD], prev_sma, PERIOD).unwrap();
             assert_relative_eq!(result, output[i], epsilon = EPSILON);
             prev_sma = result;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_sma_arrow() {
+        let input = TAArrowArray::from(INPUT_DATA.to_vec());
+        let result = sma_arrow(&input, PERIOD).unwrap();
+
+        assert_eq!(result.len(), INPUT_DATA.len());
+
+        #[cfg(feature = "allow-nan")]
+        for i in 0..LOOKBACK {
+            assert!(result.value(i).is_nan());
+        }
+
+        for (i, &expected) in EXPECTED_VALUES.iter().enumerate() {
+            assert_relative_eq!(result.value(LOOKBACK + i), expected, epsilon = EPSILON);
         }
     }
 }

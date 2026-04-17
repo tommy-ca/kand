@@ -1,5 +1,12 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
+/// Returns the lookback period for A/D without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw() -> TAPeriod {
+    0
+}
+
 /// Returns the lookback period required for A/D calculation.
 ///
 /// The A/D indicator requires no lookback period, as it can be calculated starting from the first data point.
@@ -17,7 +24,7 @@ use crate::{KandError, TAFloat, TAPeriod};
 /// ```
 #[must_use]
 pub const fn lookback() -> Result<TAPeriod, KandError> {
-    Ok(0)
+    Ok(lookback_raw())
 }
 
 /// Core calculation for Accumulation/Distribution (A/D) without error checking.
@@ -32,7 +39,6 @@ pub const fn lookback() -> Result<TAPeriod, KandError> {
 /// - `input_close`: Slice of close prices.
 /// - `input_volume`: Slice of volumes.
 /// - `output_ad`: Mutable slice to store the A/D values.
-/// - `lookback`: The lookback period (0 for A/D).
 ///
 /// # Notes
 ///
@@ -45,9 +51,9 @@ pub fn ad_raw(
     input_close: &[TAFloat],
     input_volume: &[TAFloat],
     output_ad: &mut [TAFloat],
-    lookback: TAPeriod,
 ) {
     let len = input_high.len();
+    let lookback = lookback_raw();
     let mut ad = 0.0;
     for i in lookback..len {
         let high_low_diff = input_high[i] - input_low[i];
@@ -117,7 +123,6 @@ pub fn ad(
     output_ad: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
-    let lookback = lookback()?;
 
     #[cfg(feature = "check")]
     {
@@ -136,7 +141,7 @@ pub fn ad(
 
     #[cfg(feature = "check-nan")]
     {
-        for i in lookback..len {
+        for i in 0..len {
             if input_high[i].is_nan()
                 || input_low[i].is_nan()
                 || input_close[i].is_nan()
@@ -147,14 +152,7 @@ pub fn ad(
         }
     }
 
-    ad_raw(
-        input_high,
-        input_low,
-        input_close,
-        input_volume,
-        output_ad,
-        lookback,
-    );
+    ad_raw(input_high, input_low, input_close, input_volume, output_ad);
 
     Ok(())
 }
@@ -188,6 +186,8 @@ pub fn ad(
 ///
 /// - No error checking is performed; ensure inputs are valid.
 /// - If High - Low is zero, MFM is set to 0.
+#[inline]
+#[must_use]
 pub fn ad_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -234,7 +234,6 @@ pub fn ad_inc_raw(
 ///
 /// let output_ad = ad::ad_inc(input_high, input_low, input_close, input_volume, prev_ad).unwrap();
 /// ```
-#[must_use]
 pub fn ad_inc(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -271,9 +270,9 @@ mod tests {
     use crate::EPSILON;
 
     const INPUT_HIGH: [f64; 25] = [
-        35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0, 35210.0,
-        35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5, 35078.8, 35085.0,
-        35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
+        35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+        35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+        35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
     ];
 
     const INPUT_LOW: [f64; 25] = [

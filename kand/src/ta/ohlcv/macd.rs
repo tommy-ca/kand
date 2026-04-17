@@ -43,6 +43,47 @@ pub fn lookback(
     Ok(slow_lookback + signal_lookback)
 }
 
+/// Calculate MACD without input validation for high performance.
+///
+/// # Assumptions
+/// * Input and output buffers have correct lengths and are properly initialized.
+/// * Parameters have been validated.
+pub fn macd_raw(
+    input_price: &[TAFloat],
+    opt_fast_period: usize,
+    opt_slow_period: usize,
+    opt_signal_period: usize,
+    output_macd_line: &mut [TAFloat],
+    output_signal_line: &mut [TAFloat],
+    output_histogram: &mut [TAFloat],
+    output_fast_ema: &mut [TAFloat],
+    output_slow_ema: &mut [TAFloat],
+) {
+    let len = input_price.len();
+    let lookback = (opt_slow_period - 1) + (opt_signal_period - 1);
+
+    ema::ema_raw(input_price, opt_fast_period, None, output_fast_ema);
+    ema::ema_raw(input_price, opt_slow_period, None, output_slow_ema);
+
+    // Calculate MACD line
+    for i in 0..len {
+        output_macd_line[i] = output_fast_ema[i] - output_slow_ema[i];
+    }
+
+    // Calculate signal line using non-NaN MACD values
+    ema::ema_raw(
+        &output_macd_line[opt_slow_period - 1..],
+        opt_signal_period,
+        None,
+        &mut output_signal_line[opt_slow_period - 1..],
+    );
+
+    // Calculate histogram
+    for i in lookback..len {
+        output_histogram[i] = output_macd_line[i] - output_signal_line[i];
+    }
+}
+
 /// Calculate Moving Average Convergence Divergence (MACD) for a price series
 ///
 /// MACD is a trend-following momentum indicator that shows the relationship between two moving averages.
@@ -162,37 +203,59 @@ pub fn macd(
         }
     }
 
-    ema::ema(input_price, opt_fast_period, None, output_fast_ema)?;
-    ema::ema(input_price, opt_slow_period, None, output_slow_ema)?;
-
-    // Calculate MACD line
-    for i in 0..len {
-        output_macd_line[i] = output_fast_ema[i] - output_slow_ema[i];
-    }
-
-    // Calculate signal line using non-NaN MACD values
-    ema::ema(
-        &output_macd_line[opt_slow_period - 1..],
+    macd_raw(
+        input_price,
+        opt_fast_period,
+        opt_slow_period,
         opt_signal_period,
-        None,
-        &mut output_signal_line[opt_slow_period - 1..],
-    )?;
-
-    // Calculate histogram
-    for i in lookback..len {
-        output_histogram[i] = output_macd_line[i] - output_signal_line[i];
-    }
+        output_macd_line,
+        output_signal_line,
+        output_histogram,
+        output_fast_ema,
+        output_slow_ema,
+    );
 
     // Fill initial values with NAN
-    for i in 0..lookback {
-        output_macd_line[i] = TAFloat::NAN;
-        output_signal_line[i] = TAFloat::NAN;
-        output_histogram[i] = TAFloat::NAN;
-        output_fast_ema[i] = TAFloat::NAN;
-        output_slow_ema[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_macd_line[i] = TAFloat::NAN;
+            output_signal_line[i] = TAFloat::NAN;
+            output_histogram[i] = TAFloat::NAN;
+            output_fast_ema[i] = TAFloat::NAN;
+            output_slow_ema[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculate latest MACD values incrementally from previous state without validation.
+#[must_use]
+pub fn macd_inc_raw(
+    input_price: TAFloat,
+    prev_fast_ema: TAFloat,
+    prev_slow_ema: TAFloat,
+    prev_signal: TAFloat,
+    opt_fast_period: usize,
+    opt_slow_period: usize,
+    opt_signal_period: usize,
+) -> (TAFloat, TAFloat, TAFloat) {
+    let fast_ema = ema::ema_inc_raw(
+        input_price,
+        prev_fast_ema,
+        2.0 / (opt_fast_period + 1) as TAFloat,
+    );
+    let slow_ema = ema::ema_inc_raw(
+        input_price,
+        prev_slow_ema,
+        2.0 / (opt_slow_period + 1) as TAFloat,
+    );
+    let macd = fast_ema - slow_ema;
+    let signal = ema::ema_inc_raw(macd, prev_signal, 2.0 / (opt_signal_period + 1) as TAFloat);
+    let histogram = macd - signal;
+
+    (macd, signal, histogram)
 }
 
 /// Calculate latest MACD values incrementally from previous state
@@ -272,11 +335,13 @@ pub fn macd_inc(
         }
     }
 
-    let fast_ema = ema::ema_inc(input_price, prev_fast_ema, opt_fast_period, None)?;
-    let slow_ema = ema::ema_inc(input_price, prev_slow_ema, opt_slow_period, None)?;
-    let macd = fast_ema - slow_ema;
-    let signal = ema::ema_inc(macd, prev_signal, opt_signal_period, None)?;
-    let histogram = macd - signal;
-
-    Ok((macd, signal, histogram))
+    Ok(macd_inc_raw(
+        input_price,
+        prev_fast_ema,
+        prev_slow_ema,
+        prev_signal,
+        opt_fast_period,
+        opt_slow_period,
+        opt_signal_period,
+    ))
 }

@@ -1,5 +1,10 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
+#[cfg(feature = "arrow")]
+use arrow::array::{Float32Array, Float64Array, PrimitiveBuilder};
+#[cfg(feature = "arrow")]
+use arrow::datatypes::{Float32Type, Float64Type};
+
 /// Moving Average types for technical analysis.
 ///
 /// The integer representation of this enum is determined by the enabled features:
@@ -112,3 +117,19 @@ impl Default for Signal {
         Self::Neutral
     }
 }
+
+/// Arrow array type for floating-point values, matching library precision.
+#[cfg(all(feature = "arrow", feature = "f32", not(feature = "f64")))]
+pub type TAArrowArray = Float32Array;
+
+/// Arrow array type for floating-point values, matching library precision.
+#[cfg(all(feature = "arrow", not(all(feature = "f32", not(feature = "f64")))))]
+pub type TAArrowArray = Float64Array;
+
+/// Arrow builder type for floating-point values, matching library precision.
+#[cfg(all(feature = "arrow", feature = "f32", not(feature = "f64")))]
+pub type TAArrowBuilder = PrimitiveBuilder<Float32Type>;
+
+/// Arrow builder type for floating-point values, matching library precision.
+#[cfg(all(feature = "arrow", not(all(feature = "f32", not(feature = "f64")))))]
+pub type TAArrowBuilder = PrimitiveBuilder<Float64Type>;

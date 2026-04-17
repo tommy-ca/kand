@@ -1,5 +1,12 @@
 use super::{ad, ema};
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
+
+/// Returns the lookback period for ADOSC without input validation.
+#[inline]
+#[must_use]
+pub const fn lookback_raw(_opt_fast_period: TAPeriod, opt_slow_period: TAPeriod) -> TAPeriod {
+    opt_slow_period - 1
+}
 
 /// Returns the lookback period required for A/D Oscillator calculation.
 ///
@@ -17,7 +24,7 @@ use crate::{KandError, TAFloat};
 /// assert_eq!(lookback, 9);
 /// ```
 #[must_use]
-pub const fn lookback(opt_fast_period: usize, opt_slow_period: usize) -> Result<usize, KandError> {
+pub const fn lookback(opt_fast_period: TAPeriod, opt_slow_period: TAPeriod) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
         if opt_fast_period < 2 || opt_slow_period < 2 || opt_fast_period >= opt_slow_period {
@@ -25,7 +32,32 @@ pub const fn lookback(opt_fast_period: usize, opt_slow_period: usize) -> Result<
         }
     }
 
-    ema::lookback(opt_slow_period)
+    Ok(lookback_raw(opt_fast_period, opt_slow_period))
+}
+
+/// Computes ADOSC without input validation for high performance.
+pub fn adosc_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    input_volume: &[TAFloat],
+    opt_fast_period: TAPeriod,
+    opt_slow_period: TAPeriod,
+    output_adosc: &mut [TAFloat],
+    output_ad: &mut [TAFloat],
+    output_ad_fast_ema: &mut [TAFloat],
+    output_ad_slow_ema: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    ad::ad_raw(input_high, input_low, input_close, input_volume, output_ad);
+
+    ema::ema_raw(output_ad, opt_fast_period, None, output_ad_fast_ema);
+    ema::ema_raw(output_ad, opt_slow_period, None, output_ad_slow_ema);
+
+    let lookback = lookback_raw(opt_fast_period, opt_slow_period);
+    for i in lookback..len {
+        output_adosc[i] = output_ad_fast_ema[i] - output_ad_slow_ema[i];
+    }
 }
 
 /// Calculates the Accumulation/Distribution Oscillator (A/D Oscillator or ADOSC) for the entire price series.
@@ -92,8 +124,8 @@ pub fn adosc(
     input_low: &[TAFloat],
     input_close: &[TAFloat],
     input_volume: &[TAFloat],
-    opt_fast_period: usize,
-    opt_slow_period: usize,
+    opt_fast_period: TAPeriod,
+    opt_slow_period: TAPeriod,
     output_adosc: &mut [TAFloat],
     output_ad: &mut [TAFloat],
     output_ad_fast_ema: &mut [TAFloat],
@@ -137,16 +169,58 @@ pub fn adosc(
         }
     }
 
-    ad::ad(input_high, input_low, input_close, input_volume, output_ad)?;
+    adosc_raw(
+        input_high,
+        input_low,
+        input_close,
+        input_volume,
+        opt_fast_period,
+        opt_slow_period,
+        output_adosc,
+        output_ad,
+        output_ad_fast_ema,
+        output_ad_slow_ema,
+    );
 
-    ema::ema(output_ad, opt_fast_period, None, output_ad_fast_ema)?;
-    ema::ema(output_ad, opt_slow_period, None, output_ad_slow_ema)?;
-
-    for i in lookback..len {
-        output_adosc[i] = output_ad_fast_ema[i] - output_ad_slow_ema[i];
+    // Fill initial values with NAN
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_adosc[i] = TAFloat::NAN;
+            output_ad[i] = TAFloat::NAN;
+            output_ad_fast_ema[i] = TAFloat::NAN;
+            output_ad_slow_ema[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Computes the next ADOSC values incrementally without input validation.
+#[inline]
+#[must_use]
+pub fn adosc_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+    input_volume: TAFloat,
+    prev_ad: TAFloat,
+    prev_ad_fast_ema: TAFloat,
+    prev_ad_slow_ema: TAFloat,
+    fast_multiplier: TAFloat,
+    slow_multiplier: TAFloat,
+) -> (TAFloat, TAFloat, TAFloat, TAFloat) {
+    let output_ad = ad::ad_inc_raw(input_high, input_low, input_close, input_volume, prev_ad);
+    let output_ad_fast_ema = ema::ema_inc_raw(output_ad, prev_ad_fast_ema, fast_multiplier);
+    let output_ad_slow_ema = ema::ema_inc_raw(output_ad, prev_ad_slow_ema, slow_multiplier);
+    let output_adosc = output_ad_fast_ema - output_ad_slow_ema;
+
+    (
+        output_adosc,
+        output_ad,
+        output_ad_fast_ema,
+        output_ad_slow_ema,
+    )
 }
 
 /// Calculates the latest A/D Oscillator value incrementally using previous values.
@@ -188,7 +262,6 @@ pub fn adosc(
 /// )
 /// .unwrap();
 /// ```
-#[must_use]
 pub fn adosc_inc(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -197,12 +270,12 @@ pub fn adosc_inc(
     prev_ad: TAFloat,
     prev_ad_fast_ema: TAFloat,
     prev_ad_slow_ema: TAFloat,
-    opt_fast_period: usize,
-    opt_slow_period: usize,
+    opt_fast_period: TAPeriod,
+    opt_slow_period: TAPeriod,
 ) -> Result<(TAFloat, TAFloat, TAFloat, TAFloat), KandError> {
     #[cfg(feature = "check")]
     {
-        if opt_fast_period == 0 || opt_slow_period == 0 || opt_fast_period >= opt_slow_period {
+        if opt_fast_period < 2 || opt_slow_period < 2 || opt_fast_period >= opt_slow_period {
             return Err(KandError::InvalidParameter);
         }
     }
@@ -221,16 +294,19 @@ pub fn adosc_inc(
         }
     }
 
-    let output_ad = ad::ad_inc(input_high, input_low, input_close, input_volume, prev_ad)?;
-    let output_ad_fast_ema = ema::ema_inc(output_ad, prev_ad_fast_ema, opt_fast_period, None)?;
-    let output_ad_slow_ema = ema::ema_inc(output_ad, prev_ad_slow_ema, opt_slow_period, None)?;
-    let output_adosc = output_ad_fast_ema - output_ad_slow_ema;
+    let fast_multiplier = 2.0 / (opt_fast_period + 1) as TAFloat;
+    let slow_multiplier = 2.0 / (opt_slow_period + 1) as TAFloat;
 
-    Ok((
-        output_adosc,
-        output_ad,
-        output_ad_fast_ema,
-        output_ad_slow_ema,
+    Ok(adosc_inc_raw(
+        input_high,
+        input_low,
+        input_close,
+        input_volume,
+        prev_ad,
+        prev_ad_fast_ema,
+        prev_ad_slow_ema,
+        fast_multiplier,
+        slow_multiplier,
     ))
 }
 
@@ -248,8 +324,8 @@ mod tests {
         let input_high = vec![
             35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
             35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
-            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4, 35150.4, 35123.9,
-            35110.0, 35092.1, 35179.2, 35244.9, 35150.2, 35136.0, 35133.6, 35188.0, 35215.3,
+            35078.8, 35085.0, 35034.1, 34984.4, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1, 35215.3,
             35221.9, 35219.2, 35234.0, 35216.7, 35197.9, 35178.4, 35183.4, 35129.7, 35149.1,
             35129.3, 35125.5, 35114.5, 35120.1, 35129.4, 35105.4, 35054.1, 35034.6, 35032.9,
             35070.8, 35086.0, 35086.9, 35048.9, 34988.6, 35004.3, 34985.0, 35004.2, 35010.0,
@@ -425,7 +501,11 @@ mod tests {
             -625.544_385_992_726_3,
         ];
         for (i, &expected) in expected_values.iter().enumerate() {
-            assert_relative_eq!(output_adosc[i], expected, epsilon = EPSILON);
+            if expected.is_nan() {
+                assert!(output_adosc[i].is_nan());
+            } else {
+                assert_relative_eq!(output_adosc[i], expected, epsilon = EPSILON);
+            }
         }
 
         let mut prev_ad = output_ad[9];

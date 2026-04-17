@@ -88,6 +88,8 @@ fn kand(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ta::ohlcv::sar::sar_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::sma::sma_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::sma::sma_inc_py, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::sma::sma_arrow_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::stoch::stoch_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::supertrend::supertrend_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::supertrend::supertrend_inc_py, m)?)?;
