@@ -1,6 +1,9 @@
 use super::sma;
 use crate::{KandError, TAFloat, TAPeriod};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period for ADR without input validation.
 #[inline]
 #[must_use]
@@ -52,7 +55,8 @@ pub fn adr_raw(
     output_adr[lookback] = sum / period_float;
 
     for i in lookback + 1..len {
-        sum = sum + (input_high[i] - input_low[i]) - (input_high[i - opt_period] - input_low[i - opt_period]);
+        sum = sum + (input_high[i] - input_low[i])
+            - (input_high[i - opt_period] - input_low[i - opt_period]);
         output_adr[i] = sum / period_float;
     }
 }
@@ -221,6 +225,14 @@ pub fn adr_inc(
         opt_period,
     ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    adr,
+    crate::ta::ohlcv::adr::adr_raw,
+    inputs: { input_high, input_low },
+    params: { opt_period: TAPeriod }
+);
 
 #[cfg(test)]
 mod tests {
@@ -394,6 +406,49 @@ mod tests {
             assert_relative_eq!(next_adr, output_adr[i], epsilon = EPSILON);
 
             prev_adr = next_adr;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_adr_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4, 35150.4, 35123.9,
+            35110.0, 35092.1, 35179.2, 35244.9, 35150.2, 35136.0, 35133.6, 35188.0, 35215.3,
+            35221.9, 35219.2, 35234.0, 35216.7, 35197.9, 35178.4, 35183.4, 35129.7, 35149.1,
+            35129.3, 35125.5, 35114.5, 35120.1, 35129.4,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0, 35073.0, 35055.0,
+            35084.0, 35060.0, 35073.1, 35090.0, 35072.0, 35078.0, 35088.0, 35124.8, 35169.4,
+            35138.0, 35141.0, 35182.0, 35151.1, 35158.4, 35140.0, 35087.0, 35085.8, 35114.7,
+            35086.0, 35090.6, 35074.1, 35078.4, 35100.0,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let opt_period = 3;
+
+        let result = adr_arrow(&high_arrow, &low_arrow, opt_period).unwrap();
+
+        assert_eq!(result.len(), input_high.len());
+
+        let mut out_adr = vec![0.0; input_high.len()];
+        adr(&input_high, &input_low, opt_period, &mut out_adr).unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 2 {
+                #[cfg(feature = "allow-nan")]
+                assert!(result.value(i).is_nan());
+            } else {
+                assert_relative_eq!(result.value(i), out_adr[i], epsilon = 1e-9);
+            }
         }
     }
 }

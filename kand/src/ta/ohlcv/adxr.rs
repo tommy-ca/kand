@@ -1,6 +1,9 @@
 use super::adx;
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for ADXR calculation
 ///
 /// # Arguments
@@ -28,6 +31,39 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period * 3 - 2)
+}
+
+/// Calculates ADXR without input validation for high performance.
+pub fn adxr_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_period: usize,
+    output_adxr: &mut [TAFloat],
+    output_adx: &mut [TAFloat],
+    output_smoothed_plus_dm: &mut [TAFloat],
+    output_smoothed_minus_dm: &mut [TAFloat],
+    output_smoothed_tr: &mut [TAFloat],
+) {
+    let len = input_high.len();
+    let lookback = opt_period * 3 - 2;
+
+    // Calculate ADX first
+    adx::adx_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        output_adx,
+        output_smoothed_plus_dm,
+        output_smoothed_minus_dm,
+        output_smoothed_tr,
+    );
+
+    // Calculate ADXR = (Current ADX + ADX period-1 periods ago) / 2
+    for i in lookback..len {
+        output_adxr[i] = (output_adx[i] + output_adx[i - opt_period + 1]) / 2.0;
+    }
 }
 
 /// Calculates the Average Directional Index Rating (ADXR) for the entire input array
@@ -141,34 +177,71 @@ pub fn adxr(
         }
     }
 
-    // Calculate ADX first
-    adx::adx(
+    adxr_raw(
         input_high,
         input_low,
         input_close,
         opt_period,
+        output_adxr,
         output_adx,
         output_smoothed_plus_dm,
         output_smoothed_minus_dm,
         output_smoothed_tr,
-    )?;
-
-    // Calculate ADXR = (Current ADX + ADX period days ago) / 2
-    // First valid value should be at index lookback (period * 3 - 2)
-    for i in lookback..len {
-        output_adxr[i] = f64::midpoint(output_adx[i], output_adx[i - opt_period + 1]);
-    }
+    );
 
     // Fill initial values with NAN
-    for i in 0..lookback {
-        output_adxr[i] = TAFloat::NAN;
-        output_adx[i] = TAFloat::NAN;
-        output_smoothed_plus_dm[i] = TAFloat::NAN;
-        output_smoothed_minus_dm[i] = TAFloat::NAN;
-        output_smoothed_tr[i] = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_adxr[i] = TAFloat::NAN;
+            output_adx[i] = TAFloat::NAN;
+            output_smoothed_plus_dm[i] = TAFloat::NAN;
+            output_smoothed_minus_dm[i] = TAFloat::NAN;
+            output_smoothed_tr[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates the latest ADXR value incrementally without validation
+#[must_use]
+pub fn adxr_inc_raw(
+    input_high: TAFloat,
+    input_low: TAFloat,
+    prev_high: TAFloat,
+    prev_low: TAFloat,
+    prev_close: TAFloat,
+    prev_adx: TAFloat,
+    prev_adx_period_ago: TAFloat,
+    prev_smoothed_plus_dm: TAFloat,
+    prev_smoothed_minus_dm: TAFloat,
+    prev_smoothed_tr: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat, TAFloat, TAFloat) {
+    let (output_adx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr) =
+        adx::adx_inc_raw(
+            input_high,
+            input_low,
+            prev_high,
+            prev_low,
+            prev_close,
+            prev_adx,
+            prev_smoothed_plus_dm,
+            prev_smoothed_minus_dm,
+            prev_smoothed_tr,
+            opt_period,
+        );
+
+    let output_adxr = (output_adx + prev_adx_period_ago) / 2.0;
+
+    (
+        output_adxr,
+        output_adx,
+        output_smoothed_plus_dm,
+        output_smoothed_minus_dm,
+        output_smoothed_tr,
+    )
 }
 
 /// Calculates the latest ADXR value incrementally
@@ -261,30 +334,29 @@ pub fn adxr_inc(
         }
     }
 
-    let (output_adx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr) =
-        adx::adx_inc(
-            input_high,
-            input_low,
-            prev_high,
-            prev_low,
-            prev_close,
-            prev_adx,
-            prev_smoothed_plus_dm,
-            prev_smoothed_minus_dm,
-            prev_smoothed_tr,
-            opt_period,
-        )?;
-
-    let output_adxr = f64::midpoint(output_adx, prev_adx_period_ago);
-
-    Ok((
-        output_adxr,
-        output_adx,
-        output_smoothed_plus_dm,
-        output_smoothed_minus_dm,
-        output_smoothed_tr,
+    Ok(adxr_inc_raw(
+        input_high,
+        input_low,
+        prev_high,
+        prev_low,
+        prev_close,
+        prev_adx,
+        prev_adx_period_ago,
+        prev_smoothed_plus_dm,
+        prev_smoothed_minus_dm,
+        prev_smoothed_tr,
+        opt_period,
     ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    adxr,
+    crate::ta::ohlcv::adxr::adxr_raw,
+    inputs: { input_high, input_low, input_close },
+    params: { opt_period: usize },
+    outputs: { output_adxr, output_adx, output_smoothed_plus_dm, output_smoothed_minus_dm, output_smoothed_tr }
+);
 
 #[cfg(test)]
 mod tests {
@@ -343,6 +415,7 @@ mod tests {
         .unwrap();
 
         // First (3*period-2) values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_adxr.iter().take(3 * opt_period - 2) {
             assert!(value.is_nan());
         }
@@ -381,10 +454,6 @@ mod tests {
         }
 
         // Calculate and verify incremental values starting from index period * 4 - 3
-        // This starting index is required because:
-        // 1. First period * 3 - 2 values are NaN (base ADXR calculation requirement)
-        // 2. Need additional period - 1 values for i - opt_period + 1 lookback
-        // Total: (period * 3 - 2) - ( - period + 1) = period * 4 - 3
         for i in (opt_period * 4 - 3)..input_high.len() {
             let result = adxr_inc(
                 input_high[i],
@@ -393,7 +462,7 @@ mod tests {
                 input_low[i - 1],
                 input_close[i - 1],
                 output_adx[i - 1],
-                output_adx[i - opt_period + 1], // ADX value from period days ago
+                output_adx[i - opt_period + 1], // ADX value from period-1 days ago
                 output_smoothed_plus_dm[i - 1],
                 output_smoothed_minus_dm[i - 1],
                 output_smoothed_tr[i - 1],
@@ -406,8 +475,79 @@ mod tests {
             assert_relative_eq!(result.1, output_adx[i], epsilon = 0.00001); // ADX value
             assert_relative_eq!(result.2, output_smoothed_plus_dm[i], epsilon = 0.00001); // +DM
             assert_relative_eq!(result.3, output_smoothed_minus_dm[i], epsilon = 0.00001); // -DM
-            assert_relative_eq!(result.4, output_smoothed_tr[i], epsilon = 0.00001);
-            // TR
+            assert_relative_eq!(result.4, output_smoothed_tr[i], epsilon = 0.00001); // TR
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_adxr_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_high = vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1, 35215.3,
+            35154.0, 35216.3, 35211.8, 35158.4, 35172.0, 35176.7, 35113.3, 35114.7, 35129.3,
+            35094.6, 35114.4, 35094.5, 35116.0, 35105.4, 35050.7, 35031.3, 35008.1, 35021.4,
+            35048.4, 35080.1, 35043.6, 34962.7, 34970.1, 34980.1,
+        ];
+        let input_low = vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35203.5, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0, 35073.0, 35055.0,
+            35084.0, 35060.0, 35073.1, 35090.0, 35072.0, 35078.0, 35088.0, 35124.8, 35169.4,
+            35138.0, 35141.0, 35182.0, 35151.1, 35158.4, 35140.0, 35087.0, 35085.8, 35114.7,
+            35086.0, 35090.6, 35074.1, 35078.4, 35100.0, 35030.2, 34986.3, 34988.1, 34973.1,
+            35012.3, 35048.3, 35038.9, 34937.3, 34937.0, 34958.7,
+        ];
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
+            35092.0, 35073.2, 35139.3, 35092.0, 35126.7, 35106.3, 35124.8, 35170.1, 35215.3,
+            35154.0, 35216.3, 35211.8, 35158.4, 35172.0, 35176.7, 35113.3, 35114.7, 35129.3,
+            35094.6, 35114.4, 35094.5, 35116.0, 35105.4, 35050.7, 35031.3, 35008.1, 35021.4,
+            35048.4, 35080.1, 35043.6, 34962.7, 34970.1, 34980.1,
+        ];
+
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let (adxr_arrow, _, _, _, _) =
+            adxr_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period).unwrap();
+
+        assert_eq!(adxr_arrow.len(), input_high.len());
+
+        let mut out_adxr = vec![0.0; input_high.len()];
+        let mut out_adx = vec![0.0; input_high.len()];
+        let mut out_plus_dm = vec![0.0; input_high.len()];
+        let mut out_minus_dm = vec![0.0; input_high.len()];
+        let mut out_tr = vec![0.0; input_high.len()];
+
+        adxr(
+            &input_high,
+            &input_low,
+            &input_close,
+            opt_period,
+            &mut out_adxr,
+            &mut out_adx,
+            &mut out_plus_dm,
+            &mut out_minus_dm,
+            &mut out_tr,
+        )
+        .unwrap();
+
+        for i in 0..input_high.len() {
+            if i < 40 {
+                #[cfg(feature = "allow-nan")]
+                assert!(adxr_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(adxr_arrow.value(i), out_adxr[i], epsilon = 0.00001);
+            }
         }
     }
 }
