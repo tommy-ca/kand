@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat, ta::stats::var};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for Standard Deviation calculation.
 ///
 /// The lookback period represents the number of data points needed before the first valid output
@@ -23,6 +26,32 @@ use crate::{KandError, TAFloat, ta::stats::var};
 /// ```
 pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     var::lookback(opt_period)
+}
+
+/// Calculates Standard Deviation without input validation for high performance.
+pub fn stddev_raw(
+    input_prices: &[TAFloat],
+    opt_period: usize,
+    output_stddev: &mut [TAFloat],
+    output_sum: &mut [TAFloat],
+    output_sum_sq: &mut [TAFloat],
+) {
+    let len = input_prices.len();
+    let lookback = opt_period - 1;
+
+    // Calculate variance first
+    var::var_raw(
+        input_prices,
+        opt_period,
+        output_stddev,
+        output_sum,
+        output_sum_sq,
+    );
+
+    // Take square root to get standard deviation
+    for value in output_stddev.iter_mut().take(len).skip(lookback) {
+        *value = value.sqrt();
+    }
 }
 
 /// Calculates Standard Deviation for a price series.
@@ -111,27 +140,43 @@ pub fn stddev(
         }
     }
 
-    // Calculate variance first
-    var::var(
+    stddev_raw(
         input_prices,
         opt_period,
         output_stddev,
         output_sum,
         output_sum_sq,
-    )?;
+    );
 
-    // Take square root to get standard deviation
-    for value in output_stddev.iter_mut().take(len).skip(lookback) {
-        *value = value.sqrt();
+    // Fill initial values with NAN
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
+            output_stddev[i] = TAFloat::NAN;
+            output_sum[i] = TAFloat::NAN;
+            output_sum_sq[i] = TAFloat::NAN;
+        }
     }
 
     Ok(())
 }
 
+/// Calculates the latest Standard Deviation value incrementally without input validation
+#[must_use]
+pub fn stddev_inc_raw(
+    input_price: TAFloat,
+    prev_sum: TAFloat,
+    prev_sum_sq: TAFloat,
+    input_old_price: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat) {
+    let (var, new_sum, new_sum_sq) =
+        var::var_inc_raw(input_price, prev_sum, prev_sum_sq, input_old_price, opt_period);
+
+    (var.sqrt(), new_sum, new_sum_sq)
+}
+
 /// Calculates the latest Standard Deviation value incrementally.
-///
-/// This function provides an optimized way to calculate the latest Standard Deviation value
-/// by using the previous sum and sum of squares values, avoiding recalculation of the entire series.
 ///
 /// # Arguments
 /// * `input_price` - The latest price value to include in calculation
@@ -169,16 +214,41 @@ pub fn stddev_inc(
     input_old_price: TAFloat,
     opt_period: usize,
 ) -> Result<(TAFloat, TAFloat, TAFloat), KandError> {
-    let (var, new_sum, new_sum_sq) = var::var_inc(
+    #[cfg(feature = "check")]
+    {
+        if opt_period < 2 {
+            return Err(KandError::InvalidParameter);
+        }
+    }
+
+    #[cfg(feature = "check-nan")]
+    {
+        if input_price.is_nan()
+            || prev_sum.is_nan()
+            || prev_sum_sq.is_nan()
+            || input_old_price.is_nan()
+        {
+            return Err(KandError::NaNDetected);
+        }
+    }
+
+    Ok(stddev_inc_raw(
         input_price,
         prev_sum,
         prev_sum_sq,
         input_old_price,
         opt_period,
-    )?;
-
-    Ok((var.sqrt(), new_sum, new_sum_sq))
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    stddev,
+    crate::ta::stats::stddev::stddev_raw,
+    inputs: { input_prices },
+    params: { opt_period: usize },
+    outputs: { output_stddev, output_sum, output_sum_sq }
+);
 
 #[cfg(test)]
 mod tests {
@@ -208,13 +278,14 @@ mod tests {
         .unwrap();
 
         // First 13 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for i in 0..13 {
             assert!(output_stddev[i].is_nan());
             assert!(output_sum[i].is_nan());
             assert!(output_sum_sq[i].is_nan());
         }
 
-        // Compare with known values from CSV file
+        // Compare with known values
         let expected_values = [
             28.040_929_452_086_566,
             40.126_741_172_470_275,
@@ -250,6 +321,46 @@ mod tests {
             assert_relative_eq!(stddev, output_stddev[i], epsilon = 0.0001);
             prev_sum = new_sum;
             prev_sum_sq = new_sum_sq;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_stddev_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ];
+        let input_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let (stddev_arrow, _, _) = stddev_arrow(&input_arrow, opt_period).unwrap();
+
+        assert_eq!(stddev_arrow.len(), input_close.len());
+
+        let mut out_stddev = vec![0.0; input_close.len()];
+        let mut out_sum = vec![0.0; input_close.len()];
+        let mut out_sum_sq = vec![0.0; input_close.len()];
+
+        stddev(
+            &input_close,
+            opt_period,
+            &mut out_stddev,
+            &mut out_sum,
+            &mut out_sum_sq,
+        )
+        .unwrap();
+
+        for i in 0..input_close.len() {
+            if i < 13 {
+                #[cfg(feature = "allow-nan")]
+                assert!(stddev_arrow.value(i).is_nan());
+            } else {
+                assert_relative_eq!(stddev_arrow.value(i), out_stddev[i], epsilon = 0.0001);
+            }
         }
     }
 }

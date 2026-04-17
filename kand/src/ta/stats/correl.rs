@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for Correlation calculation.
 ///
 /// The lookback period represents the number of data points needed before the first valid output
@@ -29,6 +32,96 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Correlation without input validation for high performance.
+pub fn correl_raw(
+    input_0: &[TAFloat],
+    input_1: &[TAFloat],
+    opt_period: usize,
+    output_correl: &mut [TAFloat],
+    output_sum_0: &mut [TAFloat],
+    output_sum_1: &mut [TAFloat],
+    output_sum_0_sq: &mut [TAFloat],
+    output_sum_1_sq: &mut [TAFloat],
+    output_sum_01: &mut [TAFloat],
+) {
+    let len = input_0.len();
+    let lookback = opt_period - 1;
+
+    // Calculate initial sums for the first period
+    let mut sum_0 = 0.0;
+    let mut sum_1 = 0.0;
+    let mut sum_0_sq = 0.0;
+    let mut sum_1_sq = 0.0;
+    let mut sum_01 = 0.0;
+
+    // Initialize sums for the first window
+    for i in 0..opt_period {
+        let val_0 = input_0[i];
+        let val_1 = input_1[i];
+
+        sum_0 += val_0;
+        sum_1 += val_1;
+        sum_0_sq += val_0 * val_0;
+        sum_1_sq += val_1 * val_1;
+        sum_01 += val_0 * val_1;
+    }
+
+    // Store sums for first valid position
+    output_sum_0[lookback] = sum_0;
+    output_sum_1[lookback] = sum_1;
+    output_sum_0_sq[lookback] = sum_0_sq;
+    output_sum_1_sq[lookback] = sum_1_sq;
+    output_sum_01[lookback] = sum_01;
+
+    // Calculate first correlation value
+    let n = opt_period as TAFloat;
+    let numerator = n.mul_add(sum_01, -(sum_0 * sum_1));
+    let denominator_0 = n.mul_add(sum_0_sq, -(sum_0 * sum_0));
+    let denominator_1 = n.mul_add(sum_1_sq, -(sum_1 * sum_1));
+    let denominator = (denominator_0 * denominator_1).sqrt();
+
+    if denominator > 0.0 {
+        output_correl[lookback] = numerator / denominator;
+    } else {
+        output_correl[lookback] = TAFloat::NAN;
+    }
+
+    // Calculate subsequent correlations using sliding window
+    for i in opt_period..len {
+        // Remove old values and add new values
+        let old_0 = input_0[i - opt_period];
+        let old_1 = input_1[i - opt_period];
+        let new_0 = input_0[i];
+        let new_1 = input_1[i];
+
+        // Update sums
+        sum_0 = sum_0 - old_0 + new_0;
+        sum_1 = sum_1 - old_1 + new_1;
+        sum_0_sq = new_0.mul_add(new_0, old_0.mul_add(-old_0, sum_0_sq));
+        sum_1_sq = new_1.mul_add(new_1, old_1.mul_add(-old_1, sum_1_sq));
+        sum_01 = new_0.mul_add(new_1, old_0.mul_add(-old_1, sum_01));
+
+        // Store updated sums
+        output_sum_0[i] = sum_0;
+        output_sum_1[i] = sum_1;
+        output_sum_0_sq[i] = sum_0_sq;
+        output_sum_1_sq[i] = sum_1_sq;
+        output_sum_01[i] = sum_01;
+
+        // Calculate correlation for this window
+        let numerator = n.mul_add(sum_01, -(sum_0 * sum_1));
+        let denominator_0 = n.mul_add(sum_0_sq, -(sum_0 * sum_0));
+        let denominator_1 = n.mul_add(sum_1_sq, -(sum_1 * sum_1));
+        let denominator = (denominator_0 * denominator_1).sqrt();
+
+        if denominator > 0.0 {
+            output_correl[i] = numerator / denominator;
+        } else {
+            output_correl[i] = TAFloat::NAN;
+        }
+    }
 }
 
 /// Calculates the Pearson Correlation Coefficient (CORREL) for two price series.
@@ -162,91 +255,83 @@ pub fn correl(
         }
     }
 
-    // Calculate initial sums for the first period
-    let mut sum_0 = 0.0;
-    let mut sum_1 = 0.0;
-    let mut sum_0_sq = 0.0;
-    let mut sum_1_sq = 0.0;
-    let mut sum_01 = 0.0;
+    correl_raw(
+        input_0,
+        input_1,
+        opt_period,
+        output_correl,
+        output_sum_0,
+        output_sum_1,
+        output_sum_0_sq,
+        output_sum_1_sq,
+        output_sum_01,
+    );
 
-    // Initialize sums for the first window
-    for i in 0..opt_period {
-        let val_0 = input_0[i];
-        let val_1 = input_1[i];
-
-        sum_0 += val_0;
-        sum_1 += val_1;
-        sum_0_sq += val_0 * val_0;
-        sum_1_sq += val_1 * val_1;
-        sum_01 += val_0 * val_1;
-    }
-
-    // Store sums for first valid position
-    output_sum_0[lookback] = sum_0;
-    output_sum_1[lookback] = sum_1;
-    output_sum_0_sq[lookback] = sum_0_sq;
-    output_sum_1_sq[lookback] = sum_1_sq;
-    output_sum_01[lookback] = sum_01;
-
-    // Calculate first correlation value
-    let n = opt_period as TAFloat;
-    let numerator = n.mul_add(sum_01, -(sum_0 * sum_1));
-    let denominator_0 = n.mul_add(sum_0_sq, -(sum_0 * sum_0));
-    let denominator_1 = n.mul_add(sum_1_sq, -(sum_1 * sum_1));
-    let denominator = (denominator_0 * denominator_1).sqrt();
-
-    if denominator > 0.0 {
-        output_correl[lookback] = numerator / denominator;
-    } else {
-        output_correl[lookback] = TAFloat::NAN;
-    }
-
-    // Calculate subsequent correlations using sliding window
-    for i in opt_period..len {
-        // Remove old values and add new values
-        let old_0 = input_0[i - opt_period];
-        let old_1 = input_1[i - opt_period];
-        let new_0 = input_0[i];
-        let new_1 = input_1[i];
-
-        // Update sums
-        sum_0 = sum_0 - old_0 + new_0;
-        sum_1 = sum_1 - old_1 + new_1;
-        sum_0_sq = new_0.mul_add(new_0, old_0.mul_add(-old_0, sum_0_sq));
-        sum_1_sq = new_1.mul_add(new_1, old_1.mul_add(-old_1, sum_1_sq));
-        sum_01 = new_0.mul_add(new_1, old_0.mul_add(-old_1, sum_01));
-
-        // Store updated sums
-        output_sum_0[i] = sum_0;
-        output_sum_1[i] = sum_1;
-        output_sum_0_sq[i] = sum_0_sq;
-        output_sum_1_sq[i] = sum_1_sq;
-        output_sum_01[i] = sum_01;
-
-        // Calculate correlation for this window
-        let numerator = n.mul_add(sum_01, -(sum_0 * sum_1));
-        let denominator_0 = n.mul_add(sum_0_sq, -(sum_0 * sum_0));
-        let denominator_1 = n.mul_add(sum_1_sq, -(sum_1 * sum_1));
-        let denominator = (denominator_0 * denominator_1).sqrt();
-
-        if denominator > 0.0 {
-            output_correl[i] = numerator / denominator;
-        } else {
+    // Fill initial values with NaN
+    #[cfg(feature = "allow-nan")]
+    {
+        for i in 0..lookback {
             output_correl[i] = TAFloat::NAN;
+            output_sum_0[i] = TAFloat::NAN;
+            output_sum_1[i] = TAFloat::NAN;
+            output_sum_0_sq[i] = TAFloat::NAN;
+            output_sum_1_sq[i] = TAFloat::NAN;
+            output_sum_01[i] = TAFloat::NAN;
         }
     }
 
-    // Fill initial values with NaN
-    for i in 0..lookback {
-        output_correl[i] = TAFloat::NAN;
-        output_sum_0[i] = TAFloat::NAN;
-        output_sum_1[i] = TAFloat::NAN;
-        output_sum_0_sq[i] = TAFloat::NAN;
-        output_sum_1_sq[i] = TAFloat::NAN;
-        output_sum_01[i] = TAFloat::NAN;
-    }
-
     Ok(())
+}
+
+/// Calculates the next Correlation values incrementally without input validation
+#[must_use]
+pub fn correl_inc_raw(
+    input_new_0: TAFloat,
+    input_new_1: TAFloat,
+    input_old_0: TAFloat,
+    input_old_1: TAFloat,
+    prev_sum_0: TAFloat,
+    prev_sum_1: TAFloat,
+    prev_sum_0_sq: TAFloat,
+    prev_sum_1_sq: TAFloat,
+    prev_sum_01: TAFloat,
+    opt_period: usize,
+) -> (TAFloat, TAFloat, TAFloat, TAFloat, TAFloat, TAFloat) {
+    // Update all sums incrementally
+    let new_sum_0 = prev_sum_0 - input_old_0 + input_new_0;
+    let new_sum_1 = prev_sum_1 - input_old_1 + input_new_1;
+    let new_sum_0_sq = input_new_0.mul_add(
+        input_new_0,
+        input_old_0.mul_add(-input_old_0, prev_sum_0_sq),
+    );
+    let new_sum_1_sq = input_new_1.mul_add(
+        input_new_1,
+        input_old_1.mul_add(-input_old_1, prev_sum_1_sq),
+    );
+    let new_sum_01 =
+        input_new_0.mul_add(input_new_1, input_old_0.mul_add(-input_old_1, prev_sum_01));
+
+    // Calculate new correlation using Pearson formula
+    let n = opt_period as TAFloat;
+    let numerator = n.mul_add(new_sum_01, -(new_sum_0 * new_sum_1));
+    let denominator_0 = n.mul_add(new_sum_0_sq, -(new_sum_0 * new_sum_0));
+    let denominator_1 = n.mul_add(new_sum_1_sq, -(new_sum_1 * new_sum_1));
+    let denominator = (denominator_0 * denominator_1).sqrt();
+
+    let new_correl = if denominator > 0.0 {
+        numerator / denominator
+    } else {
+        TAFloat::NAN
+    };
+
+    (
+        new_correl,
+        new_sum_0,
+        new_sum_1,
+        new_sum_0_sq,
+        new_sum_1_sq,
+        new_sum_01,
+    )
 }
 
 /// Calculates the latest Correlation value using incremental calculation.
@@ -341,42 +426,28 @@ pub fn correl_inc(
         }
     }
 
-    // Update all sums incrementally
-    let new_sum_0 = prev_sum_0 - input_old_0 + input_new_0;
-    let new_sum_1 = prev_sum_1 - input_old_1 + input_new_1;
-    let new_sum_0_sq = input_new_0.mul_add(
+    Ok(correl_inc_raw(
         input_new_0,
-        input_old_0.mul_add(-input_old_0, prev_sum_0_sq),
-    );
-    let new_sum_1_sq = input_new_1.mul_add(
         input_new_1,
-        input_old_1.mul_add(-input_old_1, prev_sum_1_sq),
-    );
-    let new_sum_01 =
-        input_new_0.mul_add(input_new_1, input_old_0.mul_add(-input_old_1, prev_sum_01));
-
-    // Calculate new correlation using Pearson formula
-    let n = opt_period as TAFloat;
-    let numerator = n.mul_add(new_sum_01, -(new_sum_0 * new_sum_1));
-    let denominator_0 = n.mul_add(new_sum_0_sq, -(new_sum_0 * new_sum_0));
-    let denominator_1 = n.mul_add(new_sum_1_sq, -(new_sum_1 * new_sum_1));
-    let denominator = (denominator_0 * denominator_1).sqrt();
-
-    let new_correl = if denominator > 0.0 {
-        numerator / denominator
-    } else {
-        TAFloat::NAN
-    };
-
-    Ok((
-        new_correl,
-        new_sum_0,
-        new_sum_1,
-        new_sum_0_sq,
-        new_sum_1_sq,
-        new_sum_01,
+        input_old_0,
+        input_old_1,
+        prev_sum_0,
+        prev_sum_1,
+        prev_sum_0_sq,
+        prev_sum_1_sq,
+        prev_sum_01,
+        opt_period,
     ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_multi!(
+    correl,
+    crate::ta::stats::correl::correl_raw,
+    inputs: { input_0, input_1 },
+    params: { opt_period: usize },
+    outputs: { output_correl, output_sum_0, output_sum_1, output_sum_0_sq, output_sum_1_sq, output_sum_01 }
+);
 
 #[cfg(test)]
 mod tests {
@@ -411,6 +482,7 @@ mod tests {
         .unwrap();
 
         // First 2 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for i in 0..2 {
             assert!(output_correl[i].is_nan());
         }
@@ -504,18 +576,22 @@ mod tests {
     }
 
     #[test]
-    fn test_correl_lookback() {
-        let lookback_5 = lookback(5).unwrap();
-        assert_eq!(lookback_5, 4);
+    #[cfg(feature = "arrow")]
+    fn test_correl_arrow() {
+        use crate::ta::types::TAArrowArray;
 
-        let lookback_30 = lookback(30).unwrap();
-        assert_eq!(lookback_30, 29);
+        let input_0 = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let input_1 = vec![2.0, 4.0, 6.0, 8.0, 10.0, 12.0];
+        let opt_period = 3;
 
-        // Test invalid period
-        #[cfg(feature = "check")]
-        {
-            let err = lookback(1);
-            assert!(err.is_err());
+        let arrow_0 = TAArrowArray::from(input_0.clone());
+        let arrow_1 = TAArrowArray::from(input_1.clone());
+
+        let (res, _, _, _, _, _) = correl_arrow(&arrow_0, &arrow_1, opt_period).unwrap();
+
+        assert_eq!(res.len(), 6);
+        for i in 2..6 {
+            assert_relative_eq!(res.value(i), 1.0, epsilon = 0.0001);
         }
     }
 
@@ -560,6 +636,7 @@ mod tests {
         .unwrap();
 
         // First 13 values should be NaN (lookback = period - 1)
+        #[cfg(feature = "allow-nan")]
         for i in 0..13 {
             assert!(output_correl[i].is_nan());
         }

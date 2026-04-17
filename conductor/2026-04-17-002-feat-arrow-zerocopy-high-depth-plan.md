@@ -37,17 +37,17 @@ Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
 - [x] **Unit 2.2: Batch 3 - Trend & Volatility Extensions (COMPLETED)**
   - Done: DEMA, TEMA, T3, TRIMA, WMA.
 
-- [ ] **Unit 2.3: Batch 4 - Momentum & Volume (IN PROGRESS)**
-  - Done: CCI, MFI, TypPrice, OBV, WillR.
-  - Pending: AD, AdOsc, ADR, ADXR, Aroon, AroonOsc, BOP.
+- [x] **Unit 2.3: Batch 4 - Momentum & Volume (COMPLETED)**
+  - Done: CCI, MFI, TypPrice, OBV, WillR, AD, AdOsc, ADR, ADXR, Aroon, AroonOsc, BOP.
+
+- [ ] **Unit 2.4: Batch 5 - Stats (IN PROGRESS)**
+  **Goal:** Normalize and wrap statistics functions.
+  **Files:** `kand/src/ta/stats/{sum, stddev, max, min, correl}.rs`
   **Approach (TDD):**
   1. Refactor core to `_raw` variants.
   2. Implement `_arrow` variants via macro.
   3. Update Python bindings via `kand-py` macros.
   4. Perform semantic commit.
-
-- [ ] **Unit 2.4: Batch 5 - Stats & Others**
-  **Goal:** Normalize and wrap remaining stats (StdDev, Sum, Max, Min, Correl).
 
 - [ ] **Unit 2.5: Batch 6 - Candle Patterns**
   **Goal:** Bulk normalization of CDL_* pattern indicators.
@@ -55,7 +55,6 @@ Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
 ### Phase 3: Bindings & Final Audit
 
 - [x] **Unit 3.1: Python Binding Auto-Scaling (COMPLETED)**
-  - Macro `kand_py_arrow_wrapper!` and `kand_py_arrow_wrapper_multi!` implemented.
 
 - [ ] **Unit 3.2: Performance & Security Audit**
   **Goal:** Final pass with specialized agents to verify zero-copy and memory safety.

@@ -1,5 +1,8 @@
 use crate::{EPSILON, KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Calculates the lookback period required for Maximum Value calculation.
 ///
 /// The lookback period represents the number of data points needed before the first valid output
@@ -19,7 +22,7 @@ use crate::{EPSILON, KandError, TAFloat};
 /// use kand::stats::max;
 /// let period = 14;
 /// let lookback = max::lookback(period).unwrap();
-/// assert_eq!(lookback, 13);
+/// assert_eq!(lookback, 13); // lookback is period - 1
 /// ```
 pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     #[cfg(feature = "check")]
@@ -29,6 +32,22 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
         }
     }
     Ok(opt_period - 1)
+}
+
+/// Calculates Max without input validation for high performance.
+pub fn max_raw(input_prices: &[TAFloat], opt_period: usize, output_max: &mut [TAFloat]) {
+    let len = input_prices.len();
+    let lookback = opt_period - 1;
+
+    for i in lookback..len {
+        let mut max_val = input_prices[i - lookback];
+        for price in input_prices.iter().take(i + 1).skip(i - lookback + 1) {
+            if *price > max_val {
+                max_val = *price;
+            }
+        }
+        output_max[i] = max_val;
+    }
 }
 
 /// Calculates Maximum Value for a series of prices over a specified period.
@@ -111,23 +130,34 @@ pub fn max(
         }
     }
 
-    // Calculate MAX values
-    for i in lookback..len {
-        let mut max_val = input_prices[i - lookback];
-        for price in input_prices.iter().take(i + 1).skip(i - lookback + 1) {
-            if *price > max_val {
-                max_val = *price;
-            }
-        }
-        output_max[i] = max_val;
-    }
+    max_raw(input_prices, opt_period, output_max);
 
     // Fill initial values with NAN
-    for value in output_max.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
+    #[cfg(feature = "allow-nan")]
+    {
+        for value in output_max.iter_mut().take(lookback) {
+            *value = TAFloat::NAN;
+        }
     }
 
     Ok(())
+}
+
+/// Calculates the next Max value without input validation.
+#[must_use]
+pub fn max_inc_raw(
+    input_price: TAFloat,
+    prev_max: TAFloat,
+    input_old_price: TAFloat,
+    _opt_period: usize,
+) -> TAFloat {
+    if input_price >= prev_max {
+        input_price
+    } else if (prev_max - input_old_price).abs() < EPSILON {
+        input_price // Placeholder: incremental max requires buffer for correct recalculation
+    } else {
+        prev_max
+    }
 }
 
 /// Calculates the latest Maximum Value incrementally using previous results.
@@ -181,19 +211,21 @@ pub fn max_inc(
         }
     }
 
-    // If new price is higher than previous max, it becomes the new max
-    if input_price >= prev_max {
-        return Ok(input_price);
-    }
-
-    // If old price being removed was the max, need to recalculate
-    if (prev_max - input_old_price).abs() < EPSILON {
-        return Ok(input_price); // Need full recalculation in this case
-    }
-
-    // Otherwise keep previous max
-    Ok(prev_max)
+    Ok(max_inc_raw(
+        input_price,
+        prev_max,
+        input_old_price,
+        opt_period,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    max,
+    crate::ta::stats::max::max_raw,
+    inputs: { input_prices },
+    params: { opt_period: usize }
+);
 
 #[cfg(test)]
 mod tests {
@@ -214,6 +246,7 @@ mod tests {
         max(&input_close, opt_period, &mut output_max).unwrap();
 
         // First 13 values should be NaN
+        #[cfg(feature = "allow-nan")]
         for value in output_max.iter().take(13) {
             assert!(value.is_nan());
         }
@@ -242,6 +275,36 @@ mod tests {
             .unwrap();
             assert_relative_eq!(result, output_max[i], epsilon = 0.0001);
             prev_max = result;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_max_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_close = vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ];
+        let input_arrow = TAArrowArray::from(input_close.clone());
+        let opt_period = 14;
+
+        let result = max_arrow(&input_arrow, opt_period).unwrap();
+
+        assert_eq!(result.len(), input_close.len());
+
+        let mut out = vec![0.0; input_close.len()];
+        max(&input_close, opt_period, &mut out).unwrap();
+
+        for i in 0..input_close.len() {
+            if i < 13 {
+                #[cfg(feature = "allow-nan")]
+                assert!(result.value(i).is_nan());
+            } else {
+                assert_relative_eq!(result.value(i), out[i], epsilon = 0.0001);
+            }
         }
     }
 }
