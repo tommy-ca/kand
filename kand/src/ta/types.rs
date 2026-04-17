@@ -133,3 +133,11 @@ pub type TAArrowBuilder = PrimitiveBuilder<Float32Type>;
 /// Arrow builder type for floating-point values, matching library precision.
 #[cfg(all(feature = "arrow", not(all(feature = "f32", not(feature = "f64")))))]
 pub type TAArrowBuilder = PrimitiveBuilder<Float64Type>;
+
+/// Arrow array type for integer values, matching library precision.
+#[cfg(all(feature = "arrow", feature = "i64"))]
+pub type TAArrowIntArray = Int64Array;
+
+/// Arrow array type for integer values, matching library precision.
+#[cfg(all(feature = "arrow", not(feature = "i64")))]
+pub type TAArrowIntArray = Int32Array;

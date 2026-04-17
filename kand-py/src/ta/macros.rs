@@ -35,6 +35,43 @@ macro_rules! kand_py_arrow_wrapper {
 }
 
 #[macro_export]
+macro_rules! kand_py_arrow_wrapper_int {
+    (
+        $name:ident,
+        $arrow_fn:path,
+        inputs: { $($input_name:ident),+ },
+        params: { $($param_name:ident : $param_type:ty),* }
+    ) => {
+        #[cfg(feature = "arrow")]
+        #[pyo3::prelude::pyfunction]
+        #[pyo3(name = stringify!($name), signature = ($($input_name,)+ $($param_name),*))]
+        pub fn $name(
+            py: pyo3::prelude::Python,
+            $($input_name: pyo3_arrow::PyArray,)+
+            $($param_name: $param_type),*
+        ) -> pyo3::prelude::PyResult<pyo3_arrow::PyArray> {
+            use std::sync::Arc;
+            use kand::ta::types::TAArrowArray;
+            use kand::ta::types::TAArrowIntArray;
+
+            let first_input = [ $( &$input_name ),+ ][0];
+            
+            $(
+                let $input_name = $input_name.as_ref()
+                    .as_any()
+                    .downcast_ref::<TAArrowArray>()
+                    .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err(format!("Expected compatible Arrow floating-point array for {}", stringify!($input_name))))?;
+            )+
+
+            let result = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+
+            Ok(pyo3_arrow::PyArray::new(Arc::new(result), first_input.field().clone()))
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! kand_py_arrow_wrapper_multi {
     (
         $name:ident,

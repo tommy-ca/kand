@@ -4,6 +4,9 @@ use crate::{
     types::Signal,
 };
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowIntArray;
+
 /// Returns the lookback period for Doji pattern detection.
 ///
 /// # Description
@@ -25,6 +28,29 @@ use crate::{
 /// ```
 pub const fn lookback() -> Result<usize, KandError> {
     Ok(0)
+}
+
+/// Calculates Doji pattern without input validation for high performance.
+pub fn cdl_doji_raw(
+    input_open: &[TAFloat],
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    opt_body_percent: TAFloat,
+    opt_shadow_equal_percent: TAFloat,
+    output_signals: &mut [TAInt],
+) {
+    let len = input_open.len();
+    for i in 0..len {
+        output_signals[i] = cdl_doji_inc_raw(
+            input_open[i],
+            input_high[i],
+            input_low[i],
+            input_close[i],
+            opt_body_percent,
+            opt_shadow_equal_percent,
+        );
+    }
 }
 
 /// Detects Doji candlestick patterns in price data.
@@ -77,7 +103,7 @@ pub const fn lookback() -> Result<usize, KandError> {
 /// let input_high = vec![11.0, 11.2, 10.8];
 /// let input_low = vec![9.8, 10.1, 9.9];
 /// let input_close = vec![10.3, 10.4, 10.25];
-/// let mut output_signals = vec![0i64; 3];
+/// let mut output_signals = vec![0; 3];
 ///
 /// cdl_doji::cdl_doji(
 ///     &input_open,
@@ -131,19 +157,53 @@ pub fn cdl_doji(
         }
     }
 
-    // Process each candle
-    for i in 0..len {
-        output_signals[i] = cdl_doji_inc(
-            input_open[i],
-            input_high[i],
-            input_low[i],
-            input_close[i],
-            opt_body_percent,
-            opt_shadow_equal_percent,
-        )?;
-    }
+    cdl_doji_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_body_percent,
+        opt_shadow_equal_percent,
+        output_signals,
+    );
 
     Ok(())
+}
+
+/// Processes a single candlestick to detect a Doji pattern without validation.
+#[inline]
+#[must_use]
+pub fn cdl_doji_inc_raw(
+    input_open: TAFloat,
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+    opt_body_percent: TAFloat,
+    opt_shadow_equal_percent: TAFloat,
+) -> TAInt {
+    let body = real_body_length(input_open, input_close);
+    let range = input_high - input_low;
+    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
+    let dn_shadow = lower_shadow_length(input_low, input_open, input_close);
+
+    // Check for Doji pattern
+    let is_doji_body = range > 0.0 && body <= range * opt_body_percent / 100.0;
+
+    let shadow_diff_percent = if dn_shadow > 0.0 && up_shadow > 0.0 {
+        let up_diff = (up_shadow - dn_shadow).abs() / dn_shadow * 100.0;
+        let dn_diff = (dn_shadow - up_shadow).abs() / up_shadow * 100.0;
+        up_diff.min(dn_diff)
+    } else {
+        100.0
+    };
+
+    let shadows_equal = shadow_diff_percent < opt_shadow_equal_percent;
+
+    if is_doji_body && shadows_equal {
+        Signal::Pattern.into()
+    } else {
+        Signal::Neutral.into()
+    }
 }
 
 /// Processes a single candlestick to detect a Doji pattern.
@@ -179,7 +239,6 @@ pub fn cdl_doji(
 /// # Errors
 /// * `KandError::InvalidParameter` - If any parameter is invalid (e.g. <= 0)
 /// * `KandError::NaNDetected` - If any input value is NaN (when `check-nan` enabled)
-/// * `KandError::ConversionError` - If numeric conversion fails
 pub fn cdl_doji_inc(
     input_open: TAFloat,
     input_high: TAFloat,
@@ -204,43 +263,23 @@ pub fn cdl_doji_inc(
         }
     }
 
-    let body = real_body_length(input_open, input_close);
-    let range = input_high - input_low;
-    let up_shadow = upper_shadow_length(input_high, input_open, input_close);
-    let dn_shadow = lower_shadow_length(input_low, input_open, input_close);
-
-    // Check for Doji pattern
-    let is_doji_body = range > 0.0 && body <= range * opt_body_percent / 100.0;
-
-    // Calculates the percentage difference between upper and lower shadows.
-    // Returns the minimum relative difference to provide a more balanced comparison.
-    //
-    // The calculation is performed in two ways:
-    // 1. (|upper - lower| / lower) * 100: difference relative to lower shadow
-    // 2. (|lower - upper| / upper) * 100: difference relative to upper shadow
-    //
-    // The minimum of these two percentages is used because:
-    // - It provides the most conservative estimate of shadow inequality
-    // - It prevents bias from choice of baseline in relative calculations
-    // - It better handles cases where shadows have significant size differences
-    //
-    // Returns 100% if either shadow length is zero, indicating maximum inequality.
-    let shadow_diff_percent = if dn_shadow > 0.0 && up_shadow > 0.0 {
-        let up_diff = (up_shadow - dn_shadow).abs() / dn_shadow * 100.0;
-        let dn_diff = (dn_shadow - up_shadow).abs() / up_shadow * 100.0;
-        up_diff.min(dn_diff)
-    } else {
-        100.0
-    };
-
-    let shadows_equal = shadow_diff_percent < opt_shadow_equal_percent;
-
-    Ok(if is_doji_body && shadows_equal {
-        Signal::Pattern.into()
-    } else {
-        Signal::Neutral.into()
-    })
+    Ok(cdl_doji_inc_raw(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_body_percent,
+        opt_shadow_equal_percent,
+    ))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper_int!(
+    cdl_doji,
+    crate::ta::ohlcv::cdl_doji::cdl_doji_raw,
+    inputs: { input_open, input_high, input_low, input_close },
+    params: { opt_body_percent: TAFloat, opt_shadow_equal_percent: TAFloat }
+);
 
 #[cfg(test)]
 mod tests {
@@ -287,7 +326,7 @@ mod tests {
 
         let opt_body_percent = 5.0;
         let opt_shadow_equal_percent = 100.0;
-        let mut output_signals = vec![0i64; input_open.len()];
+        let mut output_signals = vec![0; input_open.len()];
 
         cdl_doji(
             &input_open,
@@ -300,10 +339,8 @@ mod tests {
         )
         .unwrap();
 
-        println!("output_signals: {output_signals:?}");
-
         // Verify specific doji signals
-        let doji_indices = [19, 22, 31, 45, 51, 60]; // Indices for TV BTCUSDT.P 15m 2025-02-07 00:45, 01:30, 03:45, 07:15, 08:45, 11:00
+        let doji_indices = [19, 22, 31, 45, 51, 60];
         for &idx in &doji_indices {
             assert_eq!(
                 output_signals[idx],
@@ -325,5 +362,33 @@ mod tests {
             .unwrap();
             assert_eq!(signal, output_signals[i], "Mismatch at index {i}");
         }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_cdl_doji_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_open = vec![10.0, 10.5, 10.2];
+        let input_high = vec![11.0, 11.2, 10.8];
+        let input_low = vec![9.8, 10.1, 9.9];
+        let input_close = vec![10.3, 10.4, 10.25];
+
+        let open_arrow = TAArrowArray::from(input_open);
+        let high_arrow = TAArrowArray::from(input_high);
+        let low_arrow = TAArrowArray::from(input_low);
+        let close_arrow = TAArrowArray::from(input_close);
+
+        let result = cdl_doji_arrow(
+            &open_arrow,
+            &high_arrow,
+            &low_arrow,
+            &close_arrow,
+            10.0,
+            100.0,
+        )
+        .unwrap();
+
+        assert_eq!(result.len(), 3);
     }
 }
