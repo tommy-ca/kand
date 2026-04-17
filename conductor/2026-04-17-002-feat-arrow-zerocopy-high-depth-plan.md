@@ -13,21 +13,20 @@ The current `kand` bindings suffer from memory copy overhead. By integrating `ar
 - **R4.** Python Zero-Copy (`pyo3-arrow` / PyCapsule).
 - **R5.** WASM Zero-Copy (Growth-resilient shared buffers).
 - **R6.** Precision Parity (`f32`/`f64` support).
-- **R7.** API Parity (Scaling to all indicators).
+- **R7.** Systematic Normalization (`_raw` contract).
 
 ## Key Technical Decisions
-- **Alignment:** Output buffers will be 64-byte aligned via `MutableBuffer`.
-- **Safety:** Explicit `lookback` validation and null checks in all Arrow variants.
-- **WASM Protocol:** Implementing a `refreshView()` requirement for JS-side buffer access.
-- **Normalization:** Refactoring all indicators to expose a `_raw` slice-based function.
-- **Python Automation:** Using `kand_py_arrow_wrapper!` macros to scale bindings.
+- **Alignment:** Output buffers are 64-byte aligned via `MutableBuffer`.
+- **Safety:** Strict null checks and offset-aware slicing in all Arrow variants.
+- **WASM Protocol:** `WasmBuffer` managed memory for zero-copy JS interaction.
+- **Scaling:** High-level macros in both `kand` and `kand-py` to minimize boilerplate.
 
 ## Implementation Units
 
 ### Phase 1: Normalization & Foundation (COMPLETED)
 - [x] Unit 1.1: Foundation established (`arrow` feature, type aliases).
 - [x] Unit 1.2: SMA POC across core, python, wasm.
-- [x] Unit 1.3: Multi-output macro defined.
+- [x] Unit 1.3: Multi-output macros defined.
 
 ### Phase 2: Batch-Driven TDD Scaling
 Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
@@ -39,8 +38,8 @@ Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
   - Done: DEMA, TEMA, T3, TRIMA, WMA.
 
 - [ ] **Unit 2.3: Batch 4 - Momentum & Volume (IN PROGRESS)**
-  - Done: CCI, MFI, TypPrice.
-  - Pending: OBV, WillR, AD, AdOsc, ADR.
+  - Done: CCI, MFI, TypPrice, OBV, WillR.
+  - Pending: AD, AdOsc, ADR, ADXR, Aroon, AroonOsc, BOP.
   **Approach (TDD):**
   1. Refactor core to `_raw` variants.
   2. Implement `_arrow` variants via macro.
@@ -48,19 +47,15 @@ Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
   4. Perform semantic commit.
 
 - [ ] **Unit 2.4: Batch 5 - Stats & Others**
-  **Goal:** Normalize and wrap remaining stats and helper functions.
-  **Files:** `kand/src/ta/stats/{stddev, sum, max, min, correl}.rs`
+  **Goal:** Normalize and wrap remaining stats (StdDev, Sum, Max, Min, Correl).
 
-### Phase 3: Bindings & Audit
+- [ ] **Unit 2.5: Batch 6 - Candle Patterns**
+  **Goal:** Bulk normalization of CDL_* pattern indicators.
+
+### Phase 3: Bindings & Final Audit
 
 - [x] **Unit 3.1: Python Binding Auto-Scaling (COMPLETED)**
-  - Macro `kand_py_arrow_wrapper!` and `kand_py_arrow_wrapper_multi!` implemented and applied to all refactored indicators.
+  - Macro `kand_py_arrow_wrapper!` and `kand_py_arrow_wrapper_multi!` implemented.
 
 - [ ] **Unit 3.2: Performance & Security Audit**
   **Goal:** Final pass with specialized agents to verify zero-copy and memory safety.
-  **Files:** `docs/audits/*.md`
-
-## Risks & Dependencies
-- **WASM Memory Growth:** Critical that JS refreshes views.
-- **Alignment Errors:** Must strictly use `MutableBuffer` or `arrow::buffer::alloc`.
-- **Dependency Conflicts:** Ensuring `pyo3-arrow` matches our PyO3 version.

@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period for A/D without input validation.
 #[inline]
 #[must_use]
@@ -53,9 +56,8 @@ pub fn ad_raw(
     output_ad: &mut [TAFloat],
 ) {
     let len = input_high.len();
-    let lookback = lookback_raw();
     let mut ad = 0.0;
-    for i in lookback..len {
+    for i in 0..len {
         let high_low_diff = input_high[i] - input_low[i];
         let mfm = if high_low_diff == 0.0 {
             0.0
@@ -262,6 +264,14 @@ pub fn ad_inc(
     ))
 }
 
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    ad,
+    crate::ta::ohlcv::ad::ad_raw,
+    inputs: { input_high, input_low, input_close, input_volume },
+    params: {}
+);
+
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
@@ -392,6 +402,25 @@ mod tests {
             .unwrap();
             assert_relative_eq!(result, output_ad[i], epsilon = EPSILON);
             prev_ad = result;
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_ad_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let high_arrow = TAArrowArray::from(INPUT_HIGH.to_vec());
+        let low_arrow = TAArrowArray::from(INPUT_LOW.to_vec());
+        let close_arrow = TAArrowArray::from(INPUT_CLOSE.to_vec());
+        let volume_arrow = TAArrowArray::from(INPUT_VOLUME.to_vec());
+
+        let result = ad_arrow(&high_arrow, &low_arrow, &close_arrow, &volume_arrow).unwrap();
+
+        assert_eq!(result.len(), INPUT_HIGH.len());
+
+        for (i, &expected) in EXPECTED_VALUES.iter().enumerate() {
+            assert_relative_eq!(result.value(i), expected, epsilon = EPSILON);
         }
     }
 }

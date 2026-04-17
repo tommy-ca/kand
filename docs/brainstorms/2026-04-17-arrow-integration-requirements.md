@@ -14,10 +14,17 @@ The goal is to modernize `kand` by making Apache Arrow a first-class, zero-copy 
 - **R1. Core Arrow Support:** The `kand` core crate must expose an optional `arrow` feature.
 - **R2. Zero-Copy Indicators:** All technical indicators must provide Arrow-native variants (e.g., `sma_arrow`) that accept and return `arrow::array::PrimitiveArray<T>` without copying the underlying buffer.
 - **R3. Offset & Null Safety:** Arrow-native functions must correctly handle Arrow array offsets and explicitly reject (error on) arrays with null values in the initial implementation.
-- **R4. Python Zero-Copy:** `kand-py` must use `pyo3-arrow` to exchange data via the Arrow PyCapsule interface, supporting zero-copy with Polars and PyArrow.
-- **R5. WASM Zero-Copy:** `kand-wasm` must provide memory-growth-resilient shared buffers for JavaScript, enabling JS to write and read data directly in WASM linear memory.
-- **R6. Precision Parity:** The Arrow implementation must respect the existing `f32`/`f64` precision features.
-- **R7. API Parity:** All 50+ existing indicators must be supported via Arrow-native variants.
+- **R4. Python Zero-Copy:** `kand-py` must use `pyo3-arrow` and automated macros (`kand_py_arrow_wrapper!`) to exchange data via the Arrow PyCapsule interface.
+- **R5. WASM Zero-Copy:** `kand-wasm` provides `WasmBuffer` for growth-resilient shared buffers, enabling zero-copy between JS and Rust.
+- **R6. Precision Parity:** The Arrow implementation respects existing `f32`/`f64` precision features via `TAArrowArray` aliases.
+- **R7. Systematic Normalization:** Every indicator follows the `_raw` -> `Safe Wrapper` -> `_arrow` three-tier contract.
+
+## Current Progress
+- **Phase 1 Foundation:** Complete (Macros, Foundation, SMA POC).
+- **Phase 2 Scaling:** 
+  - Batch 1 & 2 (Core & Multi-Output): Complete.
+  - Batch 3 (Trend Extensions): Complete.
+  - Batch 4 (Momentum & Volume): In Progress.
 
 ## Success Criteria
 - Benchmarks show near-zero overhead for data transfer between Python/JS and Rust.
