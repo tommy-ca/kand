@@ -1,5 +1,8 @@
 use crate::{KandError, TAFloat};
 
+#[cfg(feature = "arrow")]
+use crate::ta::types::TAArrowArray;
+
 /// Returns the lookback period required for Balance of Power (BOP) calculation.
 ///
 /// # Description
@@ -23,6 +26,25 @@ use crate::{KandError, TAFloat};
 /// ```
 pub const fn lookback() -> Result<usize, KandError> {
     Ok(0)
+}
+
+/// Calculates BOP without input validation for high performance.
+pub fn bop_raw(
+    input_open: &[TAFloat],
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    input_close: &[TAFloat],
+    output_bop: &mut [TAFloat],
+) {
+    let len = input_open.len();
+    for i in 0..len {
+        let range = input_high[i] - input_low[i];
+        if range == 0.0 {
+            output_bop[i] = 0.0;
+        } else {
+            output_bop[i] = (input_close[i] - input_open[i]) / range;
+        }
+    }
 }
 
 /// Calculates the Balance of Power (BOP) indicator for a price series.
@@ -117,16 +139,25 @@ pub fn bop(
         }
     }
 
-    for i in 0..len {
-        let range = input_high[i] - input_low[i];
-        if range == 0.0 {
-            output_bop[i] = 0.0;
-        } else {
-            output_bop[i] = (input_close[i] - input_open[i]) / range;
-        }
-    }
+    bop_raw(input_open, input_high, input_low, input_close, output_bop);
 
     Ok(())
+}
+
+/// Calculates a single BOP value incrementally without input validation.
+#[must_use]
+pub fn bop_inc_raw(
+    input_open: TAFloat,
+    input_high: TAFloat,
+    input_low: TAFloat,
+    input_close: TAFloat,
+) -> TAFloat {
+    let range = input_high - input_low;
+    if range == 0.0 {
+        0.0
+    } else {
+        (input_close - input_open) / range
+    }
 }
 
 /// Calculates a single Balance of Power (BOP) value for the latest price data.
@@ -178,13 +209,16 @@ pub fn bop_inc(
         }
     }
 
-    let range = input_high - input_low;
-    if range == 0.0 {
-        Ok(0.0)
-    } else {
-        Ok((input_close - input_open) / range)
-    }
+    Ok(bop_inc_raw(input_open, input_high, input_low, input_close))
 }
+
+// Arrow wrapper
+crate::kand_arrow_wrapper!(
+    bop,
+    crate::ta::ohlcv::bop::bop_raw,
+    inputs: { input_open, input_high, input_low, input_close },
+    params: {}
+);
 
 #[cfg(test)]
 mod tests {
@@ -257,6 +291,31 @@ mod tests {
             let result =
                 bop_inc(input_open[i], input_high[i], input_low[i], input_close[i]).unwrap();
             assert_relative_eq!(result, output_bop[i], epsilon = 0.0001);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_bop_arrow() {
+        use crate::ta::types::TAArrowArray;
+
+        let input_open = vec![10.0, 11.0, 12.0, 13.0];
+        let input_high = vec![12.0, 13.0, 14.0, 15.0];
+        let input_low = vec![8.0, 9.0, 10.0, 11.0];
+        let input_close = vec![11.0, 12.0, 13.0, 14.0];
+
+        let open_arrow = TAArrowArray::from(input_open.clone());
+        let high_arrow = TAArrowArray::from(input_high.clone());
+        let low_arrow = TAArrowArray::from(input_low.clone());
+        let close_arrow = TAArrowArray::from(input_close.clone());
+
+        let result = bop_arrow(&open_arrow, &high_arrow, &low_arrow, &close_arrow).unwrap();
+
+        assert_eq!(result.len(), 4);
+        for i in 0..4 {
+            let range = input_high[i] - input_low[i];
+            let expected = (input_close[i] - input_open[i]) / range;
+            assert_relative_eq!(result.value(i), expected, epsilon = 0.0001);
         }
     }
 }
