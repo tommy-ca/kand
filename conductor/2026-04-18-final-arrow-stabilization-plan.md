@@ -4,7 +4,7 @@
 This plan focuses on achieving 100% test parity for the Arrow-integrated `kand` library by resolving the remaining 7 test failures and executing the performance benchmarking suite.
 
 ## Problem Frame
-The current test suite has reached a 95% pass rate (119/126 passed). The remaining failures are surgical issues in specific trend indicators:
+The current test suite has reached a 94% pass rate (119/126 passed). The remaining failures are surgical issues in specific trend indicators:
 1. **Trend Drift:** ADX, DX, and ADXR require increased numerical tolerance.
 2. **Logic Mismatch:** ADOSC discrepancy persists; requires EMA/Initialization logic review.
 3. **NaN Initialization:** Stoch and Trima Arrow-native logic require final alignment on initial-period `NaN` padding.
@@ -18,14 +18,14 @@ The current test suite has reached a 95% pass rate (119/126 passed). The remaini
 ## Implementation Units
 
 ### Phase 1: Surgical Test Parity (Final Sprint)
-- [ ] Unit 1.1: Resolve `adosc` logic discrepancy via EMA/SMA start-index alignment.
+- [ ] Unit 1.1: Debug and align `adosc` raw implementation and EMA start index.
 - [ ] Unit 1.2: Increase `assert_relative_eq!` tolerances for `adx`, `dx`, `adxr`.
 - [ ] Unit 1.3: Fix NaN padding logic in `stoch_arrow` and `trima_arrow` initialization.
 - [ ] Unit 1.4: Final verification: `cargo test --workspace --features arrow` passes 100%.
 
 ### Phase 2: Performance Benchmarking
 - [ ] Unit 2.1: Execute benchmark suite (`cargo bench`).
-- [ ] Unit 2.2: Generate `docs/performance_report.md`.
+- [ ] Unit 2.2: Generate `docs/performance_report.md` comparing `_raw` and `_arrow` performance.
 
 ### Phase 3: Final Audit & Tagging
 - [ ] Unit 3.1: Final security audit of `unsafe` blocks.
