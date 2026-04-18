@@ -72,4 +72,3 @@ pub fn mom_inc_py(py: Python, current_price: TAFloat, old_price: TAFloat) -> PyR
     py.detach(|| mom::mom_inc(current_price, old_price))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

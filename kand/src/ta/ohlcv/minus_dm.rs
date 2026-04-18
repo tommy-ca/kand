@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Calculates the lookback period required for Minus Directional Movement (-DM) calculation.
 ///
 /// # Description
@@ -180,7 +179,6 @@ pub fn minus_dm(
 }
 
 /// Calculates the next Minus DM value incrementally without validation
-#[must_use]
 pub fn minus_dm_inc_raw(
     input_high: TAFloat,
     prev_high: TAFloat,
@@ -304,8 +302,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

@@ -100,4 +100,3 @@ pub fn vwap_inc_py(
     vwap::vwap_inc(high, low, close, volume, prev_cum_pv, prev_cum_vol)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

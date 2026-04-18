@@ -34,6 +34,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "mfi", signature = (high, low, close, volume, period))]
+#[allow(clippy::type_complexity)]
 pub fn mfi_py(
     py: Python,
     high: PyReadonlyArray1<TAFloat>,

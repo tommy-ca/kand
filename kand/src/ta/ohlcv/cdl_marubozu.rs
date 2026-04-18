@@ -226,7 +226,9 @@ pub fn cdl_marubozu(
 
     // Fill initial values with NAN
     for i in 0..lookback {
-        output_signals[i] = <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Neutral);
+        output_signals[i] = <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+            crate::ta::types::Signal::Neutral,
+        );
         output_body_avg[i] = TAFloat::NAN;
     }
 
@@ -235,7 +237,6 @@ pub fn cdl_marubozu(
 
 /// Processes a single candlestick for Marubozu pattern detection without validation.
 #[inline]
-#[must_use]
 pub fn cdl_marubozu_inc_raw(
     input_open: TAFloat,
     input_close: TAFloat,
@@ -251,9 +252,13 @@ pub fn cdl_marubozu_inc_raw(
 
     if body > prev_body_avg && up_shadow <= shadow_threshold && dn_shadow <= shadow_threshold {
         if input_close > input_open {
-            <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bullish,
+            )
         } else {
-            <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bearish)
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bearish,
+            )
         }
     } else {
         <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Neutral)
@@ -375,8 +380,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -443,10 +448,30 @@ mod tests {
         }
 
         // Test specific signals
-        assert_eq!(output_signals[14], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-10 14:05
-        assert_eq!(output_signals[27], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bearish)); // TV BTCUSDT.P 5m 2025-02-10 05:10
-        assert_eq!(output_signals[46], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bearish)); // TV BTCUSDT.P 5m 2025-02-10 06:45
-        assert_eq!(output_signals[61], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-10 08:00
+        assert_eq!(
+            output_signals[14],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bullish
+            )
+        ); // TV BTCUSDT.P 5m 2025-02-10 14:05
+        assert_eq!(
+            output_signals[27],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bearish
+            )
+        ); // TV BTCUSDT.P 5m 2025-02-10 05:10
+        assert_eq!(
+            output_signals[46],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bearish
+            )
+        ); // TV BTCUSDT.P 5m 2025-02-10 06:45
+        assert_eq!(
+            output_signals[61],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bullish
+            )
+        ); // TV BTCUSDT.P 5m 2025-02-10 08:00
 
         // Now test incremental calculation matches regular calculation
         let mut prev_body_avg = output_body_avg[13]; // First valid body average
@@ -496,15 +521,9 @@ mod tests {
         let low_arrow = TAArrowArray::from(input_low);
         let close_arrow = TAArrowArray::from(input_close);
 
-        let result = cdl_marubozu_arrow(
-            &open_arrow,
-            &high_arrow,
-            &low_arrow,
-            &close_arrow,
-            14,
-            5.0,
-        )
-        .unwrap();
+        let result =
+            cdl_marubozu_arrow(&open_arrow, &high_arrow, &low_arrow, &close_arrow, 14, 5.0)
+                .unwrap();
 
         assert_eq!(result.0.len(), 15);
     }

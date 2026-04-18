@@ -5,7 +5,6 @@ use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period for Heikin-Ashi calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw() -> TAPeriod {
     1
 }
@@ -195,7 +194,6 @@ pub fn ha(
 
 /// Core incremental calculation for Heikin-Ashi candle without error checking.
 #[inline]
-#[must_use]
 pub fn ha_inc_raw(
     curr_open: TAFloat,
     curr_high: TAFloat,
@@ -310,8 +308,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

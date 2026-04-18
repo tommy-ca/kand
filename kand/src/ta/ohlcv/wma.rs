@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Calculates the lookback period required for Weighted Moving Average (WMA).
 ///
 /// # Description
@@ -135,7 +134,6 @@ pub fn wma(input: &[TAFloat], opt_period: usize, output: &mut [TAFloat]) -> Resu
 }
 
 /// Calculates the next WMA value incrementally without input validation.
-#[must_use]
 pub fn wma_inc_raw(input_window: &[TAFloat], opt_period: usize) -> TAFloat {
     let denominator = (opt_period * (opt_period + 1)) as TAFloat / 2.0;
     let mut weighted_sum = 0.0;
@@ -218,8 +216,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

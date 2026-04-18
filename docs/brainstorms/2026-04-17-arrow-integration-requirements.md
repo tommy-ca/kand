@@ -6,7 +6,7 @@ topic: arrow-integration
 # Arrow Zero-Copy Integration: Requirements & Design
 
 ## Problem Frame
-The current `kand` library suffers from significant memory copy overhead in its Python (`kand-py`) and WebAssembly (`kand-wasm`) bindings. Quantitative finance workflows often involve millions of data points; copying these between the Rust core and the host environment (NumPy, JS, etc.) creates a performance bottleneck and doubles memory consumption. 
+The current `kand` library suffers from significant memory copy overhead in its Python (`kand-py`) and WebAssembly (`kand-wasm`) bindings. Quantitative finance workflows often involve millions of data points; copying these between the Rust core and the host environment (NumPy, JS, etc.) creates a performance bottleneck and doubles memory consumption.
 
 The goal is to modernize `kand` by making Apache Arrow a first-class, zero-copy data format, enabling seamless integration with the modern data ecosystem (Polars, PyArrow, Pandas 2.0).
 

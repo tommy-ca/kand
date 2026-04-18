@@ -1,10 +1,8 @@
 use super::ad;
 use crate::{KandError, TAFloat, TAPeriod, ta::types::MAType};
 
-
 /// Returns the lookback period for ADOSC without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(
     _opt_fast_period: TAPeriod,
     opt_slow_period: TAPeriod,
@@ -29,7 +27,6 @@ pub const fn lookback_raw(
 /// let lookback = adosc::lookback(3, 10, MAType::EMA).unwrap();
 /// assert_eq!(lookback, 9);
 /// ```
-#[must_use]
 pub const fn lookback(
     opt_fast_period: TAPeriod,
     opt_slow_period: TAPeriod,
@@ -58,7 +55,13 @@ pub fn adosc_raw(
 ) {
     let len = input_high.len();
     let mut ad_values = vec![0.0; len];
-    ad::ad_raw(input_high, input_low, input_close, input_volume, &mut ad_values);
+    ad::ad_raw(
+        input_high,
+        input_low,
+        input_close,
+        input_volume,
+        &mut ad_values,
+    );
 
     let lookback = lookback_raw(opt_fast_period, opt_slow_period, opt_ma_type);
 
@@ -67,28 +70,28 @@ pub fn adosc_raw(
 
     // Initial SMA for EMAs
     let mut fast_sum = 0.0;
-    for i in 0..opt_fast_period {
-        fast_sum += ad_values[i];
+    for ad_val in ad_values.iter().take(opt_fast_period) {
+        fast_sum += ad_val;
     }
     let mut fast_ema = fast_sum / opt_fast_period as TAFloat;
 
     let mut slow_sum = 0.0;
-    for i in 0..opt_slow_period {
-        slow_sum += ad_values[i];
+    for ad_val in ad_values.iter().take(opt_slow_period) {
+        slow_sum += ad_val;
     }
     let mut slow_ema = slow_sum / opt_slow_period as TAFloat;
 
     // Fill NaNs
-    for i in 0..len {
-        output_adosc[i] = TAFloat::NAN;
+    for adosc_val in output_adosc.iter_mut().take(len) {
+        *adosc_val = TAFloat::NAN;
     }
 
     // First valid ADOSC is at index opt_slow_period - 1
     // But we need to update fast_ema from index opt_fast_period to opt_slow_period - 1
-    for i in opt_fast_period..opt_slow_period {
-        fast_ema = (ad_values[i] - fast_ema).mul_add(fast_k, fast_ema);
+    for ad_val in ad_values.iter().take(opt_slow_period).skip(opt_fast_period) {
+        fast_ema = (ad_val - fast_ema).mul_add(fast_k, fast_ema);
     }
-    
+
     output_adosc[lookback] = fast_ema - slow_ema;
 
     // Continue for rest of the data
@@ -186,7 +189,7 @@ pub fn adosc(
 
     #[cfg(feature = "check-nan")]
     {
-        for i in 0..len {
+        for adosc_val in output_adosc.iter_mut().take(len) {
             if input_high[i].is_nan()
                 || input_low[i].is_nan()
                 || input_close[i].is_nan()
@@ -213,7 +216,6 @@ pub fn adosc(
 
 /// Computes the next ADOSC value incrementally using the previous EMA values.
 #[inline]
-#[must_use]
 pub fn adosc_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -227,7 +229,7 @@ pub fn adosc_inc_raw(
     _opt_ma_type: MAType,
 ) -> (TAFloat, TAFloat, TAFloat, TAFloat) {
     let ad_val = ad::ad_inc_raw(input_high, input_low, input_close, input_volume, prev_ad);
-    
+
     let fast_k = 2.0 / (opt_fast_period as TAFloat + 1.0);
     let slow_k = 2.0 / (opt_slow_period as TAFloat + 1.0);
 
@@ -301,8 +303,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

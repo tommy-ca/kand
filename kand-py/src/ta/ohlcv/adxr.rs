@@ -33,6 +33,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "adxr", signature = (high, low, close, period))]
+#[allow(clippy::type_complexity)]
 pub fn adxr_py(
     py: Python,
     high: PyReadonlyArray1<TAFloat>,
@@ -132,6 +133,7 @@ pub fn adxr_py(
     prev_smoothed_tr,
     period
 ))]
+#[allow(clippy::type_complexity)]
 pub fn adxr_inc_py(
     py: Python,
     high: TAFloat,

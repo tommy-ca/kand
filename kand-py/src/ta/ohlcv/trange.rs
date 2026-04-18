@@ -15,7 +15,7 @@ use pyo3::prelude::*;
 /// Returns:
 ///   A new 1-D NumPy array containing the TR values. The array has the same length as the input,
 ///   with the first element containing NaN value.
-
+///
 /// Examples:
 ///   ```python
 ///   >>> import numpy as np

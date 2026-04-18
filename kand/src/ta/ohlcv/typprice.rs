@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Returns the lookback period required for Typical Price calculation.
 ///
 /// Determines the number of data points needed to calculate the first valid Typical Price value.
@@ -111,7 +110,6 @@ pub fn typprice(
 }
 
 /// Calculates a single Typical Price value incrementally without validation.
-#[must_use]
 pub fn typprice_inc_raw(input_high: TAFloat, input_low: TAFloat, input_close: TAFloat) -> TAFloat {
     (input_high + input_low + input_close) / 3.0
 }
@@ -169,8 +167,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
     // Basic functionality tests

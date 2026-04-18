@@ -290,11 +290,10 @@ crate::kand_arrow_wrapper_multi!(
     }
 );
 
-
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -409,4 +408,3 @@ mod tests {
         assert_relative_eq!(vwap.value(0), 96718.333333, epsilon = 0.0001);
     }
 }
-

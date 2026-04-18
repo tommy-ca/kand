@@ -44,10 +44,8 @@ pub fn typprice_py(
     let mut output = vec![0.0; len];
 
     // Perform the Typical Price calculation while releasing the GIL to allow other Python threads to run
-    py.detach(|| {
-        typprice::typprice(input_high, input_low, input_close, output.as_mut_slice())
-    })
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+    py.detach(|| typprice::typprice(input_high, input_low, input_close, output.as_mut_slice()))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object
     Ok(output.into_pyarray(py).into())
@@ -83,4 +81,3 @@ crate::kand_py_arrow_wrapper!(
     inputs: { high, low, close },
     params: {}
 );
-

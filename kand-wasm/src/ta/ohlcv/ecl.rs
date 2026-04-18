@@ -1,5 +1,5 @@
-use kand::ta::ohlcv::ecl;
 use crate::WasmBuffer;
+use kand::ta::ohlcv::ecl;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -60,11 +60,7 @@ pub fn ecl_wasm_zero_copy(
  * Incrementally calculates ECL for a single period.
  */
 #[wasm_bindgen(js_name = eclInc)]
-pub fn ecl_wasm_inc(
-    prev_high: f64,
-    prev_low: f64,
-    prev_close: f64,
-) -> Result<ECLResult, JsValue> {
+pub fn ecl_wasm_inc(prev_high: f64, prev_low: f64, prev_close: f64) -> Result<ECLResult, JsValue> {
     ecl::ecl_inc(prev_high, prev_low, prev_close)
         .map(|(h5, h4, h3, h2, h1, l1, l2, l3, l4, l5)| ECLResult {
             h5,

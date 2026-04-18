@@ -32,6 +32,12 @@ pub fn cdl_gravestone_doji_inc(
     input_close: TAFloat,
     opt_body_percent: TAFloat,
 ) -> Result<TAInt, JsValue> {
-    cdl_gravestone_doji::cdl_gravestone_doji_inc(input_open, input_high, input_low, input_close, opt_body_percent)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    cdl_gravestone_doji::cdl_gravestone_doji_inc(
+        input_open,
+        input_high,
+        input_low,
+        input_close,
+        opt_body_percent,
+    )
+    .map_err(|e| JsValue::from_str(&e.to_string()))
 }

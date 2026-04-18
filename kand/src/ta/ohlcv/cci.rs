@@ -1,7 +1,6 @@
 use super::{sma, typprice};
 use crate::{KandError, TAFloat};
 
-
 /// Returns the lookback period required for CCI calculation.
 ///
 /// # Description
@@ -185,7 +184,6 @@ pub fn cci(
 }
 
 /// Calculates the next CCI value incrementally without validation.
-#[must_use]
 pub fn cci_inc_raw(
     prev_sma_tp: TAFloat,
     input_new_high: TAFloat,
@@ -345,8 +343,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

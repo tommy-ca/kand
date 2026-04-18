@@ -1,9 +1,7 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period for Rate of Change Percentage (ROCP) calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
     opt_period as TAPeriod
 }
@@ -113,7 +111,7 @@ pub fn rocp(
     output_rocp: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_price.len();
-    let lookback = lookback(opt_period)? as usize;
+    let lookback = lookback(opt_period)?;
 
     #[cfg(feature = "check")]
     {
@@ -152,7 +150,6 @@ pub fn rocp(
 
 /// Core incremental calculation for Rate of Change Percentage (ROCP) without error checking.
 #[inline]
-#[must_use]
 pub fn rocp_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
     (input - prev) / prev
 }
@@ -213,9 +210,9 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

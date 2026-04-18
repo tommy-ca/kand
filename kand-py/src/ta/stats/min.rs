@@ -79,4 +79,3 @@ crate::kand_py_arrow_wrapper!(
     inputs: { prices },
     params: { period: usize }
 );
-

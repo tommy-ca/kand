@@ -108,4 +108,3 @@ crate::kand_py_arrow_wrapper_multi!(
     params: { period: usize },
     output_count: 3
 );
-

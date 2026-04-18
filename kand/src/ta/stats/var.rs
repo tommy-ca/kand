@@ -170,7 +170,13 @@ pub fn var(
         }
     }
 
-    var_raw(input_prices, opt_period, output_var, output_sum, output_sum_sq);
+    var_raw(
+        input_prices,
+        opt_period,
+        output_var,
+        output_sum,
+        output_sum_sq,
+    );
 
     // Fill initial values with NAN
     #[cfg(feature = "allow-nan")]
@@ -292,8 +298,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

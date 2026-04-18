@@ -1,5 +1,5 @@
-use wasm_bindgen::prelude::*;
 use std::mem;
+use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "arrow")]
 use arrow_buffer::Buffer;
@@ -12,7 +12,7 @@ pub struct WasmBuffer {
     data: Buffer,
     #[cfg(not(feature = "arrow"))]
     data: Vec<u8>,
-    
+
     len: usize,
     element_size: usize,
 }
@@ -22,7 +22,7 @@ impl WasmBuffer {
     #[wasm_bindgen(constructor)]
     pub fn new(len: usize, element_size: usize) -> Self {
         let capacity = len * element_size;
-        
+
         #[cfg(feature = "arrow")]
         {
             let (_, buffer) = kand::helper::buffer_pool::create_pooled_buffer(capacity);
@@ -32,7 +32,7 @@ impl WasmBuffer {
                 element_size,
             }
         }
-        
+
         #[cfg(not(feature = "arrow"))]
         {
             Self {
@@ -47,6 +47,10 @@ impl WasmBuffer {
         self.data.as_ptr()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -57,18 +61,18 @@ impl WasmBuffer {
 
     pub fn resize(&mut self, new_len: usize) {
         let new_capacity = new_len * self.element_size;
-        
+
         #[cfg(feature = "arrow")]
         {
             let (_, new_buffer) = kand::helper::buffer_pool::create_pooled_buffer(new_capacity);
             self.data = new_buffer;
         }
-        
+
         #[cfg(not(feature = "arrow"))]
         {
             self.data.resize(new_capacity, 0);
         }
-        
+
         self.len = new_len;
     }
 }
@@ -77,35 +81,31 @@ impl WasmBuffer {
     pub fn as_slice<T>(&self, len: usize) -> &[T] {
         assert!(len <= self.len);
         assert_eq!(mem::size_of::<T>(), self.element_size);
-        unsafe {
-            std::slice::from_raw_parts(self.data.as_ptr() as *const T, len)
-        }
+        unsafe { std::slice::from_raw_parts(self.data.as_ptr() as *const T, len) }
     }
 
     pub fn as_mut_slice<T>(&mut self, len: usize) -> &mut [T] {
         assert!(len <= self.len);
         assert_eq!(mem::size_of::<T>(), self.element_size);
-        
+
         #[cfg(feature = "arrow")]
         {
-            unsafe {
-                std::slice::from_raw_parts_mut(self.data.as_ptr() as *mut T, len)
-            }
+            unsafe { std::slice::from_raw_parts_mut(self.data.as_ptr() as *mut T, len) }
         }
 
         #[cfg(not(feature = "arrow"))]
         {
-            unsafe {
-                std::slice::from_raw_parts_mut(self.data.as_mut_ptr() as *mut T, len)
-            }
+            unsafe { std::slice::from_raw_parts_mut(self.data.as_mut_ptr() as *mut T, len) }
         }
     }
 
     #[cfg(feature = "arrow")]
-    pub fn to_arrow_array<T: arrow::datatypes::ArrowPrimitiveType>(&self) -> arrow::array::PrimitiveArray<T> {
+    pub fn to_arrow_array<T: arrow::datatypes::ArrowPrimitiveType>(
+        &self,
+    ) -> arrow::array::PrimitiveArray<T> {
         use arrow::array::PrimitiveArray;
         use arrow_buffer::ScalarBuffer;
-        
+
         assert_eq!(mem::size_of::<T::Native>(), self.element_size);
         let scalar_buffer = ScalarBuffer::<T::Native>::new(self.data.clone(), 0, self.len);
         PrimitiveArray::<T>::new(scalar_buffer, None)

@@ -1,10 +1,8 @@
 use super::sma;
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period for ADR without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: TAPeriod) -> TAPeriod {
     opt_period - 1
 }
@@ -24,7 +22,6 @@ pub const fn lookback_raw(opt_period: TAPeriod) -> TAPeriod {
 /// let lookback = adr::lookback(14).unwrap();
 /// assert_eq!(lookback, 13);
 /// ```
-#[must_use]
 pub const fn lookback(opt_period: TAPeriod) -> Result<TAPeriod, KandError> {
     #[cfg(feature = "check")]
     {
@@ -143,7 +140,6 @@ pub fn adr(
 
 /// Computes the next ADR value incrementally without input validation.
 #[inline]
-#[must_use]
 pub fn adr_inc_raw(
     prev_adr: TAFloat,
     input_new_high: TAFloat,
@@ -235,9 +231,9 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

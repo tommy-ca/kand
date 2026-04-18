@@ -16,9 +16,7 @@ pub struct TRIXResult {
  */
 #[wasm_bindgen(js_name = trixLookback)]
 pub fn trix_lookback_wasm(opt_period: usize) -> Result<usize, JsValue> {
-    trix::lookback(opt_period)
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    trix::lookback(opt_period).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**

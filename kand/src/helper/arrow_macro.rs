@@ -19,7 +19,7 @@ macro_rules! kand_arrow_wrapper {
             // Get first input length
             let first_input = [ $( $input_name ),+ ][0];
             let len = first_input.len();
-            
+
             // Validate all inputs same length and no nulls
             $(
                 if $input_name.len() != len {
@@ -47,7 +47,7 @@ macro_rules! kand_arrow_wrapper {
             let output_slice = unsafe {
                 std::slice::from_raw_parts_mut(ptr as *mut $crate::TAFloat, len)
             };
-            
+
             // Initialize with NAN efficiently
             output_slice.fill($crate::TAFloat::NAN);
 
@@ -82,7 +82,7 @@ macro_rules! kand_arrow_wrapper_multi {
             // Get first input length
             let first_input = [ $( $input_name ),+ ][0];
             let len = first_input.len();
-            
+
             // Validate all inputs same length and no nulls
             $(
                 if $input_name.len() != len {
@@ -111,7 +111,7 @@ macro_rules! kand_arrow_wrapper_multi {
                 let $output_name = ($output_name, unsafe {
                     std::slice::from_raw_parts_mut(ptr as *mut $output_type, len)
                 });
-                
+
                 // Initialize with NAN if TAFloat
                 if std::any::TypeId::of::<$output_type>() == std::any::TypeId::of::<$crate::TAFloat>() {
                     let slice = unsafe {
@@ -123,8 +123,8 @@ macro_rules! kand_arrow_wrapper_multi {
 
             // Computation
             $raw_fn(
-                $($input_name,)+ 
-                $($param_name,)* 
+                $($input_name,)+
+                $($param_name,)*
                 $( $output_name.1 ),+
             );
 
@@ -154,7 +154,7 @@ macro_rules! kand_arrow_wrapper_int {
             // Get first input length
             let first_input = [ $( $input_name ),+ ][0];
             let len = first_input.len();
-            
+
             // Validate all inputs same length and no nulls
             $(
                 if $input_name.len() != len {

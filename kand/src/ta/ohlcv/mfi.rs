@@ -249,8 +249,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -368,8 +368,14 @@ mod tests {
         let volume_arrow = TAArrowArray::from(input_volume.clone());
         let opt_period = 14;
 
-        let (mfi_arrow, _, _, _, _) =
-            mfi_arrow(&high_arrow, &low_arrow, &close_arrow, &volume_arrow, opt_period).unwrap();
+        let (mfi_arrow, _, _, _, _) = mfi_arrow(
+            &high_arrow,
+            &low_arrow,
+            &close_arrow,
+            &volume_arrow,
+            opt_period,
+        )
+        .unwrap();
 
         assert_eq!(mfi_arrow.len(), input_high.len());
 

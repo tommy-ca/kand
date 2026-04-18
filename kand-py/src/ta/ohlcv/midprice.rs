@@ -109,4 +109,3 @@ pub fn midprice_inc_py(
     py.detach(|| midprice::midprice_inc(high, low, prev_highest, prev_lowest, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

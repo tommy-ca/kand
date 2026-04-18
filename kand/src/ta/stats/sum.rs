@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Calculates the lookback period required for Sum calculation.
 ///
 /// The lookback period represents the number of data points needed before the first valid output
@@ -151,7 +150,11 @@ pub fn sum(
 /// Calculates the next Sum value without input validation.
 #[inline]
 #[must_use]
-pub fn sum_inc_raw(input_new_price: TAFloat, input_old_price: TAFloat, prev_sum: TAFloat) -> TAFloat {
+pub fn sum_inc_raw(
+    input_new_price: TAFloat,
+    input_old_price: TAFloat,
+    prev_sum: TAFloat,
+) -> TAFloat {
     prev_sum + input_new_price - input_old_price
 }
 
@@ -208,8 +211,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

@@ -34,6 +34,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "supertrend", signature = (high, low, close, period, multiplier))]
+#[allow(clippy::type_complexity)]
 pub fn supertrend_py(
     py: Python,
     high: PyReadonlyArray1<TAFloat>,
@@ -160,4 +161,3 @@ pub fn supertrend_inc_py(
     )
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

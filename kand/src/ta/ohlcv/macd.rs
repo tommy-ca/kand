@@ -51,8 +51,6 @@ pub struct StatefulMACD {
     fast_ema: ema::StatefulEMA,
     slow_ema: ema::StatefulEMA,
     signal_ema: ema::StatefulEMA,
-    lookback: usize,
-    count: usize,
 }
 
 impl StatefulMACD {
@@ -65,14 +63,12 @@ impl StatefulMACD {
         let fast_ema = ema::StatefulEMA::new(opt_fast_period, None)?;
         let slow_ema = ema::StatefulEMA::new(opt_slow_period, None)?;
         let signal_ema = ema::StatefulEMA::new(opt_signal_period, None)?;
-        let lookback = lookback(opt_fast_period, opt_slow_period, opt_signal_period)?;
+        let _ = lookback(opt_fast_period, opt_slow_period, opt_signal_period)?;
 
         Ok(Self {
             fast_ema,
             slow_ema,
             signal_ema,
-            lookback,
-            count: 0,
         })
     }
 }
@@ -82,10 +78,9 @@ impl crate::ta::traits::Indicator for StatefulMACD {
     type Output = (TAFloat, TAFloat, TAFloat);
 
     fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        use crate::ta::traits::Indicator;
         let fast = self.fast_ema.next(input)?;
         let slow = self.slow_ema.next(input)?;
-        
+
         let macd_val = if fast.is_nan() || slow.is_nan() {
             TAFloat::NAN
         } else {
@@ -119,28 +114,40 @@ impl crate::ta::traits::Indicator for StatefulMACD {
         let mut columns = Vec::new();
         let mut fields = Vec::new();
 
-        for (prefix, batch) in [("fast_", fast_batch), ("slow_", slow_batch), ("signal_", signal_batch)] {
+        for (prefix, batch) in [
+            ("fast_", fast_batch),
+            ("slow_", slow_batch),
+            ("signal_", signal_batch),
+        ] {
             let schema = batch.schema();
             for i in 0..batch.num_columns() {
                 let field = schema.field(i);
-                fields.push(Field::new(format!("{}{}", prefix, field.name()), field.data_type().clone(), field.is_nullable()));
+                fields.push(Field::new(
+                    format!("{}{}", prefix, field.name()),
+                    field.data_type().clone(),
+                    field.is_nullable(),
+                ));
                 columns.push(batch.column(i).clone());
             }
         }
 
         let schema = Arc::new(Schema::new(fields));
-        arrow::record_batch::RecordBatch::try_new(schema, columns).map_err(|_| KandError::InvalidData)
+        arrow::record_batch::RecordBatch::try_new(schema, columns)
+            .map_err(|_| KandError::InvalidData)
     }
 
     #[cfg(feature = "arrow")]
-    fn from_record_batch(&mut self, batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
         use std::sync::Arc;
-        
+
         let schema = batch.schema();
         let mut fast_columns = Vec::new();
         let mut slow_columns = Vec::new();
         let mut signal_columns = Vec::new();
-        
+
         let mut fast_fields = Vec::new();
         let mut slow_fields = Vec::new();
         let mut signal_fields = Vec::new();
@@ -148,24 +155,48 @@ impl crate::ta::traits::Indicator for StatefulMACD {
         for i in 0..batch.num_columns() {
             let field = schema.field(i);
             if field.name().starts_with("fast_") {
-                fast_fields.push(arrow::datatypes::Field::new(&field.name()[5..], field.data_type().clone(), field.is_nullable()));
+                fast_fields.push(arrow::datatypes::Field::new(
+                    &field.name()[5..],
+                    field.data_type().clone(),
+                    field.is_nullable(),
+                ));
                 fast_columns.push(batch.column(i).clone());
             } else if field.name().starts_with("slow_") {
-                slow_fields.push(arrow::datatypes::Field::new(&field.name()[5..], field.data_type().clone(), field.is_nullable()));
+                slow_fields.push(arrow::datatypes::Field::new(
+                    &field.name()[5..],
+                    field.data_type().clone(),
+                    field.is_nullable(),
+                ));
                 slow_columns.push(batch.column(i).clone());
             } else if field.name().starts_with("signal_") {
-                signal_fields.push(arrow::datatypes::Field::new(&field.name()[7..], field.data_type().clone(), field.is_nullable()));
+                signal_fields.push(arrow::datatypes::Field::new(
+                    &field.name()[7..],
+                    field.data_type().clone(),
+                    field.is_nullable(),
+                ));
                 signal_columns.push(batch.column(i).clone());
             }
         }
 
-        let fast_batch = arrow::record_batch::RecordBatch::try_new(Arc::new(arrow::datatypes::Schema::new(fast_fields)), fast_columns).map_err(|_| KandError::InvalidData)?;
-        let slow_batch = arrow::record_batch::RecordBatch::try_new(Arc::new(arrow::datatypes::Schema::new(slow_fields)), slow_columns).map_err(|_| KandError::InvalidData)?;
-        let signal_batch = arrow::record_batch::RecordBatch::try_new(Arc::new(arrow::datatypes::Schema::new(signal_fields)), signal_columns).map_err(|_| KandError::InvalidData)?;
+        let fast_batch = arrow::record_batch::RecordBatch::try_new(
+            Arc::new(arrow::datatypes::Schema::new(fast_fields)),
+            fast_columns,
+        )
+        .map_err(|_| KandError::InvalidData)?;
+        let slow_batch = arrow::record_batch::RecordBatch::try_new(
+            Arc::new(arrow::datatypes::Schema::new(slow_fields)),
+            slow_columns,
+        )
+        .map_err(|_| KandError::InvalidData)?;
+        let signal_batch = arrow::record_batch::RecordBatch::try_new(
+            Arc::new(arrow::datatypes::Schema::new(signal_fields)),
+            signal_columns,
+        )
+        .map_err(|_| KandError::InvalidData)?;
 
-        self.fast_ema.from_record_batch(&fast_batch)?;
-        self.slow_ema.from_record_batch(&slow_batch)?;
-        self.signal_ema.from_record_batch(&signal_batch)?;
+        self.fast_ema.restore_from_record_batch(&fast_batch)?;
+        self.slow_ema.restore_from_record_batch(&slow_batch)?;
+        self.signal_ema.restore_from_record_batch(&signal_batch)?;
 
         Ok(())
     }
@@ -205,23 +236,26 @@ impl BatchMACD {
 #[cfg(feature = "arrow")]
 impl crate::ta::traits::BatchIndicator for BatchMACD {
     type Input = crate::ta::types::TAArrowArray;
-    type Output = (crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray);
+    type Output = (
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+    );
 
     fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        use crate::ta::traits::BatchIndicator;
-        use arrow::array::Array;
         use std::mem::size_of;
 
         let fast = self.fast_ema.next_batch(input.clone())?;
         let slow = self.slow_ema.next_batch(input)?;
-        
+
         let fast_values = fast.values();
         let slow_values = slow.values();
 
-        let (ptr, macd_buffer) = crate::helper::buffer_pool::create_pooled_buffer(self.num_streams * size_of::<TAFloat>());
-        let macd_slice = unsafe {
-            std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams)
-        };
+        let (ptr, macd_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
+            self.num_streams * size_of::<TAFloat>(),
+        );
+        let macd_slice =
+            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
 
         for i in 0..self.num_streams {
             if fast_values[i].is_nan() || slow_values[i].is_nan() {
@@ -233,12 +267,13 @@ impl crate::ta::traits::BatchIndicator for BatchMACD {
 
         let macd_arrow = crate::ta::types::TAArrowArray::new(macd_buffer.into(), None);
         let signal_arrow = self.signal_ema.next_batch(macd_arrow.clone())?;
-        
+
         let signal_values = signal_arrow.values();
-        let (ptr_h, hist_buffer) = crate::helper::buffer_pool::create_pooled_buffer(self.num_streams * size_of::<TAFloat>());
-        let hist_slice = unsafe {
-            std::slice::from_raw_parts_mut(ptr_h as *mut TAFloat, self.num_streams)
-        };
+        let (ptr_h, hist_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
+            self.num_streams * size_of::<TAFloat>(),
+        );
+        let hist_slice =
+            unsafe { std::slice::from_raw_parts_mut(ptr_h as *mut TAFloat, self.num_streams) };
 
         for i in 0..self.num_streams {
             if macd_slice[i].is_nan() || signal_values[i].is_nan() {
@@ -251,12 +286,13 @@ impl crate::ta::traits::BatchIndicator for BatchMACD {
         Ok((
             macd_arrow,
             signal_arrow,
-            crate::ta::types::TAArrowArray::new(hist_buffer.into(), None)
+            crate::ta::types::TAArrowArray::new(hist_buffer.into(), None),
         ))
     }
 
+    #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::datatypes::{Field, Schema};
         use std::sync::Arc;
 
         let fast_batch = self.fast_ema.to_record_batch()?;
@@ -266,27 +302,40 @@ impl crate::ta::traits::BatchIndicator for BatchMACD {
         let mut columns = Vec::new();
         let mut fields = Vec::new();
 
-        for (prefix, batch) in [("fast_", fast_batch), ("slow_", slow_batch), ("signal_", signal_batch)] {
+        for (prefix, batch) in [
+            ("fast_", fast_batch),
+            ("slow_", slow_batch),
+            ("signal_", signal_batch),
+        ] {
             let schema = batch.schema();
             for i in 0..batch.num_columns() {
                 let field = schema.field(i);
-                fields.push(Field::new(format!("{}{}", prefix, field.name()), field.data_type().clone(), field.is_nullable()));
+                fields.push(Field::new(
+                    format!("{}{}", prefix, field.name()),
+                    field.data_type().clone(),
+                    field.is_nullable(),
+                ));
                 columns.push(batch.column(i).clone());
             }
         }
 
         let schema = Arc::new(Schema::new(fields));
-        arrow::record_batch::RecordBatch::try_new(schema, columns).map_err(|_| KandError::InvalidData)
+        arrow::record_batch::RecordBatch::try_new(schema, columns)
+            .map_err(|_| KandError::InvalidData)
     }
 
-    fn from_record_batch(&mut self, batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
         use std::sync::Arc;
-        
+
         let schema = batch.schema();
         let mut fast_columns = Vec::new();
         let mut slow_columns = Vec::new();
         let mut signal_columns = Vec::new();
-        
+
         let mut fast_fields = Vec::new();
         let mut slow_fields = Vec::new();
         let mut signal_fields = Vec::new();
@@ -294,24 +343,48 @@ impl crate::ta::traits::BatchIndicator for BatchMACD {
         for i in 0..batch.num_columns() {
             let field = schema.field(i);
             if field.name().starts_with("fast_") {
-                fast_fields.push(arrow::datatypes::Field::new(&field.name()[5..], field.data_type().clone(), field.is_nullable()));
+                fast_fields.push(arrow::datatypes::Field::new(
+                    &field.name()[5..],
+                    field.data_type().clone(),
+                    field.is_nullable(),
+                ));
                 fast_columns.push(batch.column(i).clone());
             } else if field.name().starts_with("slow_") {
-                slow_fields.push(arrow::datatypes::Field::new(&field.name()[5..], field.data_type().clone(), field.is_nullable()));
+                slow_fields.push(arrow::datatypes::Field::new(
+                    &field.name()[5..],
+                    field.data_type().clone(),
+                    field.is_nullable(),
+                ));
                 slow_columns.push(batch.column(i).clone());
             } else if field.name().starts_with("signal_") {
-                signal_fields.push(arrow::datatypes::Field::new(&field.name()[7..], field.data_type().clone(), field.is_nullable()));
+                signal_fields.push(arrow::datatypes::Field::new(
+                    &field.name()[7..],
+                    field.data_type().clone(),
+                    field.is_nullable(),
+                ));
                 signal_columns.push(batch.column(i).clone());
             }
         }
 
-        let fast_batch = arrow::record_batch::RecordBatch::try_new(Arc::new(arrow::datatypes::Schema::new(fast_fields)), fast_columns).map_err(|_| KandError::InvalidData)?;
-        let slow_batch = arrow::record_batch::RecordBatch::try_new(Arc::new(arrow::datatypes::Schema::new(slow_fields)), slow_columns).map_err(|_| KandError::InvalidData)?;
-        let signal_batch = arrow::record_batch::RecordBatch::try_new(Arc::new(arrow::datatypes::Schema::new(signal_fields)), signal_columns).map_err(|_| KandError::InvalidData)?;
+        let fast_batch = arrow::record_batch::RecordBatch::try_new(
+            Arc::new(arrow::datatypes::Schema::new(fast_fields)),
+            fast_columns,
+        )
+        .map_err(|_| KandError::InvalidData)?;
+        let slow_batch = arrow::record_batch::RecordBatch::try_new(
+            Arc::new(arrow::datatypes::Schema::new(slow_fields)),
+            slow_columns,
+        )
+        .map_err(|_| KandError::InvalidData)?;
+        let signal_batch = arrow::record_batch::RecordBatch::try_new(
+            Arc::new(arrow::datatypes::Schema::new(signal_fields)),
+            signal_columns,
+        )
+        .map_err(|_| KandError::InvalidData)?;
 
-        self.fast_ema.from_record_batch(&fast_batch)?;
-        self.slow_ema.from_record_batch(&slow_batch)?;
-        self.signal_ema.from_record_batch(&signal_batch)?;
+        self.fast_ema.restore_from_record_batch(&fast_batch)?;
+        self.slow_ema.restore_from_record_batch(&slow_batch)?;
+        self.signal_ema.restore_from_record_batch(&signal_batch)?;
 
         Ok(())
     }
@@ -627,22 +700,22 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use approx::assert_relative_eq;
     use super::*;
+    use approx::assert_relative_eq;
 
     #[test]
     fn test_stateful_macd() {
         use crate::ta::traits::Indicator;
         let mut macd = StatefulMACD::new(2, 3, 2).unwrap();
-        
+
         // Data: 10, 11, 12, 13, 14, 15
         assert!(macd.next(10.0).unwrap().0.is_nan()); // count 1: macd NaN
         assert!(macd.next(11.0).unwrap().0.is_nan()); // count 2: macd NaN
         assert!(!macd.next(12.0).unwrap().0.is_nan()); // count 3: macd valid, signal NaN
         assert!(!macd.next(13.0).unwrap().1.is_nan()); // count 4: signal valid
-        
+
         let (m, s, h) = macd.next(14.0).unwrap(); // count 5
-        
+
         assert!(!m.is_nan());
         assert!(!s.is_nan());
         assert!(!h.is_nan());
@@ -654,7 +727,7 @@ mod tests {
         use crate::ta::traits::BatchIndicator;
         use crate::ta::types::TAArrowArray;
         let mut batch_macd = BatchMACD::new(2, 3, 2, 2).unwrap();
-        
+
         let input = TAArrowArray::from(vec![10.0, 20.0]);
         let (m, _, _) = batch_macd.next_batch(input).unwrap();
         assert!(m.value(0).is_nan());

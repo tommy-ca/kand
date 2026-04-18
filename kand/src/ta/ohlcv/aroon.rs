@@ -216,7 +216,6 @@ pub fn aroon(
 }
 
 /// Calculates next Aroon values incrementally without input validation
-#[must_use]
 pub fn aroon_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -333,7 +332,8 @@ pub fn aroon_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_null() || input_low.is_null() || prev_high.is_null() || prev_low.is_null() {
+        if input_high.is_null() || input_low.is_null() || prev_high.is_null() || prev_low.is_null()
+        {
             return Err(KandError::NaNDetected);
         }
     }
@@ -376,9 +376,9 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

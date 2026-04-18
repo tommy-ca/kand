@@ -94,12 +94,12 @@ fn kand(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[cfg(feature = "arrow")]
     m.add_function(wrap_pyfunction!(ta::ohlcv::ema::ema_arrow, m)?)?;
     #[cfg(feature = "arrow")]
-    m.add_class::<ta::ohlcv::ema::BatchEMA_py>()?;
+    m.add_class::<ta::ohlcv::ema::BatchEmaPy>()?;
 
     #[cfg(feature = "arrow")]
     m.add_function(wrap_pyfunction!(ta::ohlcv::macd::macd_arrow, m)?)?;
     #[cfg(feature = "arrow")]
-    m.add_class::<ta::ohlcv::macd::BatchMACD_py>()?;
+    m.add_class::<ta::ohlcv::macd::BatchMacdPy>()?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::medprice::medprice_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::medprice::medprice_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::mfi::mfi_py, m)?)?;
@@ -146,7 +146,7 @@ fn kand(m: &Bound<'_, PyModule>) -> PyResult<()> {
     #[cfg(feature = "arrow")]
     m.add_function(wrap_pyfunction!(ta::ohlcv::sma::sma_arrow, m)?)?;
     #[cfg(feature = "arrow")]
-    m.add_class::<ta::ohlcv::sma::BatchSMA_py>()?;
+    m.add_class::<ta::ohlcv::sma::BatchSmaPy>()?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::stoch::stoch_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::supertrend::supertrend_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::supertrend::supertrend_inc_py, m)?)?;

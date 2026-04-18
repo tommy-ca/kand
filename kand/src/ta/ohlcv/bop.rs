@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Returns the lookback period required for Balance of Power (BOP) calculation.
 ///
 /// # Description
@@ -143,7 +142,6 @@ pub fn bop(
 }
 
 /// Calculates a single BOP value incrementally without input validation.
-#[must_use]
 pub fn bop_inc_raw(
     input_open: TAFloat,
     input_high: TAFloat,
@@ -201,7 +199,10 @@ pub fn bop_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_open.is_null() || input_high.is_null() || input_low.is_null() || input_close.is_null()
+        if input_open.is_null()
+            || input_high.is_null()
+            || input_low.is_null()
+            || input_close.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -221,8 +222,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

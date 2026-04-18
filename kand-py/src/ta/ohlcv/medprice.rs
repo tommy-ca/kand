@@ -65,4 +65,3 @@ pub fn medprice_inc_py(py: Python, high: TAFloat, low: TAFloat) -> PyResult<TAFl
     py.detach(|| medprice::medprice_inc(high, low))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

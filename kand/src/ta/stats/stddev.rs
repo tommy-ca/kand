@@ -170,8 +170,13 @@ pub fn stddev_inc_raw(
     input_old_price: TAFloat,
     opt_period: usize,
 ) -> (TAFloat, TAFloat, TAFloat) {
-    let (var, new_sum, new_sum_sq) =
-        var::var_inc_raw(input_price, prev_sum, prev_sum_sq, input_old_price, opt_period);
+    let (var, new_sum, new_sum_sq) = var::var_inc_raw(
+        input_price,
+        prev_sum,
+        prev_sum_sq,
+        input_old_price,
+        opt_period,
+    );
 
     (var.sqrt(), new_sum, new_sum_sq)
 }
@@ -258,8 +263,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

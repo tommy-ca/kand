@@ -1,5 +1,5 @@
-use kand::ta::ohlcv::ad;
 use crate::WasmBuffer;
+use kand::ta::ohlcv::ad;
 use wasm_bindgen::prelude::*;
 
 /**

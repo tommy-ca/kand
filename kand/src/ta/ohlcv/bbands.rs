@@ -31,7 +31,10 @@ use crate::ta::types::TAArrowArray;
 /// let lookback = bbands::lookback(period, MAType::SMA).unwrap();
 /// assert_eq!(lookback, 19);
 /// ```
-pub const fn lookback(opt_period: usize, opt_ma_type: crate::ta::types::MAType) -> Result<usize, KandError> {
+pub const fn lookback(
+    opt_period: usize,
+    opt_ma_type: crate::ta::types::MAType,
+) -> Result<usize, KandError> {
     let _ = opt_ma_type;
     sma::lookback(opt_period)
 }
@@ -171,10 +174,7 @@ pub fn bbands(
         }
 
         // Length check
-        if len != output_upper.len()
-            || len != output_middle.len()
-            || len != output_lower.len()
-        {
+        if len != output_upper.len() || len != output_middle.len() || len != output_lower.len() {
             return Err(KandError::LengthMismatch);
         }
     }
@@ -213,7 +213,6 @@ pub fn bbands(
 }
 
 /// Calculates the next Bollinger Bands values incrementally without validation.
-#[must_use]
 pub fn bbands_inc_raw(
     input_price: TAFloat,
     prev_sma: TAFloat,
@@ -225,8 +224,13 @@ pub fn bbands_inc_raw(
     opt_multiplier_down: TAFloat,
 ) -> (TAFloat, TAFloat, TAFloat, TAFloat, TAFloat, TAFloat) {
     let new_sma = sma::sma_inc_raw(input_price, input_old_price, prev_sma, opt_period);
-    let (new_variance, new_sum, new_sum_sq) =
-        var::var_inc_raw(input_price, prev_sum, prev_sum_sq, input_old_price, opt_period);
+    let (new_variance, new_sum, new_sum_sq) = var::var_inc_raw(
+        input_price,
+        prev_sum,
+        prev_sum_sq,
+        input_old_price,
+        opt_period,
+    );
 
     let std_dev = new_variance.sqrt();
     let upper = opt_multiplier_up.mul_add(std_dev, new_sma);
@@ -355,8 +359,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -438,7 +442,13 @@ mod tests {
         let mut out_sum = vec![0.0; input_price.len()];
         let mut out_sum_sq = vec![0.0; input_price.len()];
         sma::sma_raw(&input_price, opt_period, &mut out_sma);
-        var::var_raw(&input_price, opt_period, &mut out_var, &mut out_sum, &mut out_sum_sq);
+        var::var_raw(
+            &input_price,
+            opt_period,
+            &mut out_var,
+            &mut out_sum,
+            &mut out_sum_sq,
+        );
 
         let mut prev_sma = out_sma[19];
         let mut prev_sum = out_sum[19];
@@ -486,8 +496,14 @@ mod tests {
         let opt_multiplier_up = 2.0;
         let opt_multiplier_down = 2.0;
 
-        let (upper, middle, lower) =
-            bbands_arrow(&input_arrow, opt_period, opt_multiplier_up, opt_multiplier_down, MAType::SMA).unwrap();
+        let (upper, middle, lower) = bbands_arrow(
+            &input_arrow,
+            opt_period,
+            opt_multiplier_up,
+            opt_multiplier_down,
+            MAType::SMA,
+        )
+        .unwrap();
 
         assert_eq!(upper.len(), input_price.len());
 

@@ -5,7 +5,6 @@ use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period for Expanded Camarilla Levels (ECL) without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw() -> TAPeriod {
     1
 }
@@ -235,8 +234,19 @@ pub fn ecl(
     }
 
     ecl_raw(
-        input_high, input_low, input_close, output_h5, output_h4, output_h3, output_h2, output_h1,
-        output_l1, output_l2, output_l3, output_l4, output_l5,
+        input_high,
+        input_low,
+        input_close,
+        output_h5,
+        output_h4,
+        output_h3,
+        output_h2,
+        output_h1,
+        output_l1,
+        output_l2,
+        output_l3,
+        output_l4,
+        output_l5,
     );
 
     Ok(())
@@ -244,7 +254,6 @@ pub fn ecl(
 
 /// Core incremental calculation for Expanded Camarilla Levels (ECL) without error checking.
 #[inline]
-#[must_use]
 #[allow(clippy::similar_names)]
 pub fn ecl_inc_raw(
     prev_high: TAFloat,
@@ -387,8 +396,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

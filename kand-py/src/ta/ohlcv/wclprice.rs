@@ -40,10 +40,8 @@ pub fn wclprice_py(
 
     let mut output = vec![0.0; len];
 
-    py.detach(|| {
-        wclprice::wclprice(high_slice, low_slice, close_slice, output.as_mut_slice())
-    })
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+    py.detach(|| wclprice::wclprice(high_slice, low_slice, close_slice, output.as_mut_slice()))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     Ok(output.into_pyarray(py).into())
 }
@@ -69,4 +67,3 @@ pub fn wclprice_inc_py(high: TAFloat, low: TAFloat, close: TAFloat) -> PyResult<
     wclprice::wclprice_inc(high, low, close)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

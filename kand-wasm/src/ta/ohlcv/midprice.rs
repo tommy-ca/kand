@@ -1,5 +1,5 @@
-use kand::ta::ohlcv::midprice;
 use crate::WasmBuffer;
+use kand::ta::ohlcv::midprice;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -45,11 +45,17 @@ pub fn midprice_wasm_inc(
     prev_lowest_low: f64,
     opt_period: usize,
 ) -> Result<MidpriceResult, JsValue> {
-    midprice::midprice_inc(input_high, input_low, prev_highest_high, prev_lowest_low, opt_period)
-        .map(|(midprice, highest_high, lowest_low)| MidpriceResult {
-            midprice,
-            highest_high,
-            lowest_low,
-        })
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    midprice::midprice_inc(
+        input_high,
+        input_low,
+        prev_highest_high,
+        prev_lowest_low,
+        opt_period,
+    )
+    .map(|(midprice, highest_high, lowest_low)| MidpriceResult {
+        midprice,
+        highest_high,
+        lowest_low,
+    })
+    .map_err(|e| JsValue::from_str(&e.to_string()))
 }

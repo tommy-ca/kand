@@ -309,7 +309,6 @@ pub fn t3(
 
 /// Calculates the latest T3 value incrementally without input validation.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-#[must_use]
 pub fn t3_inc_raw(
     input_price: TAFloat,
     prev_ema1: TAFloat,
@@ -487,8 +486,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

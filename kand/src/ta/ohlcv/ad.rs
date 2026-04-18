@@ -1,9 +1,7 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period for A/D without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw() -> TAPeriod {
     0
 }
@@ -23,7 +21,6 @@ pub const fn lookback_raw() -> TAPeriod {
 /// let lookback = ad::lookback().unwrap();
 /// assert_eq!(lookback, 0);
 /// ```
-#[must_use]
 pub const fn lookback() -> Result<TAPeriod, KandError> {
     Ok(lookback_raw())
 }
@@ -187,7 +184,6 @@ pub fn ad(
 /// - No error checking is performed; ensure inputs are valid.
 /// - If High - Low is zero, MFM is set to 0.
 #[inline]
-#[must_use]
 pub fn ad_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -273,17 +269,17 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
     use crate::EPSILON;
 
     const INPUT_HIGH: [f64; 25] = [
-        35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
-        35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
-        35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
+        35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0, 35210.0,
+        35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5, 35078.8, 35085.0,
+        35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
     ];
 
     const INPUT_LOW: [f64; 25] = [

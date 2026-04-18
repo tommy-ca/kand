@@ -1,6 +1,6 @@
 use crate::WasmBuffer;
-use kand::ta::ohlcv::supertrend;
 use kand::TAInt;
+use kand::ta::ohlcv::supertrend;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -18,9 +18,7 @@ pub struct SupertrendResult {
  */
 #[wasm_bindgen(js_name = supertrendLookback)]
 pub fn supertrend_lookback_wasm(opt_period: usize) -> Result<usize, JsValue> {
-    supertrend::lookback(opt_period)
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    supertrend::lookback(opt_period).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**

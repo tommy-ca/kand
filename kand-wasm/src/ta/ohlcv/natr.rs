@@ -7,9 +7,7 @@ use wasm_bindgen::prelude::*;
  */
 #[wasm_bindgen(js_name = natrLookback)]
 pub fn natr_lookback_wasm(opt_period: usize) -> Result<usize, JsValue> {
-    natr::lookback(opt_period)
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    natr::lookback(opt_period).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**

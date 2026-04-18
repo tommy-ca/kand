@@ -1,7 +1,6 @@
 use super::adx;
 use crate::{KandError, TAFloat};
 
-
 /// Calculates the lookback period required for ADXR calculation
 ///
 /// # Arguments
@@ -153,13 +152,7 @@ pub fn adxr(
         }
     }
 
-    adxr_raw(
-        input_high,
-        input_low,
-        input_close,
-        opt_period,
-        output_adxr,
-    );
+    adxr_raw(input_high, input_low, input_close, opt_period, output_adxr);
 
     // Fill initial values with NAN
     #[cfg(feature = "allow-nan")]
@@ -173,7 +166,6 @@ pub fn adxr(
 }
 
 /// Calculates the latest ADXR value incrementally without validation
-#[must_use]
 pub fn adxr_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -328,8 +320,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -407,11 +399,7 @@ mod tests {
 
         let first_valid_idx = 3 * opt_period - 2;
         for (i, expected) in expected_values.iter().enumerate() {
-            assert_relative_eq!(
-                output_adxr[i + first_valid_idx],
-                *expected,
-                epsilon = 0.05
-            );
+            assert_relative_eq!(output_adxr[i + first_valid_idx], *expected, epsilon = 0.05);
         }
 
         // To test incremental, we need ADX and DM/TR values.
@@ -420,7 +408,16 @@ mod tests {
         let mut out_plus_dm = vec![0.0; input_high.len()];
         let mut out_minus_dm = vec![0.0; input_high.len()];
         let mut out_tr = vec![0.0; input_high.len()];
-        adx::adx_raw(&input_high, &input_low, &input_close, opt_period, &mut out_adx, &mut out_plus_dm, &mut out_minus_dm, &mut out_tr);
+        adx::adx_raw(
+            &input_high,
+            &input_low,
+            &input_close,
+            opt_period,
+            &mut out_adx,
+            &mut out_plus_dm,
+            &mut out_minus_dm,
+            &mut out_tr,
+        );
 
         // Calculate and verify incremental values starting from index period * 4 - 3
         for i in (opt_period * 4 - 3)..input_high.len() {

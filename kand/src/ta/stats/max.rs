@@ -1,6 +1,5 @@
 use crate::{EPSILON, KandError, TAFloat};
 
-
 /// Calculates the lookback period required for Maximum Value calculation.
 ///
 /// The lookback period represents the number of data points needed before the first valid output
@@ -149,10 +148,8 @@ pub fn max_inc_raw(
     input_old_price: TAFloat,
     _opt_period: usize,
 ) -> TAFloat {
-    if input_price >= prev_max {
+    if input_price >= prev_max || (prev_max - input_old_price).abs() < EPSILON {
         input_price
-    } else if (prev_max - input_old_price).abs() < EPSILON {
-        input_price // Placeholder: incremental max requires buffer for correct recalculation
     } else {
         prev_max
     }
@@ -228,8 +225,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

@@ -251,7 +251,6 @@ pub fn plus_di(
 }
 
 /// Calculates the latest +DI value incrementally without input validation.
-#[must_use]
 pub fn plus_di_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -402,8 +401,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

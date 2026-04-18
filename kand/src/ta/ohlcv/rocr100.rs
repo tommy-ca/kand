@@ -2,7 +2,6 @@ use crate::{KandError, TAFloat};
 
 /// Returns the lookback period for ROCR100 without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> usize {
     opt_period
 }
@@ -41,11 +40,7 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 }
 
 /// Computes ROCR100 without input validation for high performance.
-pub fn rocr100_raw(
-    input_price: &[TAFloat],
-    opt_period: usize,
-    output_rocr100: &mut [TAFloat],
-) {
+pub fn rocr100_raw(input_price: &[TAFloat], opt_period: usize, output_rocr100: &mut [TAFloat]) {
     let len = input_price.len();
     let lookback = lookback_raw(opt_period);
 
@@ -148,7 +143,6 @@ pub fn rocr100(
 
 /// Computes the next ROCR100 value incrementally without input validation.
 #[inline]
-#[must_use]
 pub fn rocr100_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
     (input / prev) * 100.0
 }
@@ -202,8 +196,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -279,7 +273,11 @@ mod tests {
         ];
 
         for (i, expected) in expected_values.iter().enumerate() {
-            assert_relative_eq!(output_rocr100_arrow.value(i + 10), *expected, epsilon = 0.0001);
+            assert_relative_eq!(
+                output_rocr100_arrow.value(i + 10),
+                *expected,
+                epsilon = 0.0001
+            );
         }
     }
 }

@@ -1,9 +1,7 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period for Momentum (MOM) calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
     opt_period as TAPeriod
 }
@@ -114,7 +112,7 @@ pub fn mom(
     output_mom: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_prices.len();
-    let lookback = lookback(opt_period)? as usize;
+    let lookback = lookback(opt_period)?;
 
     #[cfg(feature = "check")]
     {
@@ -151,7 +149,6 @@ pub fn mom(
 
 /// Core incremental calculation for Momentum (MOM) without error checking.
 #[inline]
-#[must_use]
 pub fn mom_inc_raw(input_current_price: TAFloat, input_old_price: TAFloat) -> TAFloat {
     input_current_price - input_old_price
 }
@@ -206,9 +203,9 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

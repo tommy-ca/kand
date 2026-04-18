@@ -32,6 +32,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "aroon", signature = (high, low, period))]
+#[allow(clippy::type_complexity)]
 pub fn aroon_py(
     py: Python,
     high: PyReadonlyArray1<TAFloat>,

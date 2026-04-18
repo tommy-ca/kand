@@ -16,9 +16,7 @@ pub struct VegasResult {
  */
 #[wasm_bindgen(js_name = vegasLookback)]
 pub fn vegas_lookback_wasm() -> Result<usize, JsValue> {
-    vegas::lookback()
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    vegas::lookback().map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**

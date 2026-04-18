@@ -3,7 +3,6 @@ use crate::{KandError, TAFloat};
 
 /// Returns the lookback period for TRIX without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> usize {
     3 * (opt_period - 1) + 1
 }
@@ -172,7 +171,14 @@ pub fn trix(
         }
     }
 
-    trix_raw(input, opt_period, output, ema1_output, ema2_output, ema3_output);
+    trix_raw(
+        input,
+        opt_period,
+        output,
+        ema1_output,
+        ema2_output,
+        ema3_output,
+    );
 
     // Fill initial values with NAN
     #[cfg(feature = "allow-nan")]
@@ -190,7 +196,6 @@ pub fn trix(
 
 /// Computes the next TRIX value incrementally without input validation.
 #[inline]
-#[must_use]
 pub fn trix_inc_raw(
     input: TAFloat,
     prev_ema1: TAFloat,
@@ -288,8 +293,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

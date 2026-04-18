@@ -71,4 +71,3 @@ pub fn rma_inc_py(current_price: TAFloat, prev_rma: TAFloat, period: usize) -> P
     rma::rma_inc(current_price, prev_rma, period)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

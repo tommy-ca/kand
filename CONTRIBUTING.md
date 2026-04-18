@@ -32,7 +32,7 @@ Before you start developing, you need to install several required tools:
 4. **Install pre-commit** (Git hooks framework):
 
    ```bash
-   pip install pre-commit
+   uv tool install pre-commit
    ```
 
 5. **Install make** (Build automation tool):
@@ -59,26 +59,24 @@ When making changes, please follow this general workflow:
 3. **Update bindings**: If you've added a new indicator or changed a function signature, update the corresponding bindings in the `kand-py/` and/or `kand-wasm/` directories.
 4. **Run all checks**: Use the provided `Makefile` to run a full suite of checks, including building, testing, linting, and formatting.
 
-### Using the Makefile
+### Using the Makefile and Pre-commit
 
-We have a `Makefile` that simplifies the development process. The most important command is:
+We use `pre-commit` to automate code quality checks. The hooks are configured to run:
+- **Rust**: `cargo fmt`, `cargo clippy`.
+- **Python**: `ruff check`, `ruff format` (via `uv`).
+- **Generic**: Whitespace, end-of-file, and YAML validation.
 
+Install the hooks once:
 ```bash
-make
+pre-commit install
 ```
 
-Running `make` by default executes the `pre-commit` target, which will:
+The hooks will now run automatically on every `git commit`. You can also run them manually:
+```bash
+pre-commit run --all-files
+```
 
-- Build the project (`build`)
-- Run tests (`test`)
-- Run the linter (`clippy`)
-- Format the code (`fmt`)
-- Generate the changelog (`cliff`)
-- Check for unused dependencies (`udeps-check`)
-- Build the Wasm package (`wasm-build`)
-- Sync the Python environment and generate stubs (`uv-sync`)
-
-Please ensure all checks pass before submitting a pull request.
+We also have a `Makefile` that simplifies common tasks:
 
 ## Coding Guidelines
 

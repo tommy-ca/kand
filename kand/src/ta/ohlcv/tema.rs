@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat, ta::ohlcv::ema};
 
-
 /// Calculates the lookback period required for Triple Exponential Moving Average (TEMA)
 ///
 /// # Description
@@ -196,7 +195,6 @@ pub fn tema(
 }
 
 /// Calculates TEMA value incrementally without input validation.
-#[must_use]
 pub fn tema_inc_raw(
     input: TAFloat,
     prev_ema1: TAFloat,
@@ -288,8 +286,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

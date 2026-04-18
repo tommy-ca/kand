@@ -13,7 +13,7 @@ async function run() {
     await init();
 
     const len = 1000000; // 1 million points
-    
+
     // 1. Allocate shared memory (8 bytes per f64)
     // 8 is the byte-size of Float64
     const inputBuffer = new WasmBuffer(len, 8);
@@ -22,13 +22,13 @@ async function run() {
     // 2. Create JS views into WASM memory
     // This allows JS to write directly into WASM's heap
     const inputView = new Float64Array(
-        WebAssembly.Memory.buffer, 
-        inputBuffer.ptr(), 
+        WebAssembly.Memory.buffer,
+        inputBuffer.ptr(),
         len
     );
     const outputView = new Float64Array(
-        WebAssembly.Memory.buffer, 
-        outputBuffer.ptr(), 
+        WebAssembly.Memory.buffer,
+        outputBuffer.ptr(),
         len
     );
 

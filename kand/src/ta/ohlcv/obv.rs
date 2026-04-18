@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Returns the lookback period required for On Balance Volume (OBV) calculation
 ///
 /// # Description
@@ -131,7 +130,6 @@ pub fn obv(
 }
 
 /// Calculate latest On Balance Volume (OBV) value incrementally without validation
-#[must_use]
 pub fn obv_inc_raw(
     input_curr_close: TAFloat,
     prev_close: TAFloat,
@@ -213,8 +211,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

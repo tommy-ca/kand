@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Returns the lookback period required for Plus DM calculation
 ///
 /// # Description
@@ -173,7 +172,6 @@ pub fn plus_dm(
 }
 
 /// Calculates the latest Plus DM value incrementally without validation
-#[must_use]
 pub fn plus_dm_inc_raw(
     input_high: TAFloat,
     prev_high: TAFloat,
@@ -290,8 +288,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

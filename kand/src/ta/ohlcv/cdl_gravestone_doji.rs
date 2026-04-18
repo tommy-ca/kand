@@ -3,7 +3,6 @@ use crate::{
     helper::{lower_shadow_length, real_body_length},
 };
 
-
 /// Returns the lookback period required for Gravestone Doji pattern detection.
 ///
 /// # Description
@@ -152,7 +151,6 @@ pub fn cdl_gravestone_doji(
 
 /// Processes a single candlestick for Gravestone Doji detection without validation.
 #[inline]
-#[must_use]
 pub fn cdl_gravestone_doji_inc_raw(
     input_open: TAFloat,
     input_high: TAFloat,
@@ -221,7 +219,10 @@ pub fn cdl_gravestone_doji_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_open.is_null() || input_high.is_null() || input_low.is_null() || input_close.is_null()
+        if input_open.is_null()
+            || input_high.is_null()
+            || input_low.is_null()
+            || input_close.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -247,8 +248,8 @@ crate::kand_arrow_wrapper_int!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use super::*;
+    use arrow::array::Array;
 
     #[test]
     fn test_cdl_gravestone_doji() {
@@ -287,7 +288,12 @@ mod tests {
         .unwrap();
 
         // Test specific signals
-        assert_eq!(output_signals[15], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bearish)); // TV BTCUSDT.P 5m 2025-01-29 03:45
+        assert_eq!(
+            output_signals[15],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bearish
+            )
+        ); // TV BTCUSDT.P 5m 2025-01-29 03:45
 
         // Test incremental calculation matches regular calculation
         for i in 0..18 {
@@ -318,14 +324,9 @@ mod tests {
         let low_arrow = TAArrowArray::from(input_low);
         let close_arrow = TAArrowArray::from(input_close);
 
-        let result = cdl_gravestone_doji_arrow(
-            &open_arrow,
-            &high_arrow,
-            &low_arrow,
-            &close_arrow,
-            5.0,
-        )
-        .unwrap();
+        let result =
+            cdl_gravestone_doji_arrow(&open_arrow, &high_arrow, &low_arrow, &close_arrow, 5.0)
+                .unwrap();
 
         assert_eq!(result.len(), 2);
     }

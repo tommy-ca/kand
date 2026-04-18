@@ -1,9 +1,7 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period for RMA calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
     (opt_period - 1) as TAPeriod
 }
@@ -117,7 +115,7 @@ pub fn rma(
     output_rma: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input.len();
-    let lookback = lookback(opt_period)? as usize;
+    let lookback = lookback(opt_period)?;
 
     #[cfg(feature = "check")]
     {
@@ -154,7 +152,6 @@ pub fn rma(
 
 /// Core incremental calculation for Running Moving Average (RMA) without error checking.
 #[inline]
-#[must_use]
 pub fn rma_inc_raw(input_current: TAFloat, prev_rma: TAFloat, opt_period: usize) -> TAFloat {
     let alpha = 1.0 / opt_period as TAFloat;
     input_current.mul_add(alpha, prev_rma * (1.0 - alpha))
@@ -226,9 +223,9 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

@@ -1,6 +1,8 @@
-import numpy as np
-from kand import sma
 import time
+
+import numpy as np
+
+from kand import sma
 
 data = np.array([float(i) for i in range(10_000_000)])
 

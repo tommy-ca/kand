@@ -225,7 +225,6 @@ pub fn rsi(
 }
 
 /// Calculates the latest RSI value incrementally without validation.
-#[must_use]
 pub fn rsi_inc_raw(
     input_curr_price: TAFloat,
     prev_price: TAFloat,
@@ -344,8 +343,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

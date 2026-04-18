@@ -3,7 +3,6 @@ use crate::{
     helper::{real_body_length, upper_shadow_length},
 };
 
-
 /// Returns the lookback period required for Dragonfly Doji pattern detection.
 ///
 /// # Description
@@ -161,7 +160,6 @@ pub fn cdl_dragonfly_doji(
 
 /// Processes a single candlestick for Dragonfly Doji detection without validation.
 #[inline]
-#[must_use]
 pub fn cdl_dragonfly_doji_inc_raw(
     input_open: TAFloat,
     input_high: TAFloat,
@@ -221,7 +219,10 @@ pub fn cdl_dragonfly_doji_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_open.is_null() || input_high.is_null() || input_low.is_null() || input_close.is_null()
+        if input_open.is_null()
+            || input_high.is_null()
+            || input_low.is_null()
+            || input_close.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -248,8 +249,8 @@ crate::kand_arrow_wrapper_int!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use super::*;
+    use arrow::array::Array;
 
     #[test]
     fn test_cdl_dragonfly_doji() {
@@ -310,7 +311,9 @@ mod tests {
         for &idx in &dragonfly_indices {
             assert_eq!(
                 output_signals[idx],
-                <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish),
+                <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                    crate::ta::types::Signal::Bullish
+                ),
                 "Expected dragonfly doji signal at index {idx}"
             );
         }

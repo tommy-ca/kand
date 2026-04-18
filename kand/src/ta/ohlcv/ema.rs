@@ -2,7 +2,6 @@ use crate::{KandError, TAFloat, TAPeriod, helper::period_to_k};
 
 /// Returns the lookback period for EMA without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: TAPeriod) -> TAPeriod {
     opt_period - 1
 }
@@ -93,7 +92,7 @@ impl crate::ta::traits::Indicator for StatefulEMA {
 
     #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{UInt64Array, Float64Array};
+        use arrow::array::{Float64Array, UInt64Array};
         use arrow::datatypes::{DataType, Field, Schema};
         use std::sync::Arc;
 
@@ -111,24 +110,56 @@ impl crate::ta::traits::Indicator for StatefulEMA {
         let sum_arr = Float64Array::from(vec![self.sum]);
         let count_arr = UInt64Array::from(vec![self.count as u64]);
 
-        arrow::record_batch::RecordBatch::try_new(schema, vec![
-            Arc::new(period_arr),
-            Arc::new(multiplier_arr),
-            Arc::new(prev_ema_arr),
-            Arc::new(sum_arr),
-            Arc::new(count_arr),
-        ]).map_err(|_| KandError::InvalidData)
+        arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(period_arr),
+                Arc::new(multiplier_arr),
+                Arc::new(prev_ema_arr),
+                Arc::new(sum_arr),
+                Arc::new(count_arr),
+            ],
+        )
+        .map_err(|_| KandError::InvalidData)
     }
 
     #[cfg(feature = "arrow")]
-    fn from_record_batch(&mut self, batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
-        use arrow::array::{UInt64Array, Float64Array};
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        use arrow::array::{Float64Array, UInt64Array};
 
-        let period = batch.column(0).as_any().downcast_ref::<UInt64Array>().ok_or(KandError::InvalidData)?.value(0) as usize;
-        let multiplier = batch.column(1).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?.value(0);
-        let prev_ema = batch.column(2).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?.value(0);
-        let sum = batch.column(3).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?.value(0);
-        let count = batch.column(4).as_any().downcast_ref::<UInt64Array>().ok_or(KandError::InvalidData)?.value(0) as usize;
+        let period = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let multiplier = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0);
+        let prev_ema = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0);
+        let sum = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0);
+        let count = batch
+            .column(4)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
 
         self.period = period;
         self.multiplier = multiplier;
@@ -155,7 +186,11 @@ pub struct BatchEMA {
 #[cfg(feature = "arrow")]
 impl BatchEMA {
     /// Creates a new BatchEMA instance.
-    pub fn new(period: TAPeriod, num_streams: usize, opt_k: Option<TAFloat>) -> Result<Self, KandError> {
+    pub fn new(
+        period: TAPeriod,
+        num_streams: usize,
+        opt_k: Option<TAFloat>,
+    ) -> Result<Self, KandError> {
         use std::mem::size_of;
         #[cfg(feature = "check")]
         {
@@ -187,7 +222,6 @@ impl crate::ta::traits::BatchIndicator for BatchEMA {
     type Output = crate::ta::types::TAArrowArray;
 
     fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        use arrow::array::Array;
         use std::mem::size_of;
 
         if input.len() != self.num_streams {
@@ -196,16 +230,17 @@ impl crate::ta::traits::BatchIndicator for BatchEMA {
 
         let input_values = input.values();
         let states_slice = self.states.typed_data_mut::<TAFloat>();
-        
-        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(self.num_streams * size_of::<TAFloat>());
-        let output_slice = unsafe {
-            std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams)
-        };
+
+        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
+            self.num_streams * size_of::<TAFloat>(),
+        );
+        let output_slice =
+            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
 
         for s in 0..self.num_streams {
             let val = input_values[s];
             self.counts[s] += 1;
-            
+
             if self.counts[s] < self.period {
                 states_slice[s] += val;
                 output_slice[s] = TAFloat::NAN;
@@ -225,8 +260,9 @@ impl crate::ta::traits::BatchIndicator for BatchEMA {
         Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
     }
 
+    #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{UInt64Array, Float64Array};
+        use arrow::array::{Float64Array, UInt64Array};
         use arrow::datatypes::{DataType, Field, Schema};
         use std::sync::Arc;
 
@@ -238,36 +274,67 @@ impl crate::ta::traits::BatchIndicator for BatchEMA {
             std::collections::HashMap::from([
                 ("period".to_string(), self.period.to_string()),
                 ("multiplier".to_string(), self.multiplier.to_string()),
-            ])
+            ]),
         ));
 
-        let states_arr = Arc::new(Float64Array::new(arrow_buffer::ScalarBuffer::new(self.states.as_slice().into(), 0, self.num_streams), None)) as Arc<dyn arrow::array::Array>;
-        let counts_arr = Arc::new(UInt64Array::from(self.counts.iter().map(|&c| c as u64).collect::<Vec<_>>())) as Arc<dyn arrow::array::Array>;
+        let states_arr = Arc::new(Float64Array::new(
+            arrow_buffer::ScalarBuffer::new(self.states.as_slice().into(), 0, self.num_streams),
+            None,
+        )) as Arc<dyn arrow::array::Array>;
+        let counts_arr = Arc::new(UInt64Array::from(
+            self.counts.iter().map(|&c| c as u64).collect::<Vec<_>>(),
+        )) as Arc<dyn arrow::array::Array>;
 
-        arrow::record_batch::RecordBatch::try_new(schema, vec![
-            states_arr,
-            counts_arr,
-        ]).map_err(|_| KandError::InvalidData)
+        arrow::record_batch::RecordBatch::try_new(schema, vec![states_arr, counts_arr])
+            .map_err(|_| KandError::InvalidData)
     }
 
-    fn from_record_batch(&mut self, batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
-        use arrow::array::{UInt64Array, Float64Array};
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        use arrow::array::{Float64Array, UInt64Array};
 
-        let period = batch.schema().metadata().get("period").ok_or(KandError::InvalidData)?.parse().map_err(|_| KandError::InvalidData)?;
-        let multiplier = batch.schema().metadata().get("multiplier").ok_or(KandError::InvalidData)?.parse().map_err(|_| KandError::InvalidData)?;
-        
+        let period = batch
+            .schema()
+            .metadata()
+            .get("period")
+            .ok_or(KandError::InvalidData)?
+            .parse()
+            .map_err(|_| KandError::InvalidData)?;
+        let multiplier = batch
+            .schema()
+            .metadata()
+            .get("multiplier")
+            .ok_or(KandError::InvalidData)?
+            .parse()
+            .map_err(|_| KandError::InvalidData)?;
+
         let num_streams = batch.num_rows();
-        
-        let states = batch.column(0).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?;
-        let counts = batch.column(1).as_any().downcast_ref::<UInt64Array>().ok_or(KandError::InvalidData)?;
+
+        let states = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?;
+        let counts = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?;
 
         self.period = period;
         self.num_streams = num_streams;
         self.multiplier = multiplier;
-        
-        self.states = arrow_buffer::MutableBuffer::from_len_zeroed(states.len() * std::mem::size_of::<TAFloat>());
-        self.states.typed_data_mut::<TAFloat>().copy_from_slice(states.values());
-        
+
+        self.states = arrow_buffer::MutableBuffer::from_len_zeroed(
+            states.len() * std::mem::size_of::<TAFloat>(),
+        );
+        self.states
+            .typed_data_mut::<TAFloat>()
+            .copy_from_slice(states.values());
+
         self.counts = counts.values().iter().map(|&c| c as usize).collect();
 
         Ok(())
@@ -402,12 +469,7 @@ pub fn ema(
 
 /// Computes the next EMA value incrementally without input validation.
 #[inline]
-#[must_use]
-pub fn ema_inc_raw(
-    input_price: TAFloat,
-    prev_ema: TAFloat,
-    multiplier: TAFloat,
-) -> TAFloat {
+pub fn ema_inc_raw(input_price: TAFloat, prev_ema: TAFloat, multiplier: TAFloat) -> TAFloat {
     (input_price - prev_ema).mul_add(multiplier, prev_ema)
 }
 
@@ -487,8 +549,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -509,7 +571,7 @@ mod tests {
         use crate::ta::traits::BatchIndicator;
         use crate::ta::types::TAArrowArray;
         let mut batch_ema = BatchEMA::new(3, 2, None).unwrap();
-        
+
         // t0
         let input = TAArrowArray::from(vec![10.0, 20.0]);
         let out = batch_ema.next_batch(input).unwrap();

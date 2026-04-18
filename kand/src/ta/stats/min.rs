@@ -1,6 +1,5 @@
 use crate::{EPSILON, KandError, TAFloat};
 
-
 /// Calculates the lookback period required for Minimum Value calculation.
 ///
 /// Returns the number of data points needed before the first valid output can be calculated.
@@ -155,10 +154,8 @@ pub fn min_inc_raw(
     input_old_price: TAFloat,
     _opt_period: usize,
 ) -> TAFloat {
-    if input_price <= prev_min {
+    if input_price <= prev_min || (input_old_price - prev_min).abs() < EPSILON {
         input_price
-    } else if (input_old_price - prev_min).abs() < EPSILON {
-        input_price // Placeholder: incremental min requires buffer for correct recalculation
     } else {
         prev_min
     }
@@ -237,8 +234,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

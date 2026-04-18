@@ -28,6 +28,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "tema", signature = (prices, period))]
+#[allow(clippy::type_complexity)]
 pub fn tema_py(
     py: Python,
     prices: PyReadonlyArray1<TAFloat>,

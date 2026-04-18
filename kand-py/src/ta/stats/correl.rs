@@ -35,6 +35,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "correl", signature = (input0, input1, period))]
+#[allow(clippy::type_complexity)]
 pub fn correl_py(
     py: Python,
     input0: PyReadonlyArray1<TAFloat>,
@@ -171,4 +172,3 @@ crate::kand_py_arrow_wrapper_multi!(
     params: { period: usize },
     output_count: 6
 );
-

@@ -55,6 +55,17 @@ Batch indicators like `BatchSMA` manage internal state using Arrow-native struct
 - **Zero-Allocation Updates**: High-frequency streaming updates utilize the `BlockPool` to avoid heap thrashing.
 - **Interoperability**: Batch states can be exported as `RecordBatch`, enabling state persistence across system restarts or distributed handovers.
 
-### 4.3 Python & WASM Stateful Objects
-- **Python**: Batch indicators are exposed as `#[pyclass]` objects (e.g., `kand.BatchSMA`), allowing Python quantitative engines to update thousands of asset states with a single vectorized call.
-- **WASM**: Stateful wrappers provide growth-resilient state management within the WASM heap.
+## 5. Engineering Standards & Quality Assurance
+
+To maintain high technical integrity across the multi-language codebase, `kand` enforces strict quality standards.
+
+### 5.1 Automated Quality Gates (Pre-commit)
+A unified `pre-commit` workflow automates the following checks:
+- **Rust Consistency**: Enforced via `cargo fmt` (style) and `cargo clippy` (correctness). All builds must be 100% warning-free.
+- **Python Excellence**: Enforced via `ruff` for ultra-fast linting and formatting.
+- **Dependency Management**: Python dependencies and tools are managed exclusively through `uv` native commands.
+
+### 5.2 Naming & Conventions
+- **Rust**: Follows standard library conventions. State restoration methods are explicitly named `restore_from_record_batch`.
+- **Python**: Exposes Arrow-native classes with PEP8 compliant CamelCase names (e.g., `BatchSmaPy` internally, mapped to `BatchSMA` in Python).
+- **WASM**: Provides `is_empty()` and other collection-standard methods for managed buffers.

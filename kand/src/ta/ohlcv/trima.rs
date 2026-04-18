@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Returns the lookback period required for Triangular Moving Average (TRIMA) calculation.
 ///
 /// # Description
@@ -176,7 +175,6 @@ pub fn trima(
 }
 
 /// Calculates the next TRIMA value incrementally without input validation.
-#[must_use]
 pub fn trima_inc_raw(
     prev_sma1: TAFloat,
     prev_sma2: TAFloat,
@@ -303,8 +301,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

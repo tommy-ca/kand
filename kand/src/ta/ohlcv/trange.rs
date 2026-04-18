@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat};
 
-
 /// Returns the lookback period required for True Range (TR) calculation
 ///
 /// # Description
@@ -138,7 +137,6 @@ pub fn trange(
 
 /// Calculates a single True Range value incrementally without validation.
 #[inline]
-#[must_use]
 pub fn trange_inc_raw(input_high: TAFloat, input_low: TAFloat, prev_close: TAFloat) -> TAFloat {
     let h_l = input_high - input_low;
     let h_pc = (input_high - prev_close).abs();
@@ -206,8 +204,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

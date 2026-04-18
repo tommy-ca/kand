@@ -1,9 +1,7 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period for MEDPRICE calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw() -> TAPeriod {
     0
 }
@@ -36,7 +34,11 @@ pub const fn lookback() -> Result<TAPeriod, KandError> {
 /// * `input_high` - Array of high prices
 /// * `input_low` - Array of low prices
 /// * `output_medprice` - Output array for calculated median price values
-pub fn medprice_raw(input_high: &[TAFloat], input_low: &[TAFloat], output_medprice: &mut [TAFloat]) {
+pub fn medprice_raw(
+    input_high: &[TAFloat],
+    input_low: &[TAFloat],
+    output_medprice: &mut [TAFloat],
+) {
     let len = input_high.len();
     for i in 0..len {
         output_medprice[i] = f64::midpoint(input_high[i], input_low[i]);
@@ -120,7 +122,6 @@ pub fn medprice(
 
 /// Core incremental calculation for MEDPRICE value without error checking.
 #[inline]
-#[must_use]
 pub fn medprice_inc_raw(input_high: TAFloat, input_low: TAFloat) -> TAFloat {
     f64::midpoint(input_high, input_low)
 }
@@ -172,9 +173,9 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

@@ -32,6 +32,7 @@ use pyo3::prelude::*;
 ///     ```
 #[pyfunction]
 #[pyo3(name = "t3", signature = (data, period, vfactor))]
+#[allow(clippy::type_complexity)]
 pub fn t3_py(
     py: Python,
     data: PyReadonlyArray1<TAFloat>,

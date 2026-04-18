@@ -1,6 +1,8 @@
-import numpy as np
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
+
 from kand import sma
 
 # Generate test data
@@ -17,7 +19,9 @@ print(f"Single-threaded execution time: {single_thread_time:.4f} seconds")
 # Multi-threaded test (2 threads)
 with ThreadPoolExecutor(max_workers=2) as executor:
     start_time = time.perf_counter()
-    futures = [executor.submit(sma, data, period) for _ in range(2)]  # Two concurrent calls
+    futures = [
+        executor.submit(sma, data, period) for _ in range(2)
+    ]  # Two concurrent calls
     _ = [future.result() for future in futures]
     thread_pool_time = (time.perf_counter() - start_time) / 2
 

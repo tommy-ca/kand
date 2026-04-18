@@ -7,9 +7,7 @@ use wasm_bindgen::prelude::*;
  */
 #[wasm_bindgen(js_name = rocr100Lookback)]
 pub fn rocr100_lookback_wasm(opt_period: usize) -> Result<usize, JsValue> {
-    rocr100::lookback(opt_period)
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    rocr100::lookback(opt_period).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**
@@ -34,10 +32,6 @@ pub fn rocr100_wasm_zero_copy(
  * Calculates a single ROCR100 value incrementally.
  */
 #[wasm_bindgen(js_name = rocr100Inc)]
-pub fn rocr100_inc_wasm(
-    input: f64,
-    prev: f64,
-) -> Result<f64, JsValue> {
-    rocr100::rocr100_inc(input, prev)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+pub fn rocr100_inc_wasm(input: f64, prev: f64) -> Result<f64, JsValue> {
+    rocr100::rocr100_inc(input, prev).map_err(|e| JsValue::from_str(&e.to_string()))
 }

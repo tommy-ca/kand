@@ -253,7 +253,6 @@ pub fn minus_di(
 }
 
 /// Calculates the latest -DI value incrementally without input validation.
-#[must_use]
 pub fn minus_di_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -411,8 +410,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -552,11 +551,7 @@ mod tests {
                 #[cfg(feature = "allow-nan")]
                 assert!(minus_di_arrow.is_null(i));
             } else {
-                assert_relative_eq!(
-                    minus_di_arrow.value(i),
-                    out_minus_di[i],
-                    epsilon = 0.00001
-                );
+                assert_relative_eq!(minus_di_arrow.value(i), out_minus_di[i], epsilon = 0.00001);
             }
         }
     }

@@ -95,7 +95,14 @@ pub fn cdl_dragonfly_doji_inc_py(
     shadow_percent: TAFloat,
 ) -> PyResult<TAInt> {
     py.detach(|| {
-        cdl_dragonfly_doji::cdl_dragonfly_doji_inc(open, high, low, close, body_percent, shadow_percent)
+        cdl_dragonfly_doji::cdl_dragonfly_doji_inc(
+            open,
+            high,
+            low,
+            close,
+            body_percent,
+            shadow_percent,
+        )
     })
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }

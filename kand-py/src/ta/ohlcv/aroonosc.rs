@@ -31,6 +31,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "aroonosc", signature = (high, low, period))]
+#[allow(clippy::type_complexity)]
 pub fn aroonosc_py(
     py: Python,
     high: PyReadonlyArray1<TAFloat>,

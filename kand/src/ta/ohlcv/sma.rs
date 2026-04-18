@@ -1,6 +1,5 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period required for Simple Moving Average (SMA).
 ///
 /// # Arguments
@@ -69,7 +68,7 @@ impl crate::ta::traits::Indicator for StatefulSMA {
 
     #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{UInt64Array, Float64Array};
+        use arrow::array::{Float64Array, UInt64Array};
         use arrow::datatypes::{DataType, Field, Schema};
         use std::sync::Arc;
 
@@ -83,19 +82,41 @@ impl crate::ta::traits::Indicator for StatefulSMA {
         let sum_arr = Float64Array::from(vec![self.sum]);
         let window_arr = Float64Array::from(self.window.clone());
 
-        arrow::record_batch::RecordBatch::try_new(schema, vec![
-            Arc::new(period_arr),
-            Arc::new(sum_arr),
-            Arc::new(window_arr),
-        ]).map_err(|_| KandError::InvalidData)
+        arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(period_arr),
+                Arc::new(sum_arr),
+                Arc::new(window_arr),
+            ],
+        )
+        .map_err(|_| KandError::InvalidData)
     }
 
-    fn from_record_batch(&mut self, batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
-        use arrow::array::{UInt64Array, Float64Array};
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        use arrow::array::{Float64Array, UInt64Array};
 
-        let period = batch.column(0).as_any().downcast_ref::<UInt64Array>().ok_or(KandError::InvalidData)?.value(0) as usize;
-        let sum = batch.column(1).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?.value(0);
-        let window = batch.column(2).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?;
+        let period = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let sum = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0);
+        let window = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?;
 
         self.period = period;
         self.sum = sum;
@@ -133,9 +154,10 @@ impl BatchSMA {
             }
         }
 
-        let mut windows = arrow_buffer::MutableBuffer::new(num_streams * period * size_of::<TAFloat>());
+        let mut windows =
+            arrow_buffer::MutableBuffer::new(num_streams * period * size_of::<TAFloat>());
         windows.resize(num_streams * period * size_of::<TAFloat>(), 0);
-        
+
         let mut sums = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
         sums.resize(num_streams * size_of::<TAFloat>(), 0);
 
@@ -170,11 +192,12 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
         let input_values = input.values();
         let sums_slice = self.sums.typed_data_mut::<TAFloat>();
         let windows_slice = self.windows.typed_data_mut::<TAFloat>();
-        
-        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(self.num_streams * size_of::<TAFloat>());
-        let output_slice = unsafe {
-            std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams)
-        };
+
+        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
+            self.num_streams * size_of::<TAFloat>(),
+        );
+        let output_slice =
+            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
 
         self.count += 1;
         let is_valid = self.count >= self.period;
@@ -183,9 +206,9 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
             let val = input_values[s];
             let window_offset = s * self.period + self.cursor;
             let old_val = windows_slice[window_offset];
-            
+
             windows_slice[window_offset] = val;
-            
+
             if self.count <= self.period {
                 sums_slice[s] += val;
             } else {
@@ -204,62 +227,120 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
         Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
     }
 
+    #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{UInt64Array, Float64Array, FixedSizeListArray};
+        use arrow::array::{FixedSizeListArray, Float64Array};
         use arrow::datatypes::{DataType, Field, Schema};
         use std::sync::Arc;
 
         let schema = Arc::new(Schema::new_with_metadata(
             vec![
                 Field::new("sum", DataType::Float64, false),
-                Field::new("window", DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float64, true)), self.period as i32), false),
+                Field::new(
+                    "window",
+                    DataType::FixedSizeList(
+                        Arc::new(Field::new("item", DataType::Float64, true)),
+                        self.period as i32,
+                    ),
+                    false,
+                ),
             ],
             std::collections::HashMap::from([
                 ("period".to_string(), self.period.to_string()),
                 ("cursor".to_string(), self.cursor.to_string()),
                 ("count".to_string(), self.count.to_string()),
-            ])
+            ]),
         ));
 
-        let sums_arr = Arc::new(Float64Array::new(arrow_buffer::ScalarBuffer::new(self.sums.as_slice().into(), 0, self.num_streams), None)) as Arc<dyn arrow::array::Array>;
-        
-        let windows_data = Float64Array::new(arrow_buffer::ScalarBuffer::new(self.windows.as_slice().into(), 0, self.num_streams * self.period), None);
+        let sums_arr = Arc::new(Float64Array::new(
+            arrow_buffer::ScalarBuffer::new(self.sums.as_slice().into(), 0, self.num_streams),
+            None,
+        )) as Arc<dyn arrow::array::Array>;
+
+        let windows_data = Float64Array::new(
+            arrow_buffer::ScalarBuffer::new(
+                self.windows.as_slice().into(),
+                0,
+                self.num_streams * self.period,
+            ),
+            None,
+        );
         let windows_arr = Arc::new(FixedSizeListArray::new(
             Arc::new(Field::new("item", DataType::Float64, true)),
             self.period as i32,
             Arc::new(windows_data),
-            None
+            None,
         )) as Arc<dyn arrow::array::Array>;
 
-        arrow::record_batch::RecordBatch::try_new(schema, vec![
-            sums_arr,
-            windows_arr,
-        ]).map_err(|_| KandError::InvalidData)
+        arrow::record_batch::RecordBatch::try_new(schema, vec![sums_arr, windows_arr])
+            .map_err(|_| KandError::InvalidData)
     }
 
-    fn from_record_batch(&mut self, batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
-        use arrow::array::{Float64Array, FixedSizeListArray};
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        use arrow::array::{FixedSizeListArray, Float64Array};
 
-        let period = batch.schema().metadata().get("period").ok_or(KandError::InvalidData)?.parse().map_err(|_| KandError::InvalidData)?;
-        let cursor = batch.schema().metadata().get("cursor").ok_or(KandError::InvalidData)?.parse().map_err(|_| KandError::InvalidData)?;
-        let count = batch.schema().metadata().get("count").ok_or(KandError::InvalidData)?.parse().map_err(|_| KandError::InvalidData)?;
-        
+        let period = batch
+            .schema()
+            .metadata()
+            .get("period")
+            .ok_or(KandError::InvalidData)?
+            .parse()
+            .map_err(|_| KandError::InvalidData)?;
+        let cursor = batch
+            .schema()
+            .metadata()
+            .get("cursor")
+            .ok_or(KandError::InvalidData)?
+            .parse()
+            .map_err(|_| KandError::InvalidData)?;
+        let count = batch
+            .schema()
+            .metadata()
+            .get("count")
+            .ok_or(KandError::InvalidData)?
+            .parse()
+            .map_err(|_| KandError::InvalidData)?;
+
         let num_streams = batch.num_rows();
-        
-        let sums = batch.column(0).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?;
-        let windows_list = batch.column(1).as_any().downcast_ref::<FixedSizeListArray>().ok_or(KandError::InvalidData)?;
-        let windows = windows_list.values().as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?;
+
+        let sums = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?;
+        let windows_list = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<FixedSizeListArray>()
+            .ok_or(KandError::InvalidData)?;
+        let windows = windows_list
+            .values()
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?;
 
         self.period = period;
         self.num_streams = num_streams;
         self.cursor = cursor;
         self.count = count;
-        
-        self.sums = arrow_buffer::MutableBuffer::from_len_zeroed(sums.len() * std::mem::size_of::<TAFloat>());
-        self.sums.typed_data_mut::<TAFloat>().copy_from_slice(sums.values());
-        
-        self.windows = arrow_buffer::MutableBuffer::from_len_zeroed(windows.len() * std::mem::size_of::<TAFloat>());
-        self.windows.typed_data_mut::<TAFloat>().copy_from_slice(windows.values());
+
+        self.sums = arrow_buffer::MutableBuffer::from_len_zeroed(
+            sums.len() * std::mem::size_of::<TAFloat>(),
+        );
+        self.sums
+            .typed_data_mut::<TAFloat>()
+            .copy_from_slice(sums.values());
+
+        self.windows = arrow_buffer::MutableBuffer::from_len_zeroed(
+            windows.len() * std::mem::size_of::<TAFloat>(),
+        );
+        self.windows
+            .typed_data_mut::<TAFloat>()
+            .copy_from_slice(windows.values());
 
         Ok(())
     }
@@ -268,8 +349,8 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
 /// Calculates SMA without input validation.
 pub fn sma_raw(input: &[TAFloat], opt_period: TAPeriod, output: &mut [TAFloat]) {
     let mut sum = 0.0;
-    for i in 0..opt_period {
-        sum += input[i];
+    for val in input.iter().take(opt_period) {
+        sum += val;
     }
 
     output[opt_period - 1] = sum / opt_period as TAFloat;
@@ -331,8 +412,8 @@ pub fn sma(
     sma_raw(input, opt_period, output);
 
     // Initial values
-    for i in 0..lookback {
-        output[i] = TAFloat::NAN;
+    for val in output.iter_mut().take(lookback) {
+        *val = TAFloat::NAN;
     }
 
     Ok(())
@@ -340,7 +421,6 @@ pub fn sma(
 
 /// Calculates SMA incrementally for a single value without validation.
 #[inline]
-#[must_use]
 pub fn sma_inc_raw(
     input: TAFloat,
     prev_input: TAFloat,
@@ -394,10 +474,10 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
+    use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
-    use crate::ta::traits::{Indicator, BatchIndicator};
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -415,7 +495,7 @@ mod tests {
     fn test_batch_sma() {
         use crate::ta::traits::BatchIndicator;
         let mut batch_sma = BatchSMA::new(3, 2).unwrap();
-        
+
         // t0
         let input = TAArrowArray::from(vec![10.0, 20.0]);
         let out = batch_sma.next_batch(input).unwrap();

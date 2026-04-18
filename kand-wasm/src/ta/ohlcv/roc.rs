@@ -7,9 +7,7 @@ use wasm_bindgen::prelude::*;
  */
 #[wasm_bindgen(js_name = rocLookback)]
 pub fn roc_lookback_wasm(opt_period: usize) -> Result<usize, JsValue> {
-    roc::lookback(opt_period)
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    roc::lookback(opt_period).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**
@@ -34,10 +32,6 @@ pub fn roc_wasm_zero_copy(
  * Calculates a single ROC value incrementally.
  */
 #[wasm_bindgen(js_name = rocInc)]
-pub fn roc_inc_wasm(
-    current_price: f64,
-    prev_price: f64,
-) -> Result<f64, JsValue> {
-    roc::roc_inc(current_price, prev_price)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+pub fn roc_inc_wasm(current_price: f64, prev_price: f64) -> Result<f64, JsValue> {
+    roc::roc_inc(current_price, prev_price).map_err(|e| JsValue::from_str(&e.to_string()))
 }

@@ -213,7 +213,6 @@ pub fn dx(
 }
 
 /// Calculate the latest DX value incrementally without input validation.
-#[must_use]
 pub fn dx_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -379,8 +378,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -525,5 +524,5 @@ mod tests {
                 assert_relative_eq!(dx_arrow.value(i), out_dx[i], epsilon = 0.05);
             }
         }
-}
+    }
 }

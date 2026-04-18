@@ -1,5 +1,5 @@
-use kand::ta::ohlcv::medprice;
 use crate::WasmBuffer;
+use kand::ta::ohlcv::medprice;
 use wasm_bindgen::prelude::*;
 
 /**

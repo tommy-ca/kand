@@ -1,11 +1,11 @@
 #[cfg(feature = "arrow")]
-use std::alloc::{alloc, dealloc, Layout};
+use arrow_buffer::Buffer;
+#[cfg(feature = "arrow")]
+use std::alloc::{Layout, alloc, dealloc};
 #[cfg(feature = "arrow")]
 use std::ptr::NonNull;
 #[cfg(feature = "arrow")]
 use std::sync::Arc;
-#[cfg(feature = "arrow")]
-use arrow_buffer::Buffer;
 
 /// Standard alignment for Arrow buffers.
 #[cfg(feature = "arrow")]
@@ -99,15 +99,11 @@ fn release_block(block: Block) {
 pub fn create_pooled_buffer(len_bytes: usize) -> (*mut u8, Buffer) {
     let block = acquire_block(len_bytes);
     let ptr = block.ptr.as_ptr();
-    
+
     let allocation = PooledAllocation { block: Some(block) };
     let buffer = unsafe {
-        Buffer::from_custom_allocation(
-            NonNull::new(ptr).unwrap(),
-            len_bytes,
-            Arc::new(allocation),
-        )
+        Buffer::from_custom_allocation(NonNull::new(ptr).unwrap(), len_bytes, Arc::new(allocation))
     };
-    
+
     (ptr, buffer)
 }

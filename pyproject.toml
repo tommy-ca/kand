@@ -32,11 +32,34 @@ dependencies = [
     "numpy>=1.26.0; python_version>='3.9'",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.3.0",
+    "polars>=1.0.0",
+]
+
 [project.urls]
 Repository = "https://github.com/rust-ta/kand"
 Documentation = "https://docs.rs/kand"
 Changelog = "https://github.com/rust-ta/kand/blob/main/CHANGELOG.md"
 Releases = "https://github.com/rust-ta/kand/releases"
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "N"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/*.pyi" = ["E501"]
+"**/__init__.py" = ["F401", "F403"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.maturin]
 bindings = "pyo3"
@@ -48,4 +71,11 @@ include = [
     { path = "rust-toolchain.toml", format = ["sdist", "wheel"] },
     { path = "LICENSE-APACHE", format = "sdist" },
     { path = "LICENSE-MIT", format = "sdist" },
+]
+
+[dependency-groups]
+dev = [
+    "polars>=1.8.2",
+    "pytest>=8.3.5",
+    "ruff>=0.15.11",
 ]

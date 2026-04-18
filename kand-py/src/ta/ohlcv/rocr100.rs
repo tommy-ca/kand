@@ -72,4 +72,3 @@ pub fn rocr100_inc_py(current_price: TAFloat, prev_price: TAFloat) -> PyResult<T
     rocr100::rocr100_inc(current_price, prev_price)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

@@ -1,9 +1,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[cfg(feature = "arrow")]
-use arrow::array::{
-    Float64Array, Int64Array, PrimitiveBuilder,
-};
+use arrow::array::{Float64Array, Int64Array, PrimitiveBuilder};
 #[cfg(feature = "arrow")]
 use arrow::datatypes::{Float64Type, Int64Type};
 

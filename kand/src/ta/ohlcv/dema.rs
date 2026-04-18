@@ -185,7 +185,6 @@ pub fn dema(
 }
 
 /// Calculates a single new DEMA value incrementally without validation.
-#[must_use]
 pub fn dema_inc_raw(
     input_price: TAFloat,
     prev_ema1: TAFloat,
@@ -276,8 +275,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

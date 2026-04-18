@@ -105,10 +105,8 @@ pub fn cdl_hammer_inc_py(
     period: usize,
     factor: TAFloat,
 ) -> PyResult<(TAInt, TAFloat)> {
-    py.detach(|| {
-        cdl_hammer::cdl_hammer_inc(open, high, low, close, prev_body_avg, period, factor)
-    })
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    py.detach(|| cdl_hammer::cdl_hammer_inc(open, high, low, close, prev_body_avg, period, factor))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
 // Arrow wrapper

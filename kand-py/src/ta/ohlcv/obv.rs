@@ -84,4 +84,3 @@ pub fn obv_inc_py(
     obv::obv_inc(curr_close, prev_close, volume, prev_obv)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

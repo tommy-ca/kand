@@ -3,7 +3,6 @@ use crate::{
     helper::{highest_bars, lowest_bars},
 };
 
-
 /// Returns the lookback period required for Williams %R calculation
 ///
 /// # Description
@@ -303,8 +302,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

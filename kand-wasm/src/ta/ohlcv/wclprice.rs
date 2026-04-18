@@ -7,9 +7,7 @@ use wasm_bindgen::prelude::*;
  */
 #[wasm_bindgen(js_name = wclpriceLookback)]
 pub fn wclprice_lookback_wasm() -> Result<usize, JsValue> {
-    wclprice::lookback()
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    wclprice::lookback().map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**

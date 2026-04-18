@@ -1,6 +1,6 @@
-use kand::ta::ohlcv::adosc;
 use crate::WasmBuffer;
 use crate::ta::types::MAType;
+use kand::ta::ohlcv::adosc;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -22,7 +22,6 @@ pub fn adosc_lookback_wasm(
     opt_ma_type: MAType,
 ) -> Result<usize, JsValue> {
     adosc::lookback(opt_fast_period, opt_slow_period, opt_ma_type.into())
-        .map(|v| v as usize)
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 

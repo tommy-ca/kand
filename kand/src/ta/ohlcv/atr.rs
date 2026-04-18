@@ -169,7 +169,6 @@ pub fn atr(
 }
 
 /// Calculates the next ATR value without input validation.
-#[must_use]
 pub fn atr_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -237,17 +236,14 @@ pub fn atr_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_high.is_null() || input_low.is_null() || prev_close.is_null() || prev_atr.is_null() {
+        if input_high.is_null() || input_low.is_null() || prev_close.is_null() || prev_atr.is_null()
+        {
             return Err(KandError::NaNDetected);
         }
     }
 
     Ok(atr_inc_raw(
-        input_high,
-        input_low,
-        prev_close,
-        prev_atr,
-        opt_period,
+        input_high, input_low, prev_close, prev_atr, opt_period,
     ))
 }
 
@@ -262,8 +258,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

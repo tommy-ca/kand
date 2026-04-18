@@ -1,9 +1,7 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period for ROC (Rate of Change) calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
     opt_period as TAPeriod
 }
@@ -116,7 +114,7 @@ pub fn roc(
     output_roc: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_price.len();
-    let lookback = lookback(opt_period)? as usize;
+    let lookback = lookback(opt_period)?;
 
     #[cfg(feature = "check")]
     {
@@ -155,7 +153,6 @@ pub fn roc(
 
 /// Core incremental calculation for Rate of Change (ROC) without error checking.
 #[inline]
-#[must_use]
 pub fn roc_inc_raw(current_price: TAFloat, prev_price: TAFloat) -> TAFloat {
     (current_price - prev_price) / prev_price * 100.0
 }
@@ -220,9 +217,9 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

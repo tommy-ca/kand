@@ -1,10 +1,8 @@
 use super::atr;
 use crate::{KandError, TAFloat, TAPeriod};
 
-
 /// Returns the lookback period for NATR calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
     opt_period as TAPeriod
 }
@@ -61,7 +59,13 @@ pub fn natr_raw(
 
     // Calculate ATR first
     let mut atr_values = vec![0.0; len];
-    atr::atr_raw(input_high, input_low, input_close, opt_period, &mut atr_values);
+    atr::atr_raw(
+        input_high,
+        input_low,
+        input_close,
+        opt_period,
+        &mut atr_values,
+    );
 
     // Calculate NATR = (ATR / Close) * 100
     for i in lookback..len {
@@ -129,7 +133,7 @@ pub fn natr(
     output_natr: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
-    let lookback = lookback(opt_period)? as usize;
+    let lookback = lookback(opt_period)?;
 
     #[cfg(feature = "check")]
     {
@@ -166,7 +170,6 @@ pub fn natr(
 
 /// Core incremental calculation for NATR value without error checking.
 #[inline]
-#[must_use]
 pub fn natr_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -270,9 +273,9 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

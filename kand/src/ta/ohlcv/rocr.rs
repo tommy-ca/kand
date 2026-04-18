@@ -2,7 +2,6 @@ use crate::{KandError, TAFloat};
 
 /// Returns the lookback period for Rate of Change Ratio (ROCR) without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> usize {
     opt_period
 }
@@ -38,11 +37,7 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
 }
 
 /// Computes ROCR without input validation for high performance.
-pub fn rocr_raw(
-    input_price: &[TAFloat],
-    opt_period: usize,
-    output_rocr: &mut [TAFloat],
-) {
+pub fn rocr_raw(input_price: &[TAFloat], opt_period: usize, output_rocr: &mut [TAFloat]) {
     let len = input_price.len();
     let lookback = lookback_raw(opt_period);
 
@@ -144,7 +139,6 @@ pub fn rocr(
 
 /// Computes the next ROCR value incrementally without input validation.
 #[inline]
-#[must_use]
 pub fn rocr_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
     input / prev
 }
@@ -196,8 +190,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

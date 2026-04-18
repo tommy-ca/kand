@@ -1,7 +1,7 @@
-use kand::{ta::types::MAType, ohlcv::adosc, TAFloat};
+use arrow::array::Array;
+use kand::{TAFloat, ohlcv::adosc, ta::types::MAType};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
-use arrow::array::Array;
 
 /// Calculate Accumulation/Distribution Oscillator (A/D Oscillator or ADOSC)
 ///
@@ -50,7 +50,7 @@ pub fn adosc_py(
 
     // Create output arrays
     let mut output_adosc = vec![0.0; len];
-    
+
     let ma_type = MAType::try_from(ma_type as i64)
         .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
 
@@ -140,7 +140,8 @@ pub fn adosc_inc_py(
             fast_period,
             slow_period,
             ma_type,
-        ).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+        )
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     })
 }
 
@@ -158,31 +159,66 @@ pub fn adosc_arrow(
     slow_period: usize,
     ma_type: i64,
 ) -> pyo3::prelude::PyResult<pyo3_arrow::PyArray> {
+    use kand::ta::types::{MAType, TAArrowArray};
     use std::sync::Arc;
-    use kand::ta::types::{TAArrowArray, MAType};
     let ma_type = MAType::try_from(ma_type)
         .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
 
-    let high_array = high.as_ref()
+    let high_array = high
+        .as_ref()
         .as_any()
         .downcast_ref::<TAArrowArray>()
-        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for high"))?;
-    let low = low.as_ref()
+        .ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "Expected compatible Arrow floating-point array for high",
+            )
+        })?;
+    let low = low
+        .as_ref()
         .as_any()
         .downcast_ref::<TAArrowArray>()
-        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for low"))?;
-    let close = close.as_ref()
+        .ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "Expected compatible Arrow floating-point array for low",
+            )
+        })?;
+    let close = close
+        .as_ref()
         .as_any()
         .downcast_ref::<TAArrowArray>()
-        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for close"))?;
-    let volume = volume.as_ref()
+        .ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "Expected compatible Arrow floating-point array for close",
+            )
+        })?;
+    let volume = volume
+        .as_ref()
         .as_any()
         .downcast_ref::<TAArrowArray>()
-        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for volume"))?;
+        .ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "Expected compatible Arrow floating-point array for volume",
+            )
+        })?;
 
-    let result = py.detach(|| kand::ta::ohlcv::adosc::adosc_arrow(high_array, low, close, volume, fast_period, slow_period, ma_type))
+    let result = py
+        .detach(|| {
+            kand::ta::ohlcv::adosc::adosc_arrow(
+                high_array,
+                low,
+                close,
+                volume,
+                fast_period,
+                slow_period,
+                ma_type,
+            )
+        })
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-    
-    let field = Arc::new(arrow::datatypes::Field::new("", high_array.data_type().clone(), true));
+
+    let field = Arc::new(arrow::datatypes::Field::new(
+        "",
+        high_array.data_type().clone(),
+        true,
+    ));
     Ok(pyo3_arrow::PyArray::new(Arc::new(result), field))
 }

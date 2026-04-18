@@ -8,7 +8,7 @@ pub use ta::other;
 pub use ta::stats;
 
 /// Precision type for technical analysis calculations.
-/// 
+///
 /// The type is determined by the enabled features:
 /// - With feature "f32": Uses f32 (standard precision)
 /// - With feature "f64": Uses f64 (high precision)
@@ -17,7 +17,7 @@ pub use ta::stats;
 pub type TAFloat = f32;
 
 /// Precision type for technical analysis calculations.
-/// 
+///
 /// The type is determined by the enabled features:
 /// - With feature "f32": Uses f32 (standard precision)
 /// - With feature "f64": Uses f64 (high precision)
@@ -26,7 +26,7 @@ pub type TAFloat = f32;
 pub type TAFloat = f64;
 
 /// Integer type for technical analysis calculations.
-/// 
+///
 /// The type is determined by the enabled features:
 /// - With feature "i32": Uses i32 (standard precision)
 /// - With feature "i64": Uses i64 (high precision)
@@ -35,7 +35,7 @@ pub type TAFloat = f64;
 pub type TAInt = i32;
 
 /// Integer type for technical analysis calculations.
-/// 
+///
 /// The type is determined by the enabled features:
 /// - With feature "i32": Uses i32 (standard precision)
 /// - With feature "i64": Uses i64 (high precision)
@@ -47,7 +47,7 @@ pub type TAInt = i64;
 pub type TAPeriod = usize;
 
 /// Standard epsilon values for floating-point comparisons.
-/// 
+///
 /// The value is determined by the enabled features:
 /// - f32: Uses f32::EPSILON (≈ 1.19e-7)
 /// - f64: Uses f64::EPSILON (≈ 2.22e-16)

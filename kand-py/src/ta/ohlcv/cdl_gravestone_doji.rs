@@ -89,10 +89,8 @@ pub fn cdl_gravestone_doji_inc_py(
     close: TAFloat,
     body_percent: TAFloat,
 ) -> PyResult<TAInt> {
-    py.detach(|| {
-        cdl_gravestone_doji::cdl_gravestone_doji_inc(open, high, low, close, body_percent)
-    })
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    py.detach(|| cdl_gravestone_doji::cdl_gravestone_doji_inc(open, high, low, close, body_percent))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
 // Arrow wrapper

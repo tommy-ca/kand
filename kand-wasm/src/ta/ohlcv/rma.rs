@@ -7,9 +7,7 @@ use wasm_bindgen::prelude::*;
  */
 #[wasm_bindgen(js_name = rmaLookback)]
 pub fn rma_lookback_wasm(opt_period: usize) -> Result<usize, JsValue> {
-    rma::lookback(opt_period)
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    rma::lookback(opt_period).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**
@@ -34,11 +32,6 @@ pub fn rma_wasm_zero_copy(
  * Calculates a single RMA value incrementally.
  */
 #[wasm_bindgen(js_name = rmaInc)]
-pub fn rma_inc_wasm(
-    input_current: f64,
-    prev_rma: f64,
-    opt_period: usize,
-) -> Result<f64, JsValue> {
-    rma::rma_inc(input_current, prev_rma, opt_period)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+pub fn rma_inc_wasm(input_current: f64, prev_rma: f64, opt_period: usize) -> Result<f64, JsValue> {
+    rma::rma_inc(input_current, prev_rma, opt_period).map_err(|e| JsValue::from_str(&e.to_string()))
 }

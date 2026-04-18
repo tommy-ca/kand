@@ -28,6 +28,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "trix", signature = (prices, period))]
+#[allow(clippy::type_complexity)]
 pub fn trix_py(
     py: Python,
     prices: PyReadonlyArray1<TAFloat>,
@@ -105,4 +106,3 @@ pub fn trix_inc_py(
     trix::trix_inc(price, prev_ema1, prev_ema2, prev_ema3, period)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
-

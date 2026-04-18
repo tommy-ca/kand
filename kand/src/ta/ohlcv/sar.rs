@@ -2,7 +2,6 @@ use crate::{KandError, TAFloat, TAInt};
 
 /// Returns the lookback period required by the Parabolic SAR indicator without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(_opt_acceleration: TAFloat, _opt_maximum: TAFloat) -> usize {
     1
 }
@@ -32,10 +31,7 @@ pub const fn lookback_raw(_opt_acceleration: TAFloat, _opt_maximum: TAFloat) -> 
 /// let lookback = sar::lookback(acceleration, maximum).unwrap();
 /// assert_eq!(lookback, 1);
 /// ```
-pub const fn lookback(
-    opt_acceleration: TAFloat,
-    opt_maximum: TAFloat,
-) -> Result<usize, KandError> {
+pub const fn lookback(opt_acceleration: TAFloat, opt_maximum: TAFloat) -> Result<usize, KandError> {
     #[cfg(feature = "check")]
     {
         if opt_acceleration <= 0.0 || opt_maximum <= opt_acceleration {
@@ -333,7 +329,6 @@ pub fn sar(
 
 /// Computes the next SAR value incrementally without input validation.
 #[inline]
-#[must_use]
 pub fn sar_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -487,8 +482,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

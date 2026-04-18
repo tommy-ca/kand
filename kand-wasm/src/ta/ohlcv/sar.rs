@@ -16,9 +16,7 @@ pub struct SARResult {
  */
 #[wasm_bindgen(js_name = sarLookback)]
 pub fn sar_lookback_wasm(opt_acceleration: f64, opt_maximum: f64) -> Result<usize, JsValue> {
-    sar::lookback(opt_acceleration, opt_maximum)
-        .map(|v| v as usize)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    sar::lookback(opt_acceleration, opt_maximum).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**

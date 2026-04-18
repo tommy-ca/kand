@@ -88,7 +88,6 @@ pub fn ema_inc_py(
     })
 }
 
-
 // Arrow wrapper
 crate::kand_py_arrow_wrapper!(
     ema_arrow,
@@ -99,13 +98,13 @@ crate::kand_py_arrow_wrapper!(
 
 #[cfg(feature = "arrow")]
 #[pyclass(name = "BatchEMA")]
-pub struct BatchEMA_py {
+pub struct BatchEmaPy {
     inner: kand::ta::ohlcv::ema::BatchEMA,
 }
 
 #[cfg(feature = "arrow")]
 #[pymethods]
-impl BatchEMA_py {
+impl BatchEmaPy {
     #[new]
     #[pyo3(signature = (period, num_streams, opt_k=None))]
     pub fn new(period: usize, num_streams: usize, opt_k: Option<f64>) -> PyResult<Self> {
@@ -115,21 +114,35 @@ impl BatchEMA_py {
     }
 
     #[pyo3(signature = (input))]
-    pub fn next_batch(&mut self, py: Python, input: pyo3_arrow::PyArray) -> PyResult<pyo3_arrow::PyArray> {
-        use std::sync::Arc;
+    pub fn next_batch(
+        &mut self,
+        py: Python,
+        input: pyo3_arrow::PyArray,
+    ) -> PyResult<pyo3_arrow::PyArray> {
         use arrow::array::Array;
         use kand::ta::traits::BatchIndicator;
         use kand::ta::types::TAArrowArray;
+        use std::sync::Arc;
 
-        let input_arrow = input.as_ref()
+        let input_arrow = input
+            .as_ref()
             .as_any()
             .downcast_ref::<TAArrowArray>()
-            .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array"))?;
+            .ok_or_else(|| {
+                pyo3::exceptions::PyTypeError::new_err(
+                    "Expected compatible Arrow floating-point array",
+                )
+            })?;
 
-        let result = py.detach(|| self.inner.next_batch(input_arrow.clone()))
+        let result = py
+            .detach(|| self.inner.next_batch(input_arrow.clone()))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
-        let field = Arc::new(arrow::datatypes::Field::new("", result.data_type().clone(), true));
+        let field = Arc::new(arrow::datatypes::Field::new(
+            "",
+            result.data_type().clone(),
+            true,
+        ));
         Ok(pyo3_arrow::PyArray::new(Arc::new(result), field))
     }
 }

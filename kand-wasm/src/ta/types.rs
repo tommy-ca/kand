@@ -1,5 +1,5 @@
+use kand::ta::types::MAType as KandMAType;
 use wasm_bindgen::prelude::*;
-use kand::ta::types::{MAType as KandMAType};
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -32,6 +32,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "adx", signature = (high, low, close, period))]
+#[allow(clippy::type_complexity)]
 pub fn adx_py(
     py: Python,
     high: PyReadonlyArray1<TAFloat>,
@@ -120,6 +121,7 @@ pub fn adx_py(
 ///   ```
 #[pyfunction]
 #[pyo3(name = "adx_inc")]
+#[allow(clippy::type_complexity)]
 pub fn adx_inc_py(
     py: Python,
     high: TAFloat,

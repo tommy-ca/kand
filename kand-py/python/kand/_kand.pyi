@@ -103,7 +103,17 @@ def adosc(high, low, close, volume, fast_period, slow_period):
     """
     ...
 
-def adosc_inc(high, low, close, volume, prev_ad, prev_fast_ema, prev_slow_ema, fast_period, slow_period):
+def adosc_inc(
+    high,
+    low,
+    close,
+    volume,
+    prev_ad,
+    prev_fast_ema,
+    prev_slow_ema,
+    fast_period,
+    slow_period,
+):
     """
     Calculate latest A/D Oscillator value incrementally
 
@@ -175,7 +185,18 @@ def adx(high, low, close, period):
     """
     ...
 
-def adx_inc(high, low, prev_high, prev_low, prev_close, prev_adx, prev_smoothed_plus_dm, prev_smoothed_minus_dm, prev_smoothed_tr, period):
+def adx_inc(
+    high,
+    low,
+    prev_high,
+    prev_low,
+    prev_close,
+    prev_adx,
+    prev_smoothed_plus_dm,
+    prev_smoothed_minus_dm,
+    prev_smoothed_tr,
+    period,
+):
     """
     Calculate the latest ADX value incrementally
 
@@ -252,7 +273,19 @@ def adxr(high, low, close, period):
     """
     ...
 
-def adxr_inc(high, low, prev_high, prev_low, prev_close, prev_adx, prev_adx_period_ago, prev_smoothed_plus_dm, prev_smoothed_minus_dm, prev_smoothed_tr, period):
+def adxr_inc(
+    high,
+    low,
+    prev_high,
+    prev_low,
+    prev_close,
+    prev_adx,
+    prev_adx_period_ago,
+    prev_smoothed_plus_dm,
+    prev_smoothed_minus_dm,
+    prev_smoothed_tr,
+    period,
+):
     """
     Calculate the latest ADXR value incrementally
 
@@ -402,7 +435,9 @@ def aroonosc(high, low, period):
     """
     ...
 
-def aroonosc_inc(high, low, prev_high, prev_low, days_since_high, days_since_low, period):
+def aroonosc_inc(
+    high, low, prev_high, prev_low, days_since_high, days_since_low, period
+):
     """
     Calculate the next Aroon Oscillator value incrementally.
 
@@ -534,7 +569,9 @@ def bbands(price, period, dev_up, dev_down):
     """
     ...
 
-def bbands_inc(price, prev_sma, prev_sum, prev_sum_sq, old_price, period, dev_up, dev_down):
+def bbands_inc(
+    price, prev_sma, prev_sum, prev_sum_sq, old_price, period, dev_up, dev_down
+):
     """
     Calculate the next Bollinger Bands values incrementally.
 
@@ -661,7 +698,17 @@ def cci(high, low, close, period):
     """
     ...
 
-def cci_inc(prev_sma_tp, new_high, new_low, new_close, old_high, old_low, old_close, period, tp_buffer):
+def cci_inc(
+    prev_sma_tp,
+    new_high,
+    new_low,
+    new_close,
+    old_high,
+    old_low,
+    old_close,
+    period,
+    tp_buffer,
+):
     """
     Calculates the next CCI value incrementally.
 
@@ -1185,7 +1232,17 @@ def dx(high, low, close, period):
     """
     ...
 
-def dx_inc(input_high, input_low, prev_high, prev_low, prev_close, prev_smoothed_plus_dm, prev_smoothed_minus_dm, prev_smoothed_tr, opt_period):
+def dx_inc(
+    input_high,
+    input_low,
+    prev_high,
+    prev_low,
+    prev_close,
+    prev_smoothed_plus_dm,
+    prev_smoothed_minus_dm,
+    prev_smoothed_tr,
+    opt_period,
+):
     """
     Calculates the latest DX value incrementally.
 
@@ -1372,7 +1429,15 @@ def macd(data, fast_period, slow_period, signal_period):
     """
     ...
 
-def macd_inc(price, prev_fast_ema, prev_slow_ema, prev_signal, fast_period, slow_period, signal_period):
+def macd_inc(
+    price,
+    prev_fast_ema,
+    prev_slow_ema,
+    prev_signal,
+    fast_period,
+    slow_period,
+    signal_period,
+):
     """
     Computes the latest MACD values incrementally from previous state.
 
@@ -1973,7 +2038,16 @@ def plus_di(high, low, close, period):
     """
     ...
 
-def plus_di_inc(high, low, prev_high, prev_low, prev_close, prev_smoothed_plus_dm, prev_smoothed_tr, period):
+def plus_di_inc(
+    high,
+    low,
+    prev_high,
+    prev_low,
+    prev_close,
+    prev_smoothed_plus_dm,
+    prev_smoothed_tr,
+    period,
+):
     """
     Calculates the next +DI value incrementally using previous smoothed values.
 
@@ -2408,7 +2482,9 @@ def sar(high, low, acceleration, maximum):
     """
     ...
 
-def sar_inc(high, low, prev_high, prev_low, prev_sar, is_long, af, ep, acceleration, maximum):
+def sar_inc(
+    high, low, prev_high, prev_low, prev_sar, is_long, af, ep, acceleration, maximum
+):
     """
     Incrementally updates the Parabolic SAR with new price data.
 
@@ -2674,7 +2750,18 @@ def supertrend(high, low, close, period, multiplier):
     """
     ...
 
-def supertrend_inc(high, low, close, prev_close, prev_atr, prev_trend, prev_upper, prev_lower, period, multiplier):
+def supertrend_inc(
+    high,
+    low,
+    close,
+    prev_close,
+    prev_atr,
+    prev_trend,
+    prev_upper,
+    prev_lower,
+    period,
+    multiplier,
+):
     """
     Calculates a single Supertrend value incrementally.
 
@@ -2753,7 +2840,17 @@ def t3(data, period, vfactor):
     """
     ...
 
-def t3_inc(price, prev_ema1, prev_ema2, prev_ema3, prev_ema4, prev_ema5, prev_ema6, period, vfactor):
+def t3_inc(
+    price,
+    prev_ema1,
+    prev_ema2,
+    prev_ema3,
+    prev_ema4,
+    prev_ema5,
+    prev_ema6,
+    period,
+    vfactor,
+):
     """
     Incrementally calculates the next T3 value.
 
@@ -3169,7 +3266,13 @@ def vegas(prices):
     """
     ...
 
-def vegas_inc(price, prev_channel_upper, prev_channel_lower, prev_boundary_upper, prev_boundary_lower):
+def vegas_inc(
+    price,
+    prev_channel_upper,
+    prev_channel_lower,
+    prev_boundary_upper,
+    prev_boundary_lower,
+):
     """
     Incrementally calculates the next VEGAS values.
 
@@ -3336,7 +3439,9 @@ def willr(high, low, close, period):
     """
     ...
 
-def willr_inc(prev_highest_high, prev_lowest_low, prev_high, prev_low, close, high, low):
+def willr_inc(
+    prev_highest_high, prev_lowest_low, prev_high, prev_low, close, high, low
+):
     """
     Incrementally calculates Williams %R for the latest data point.
 

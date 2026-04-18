@@ -90,10 +90,8 @@ pub fn cdl_doji_inc_py(
     body_percent: TAFloat,
     shadow_equal_percent: TAFloat,
 ) -> PyResult<TAInt> {
-    py.detach(|| {
-        cdl_doji::cdl_doji_inc(open, high, low, close, body_percent, shadow_equal_percent)
-    })
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    py.detach(|| cdl_doji::cdl_doji_inc(open, high, low, close, body_percent, shadow_equal_percent))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
 // Arrow wrapper

@@ -144,8 +144,12 @@ pub fn stoch_raw(
         for j in 0..opt_k_period {
             let val_h = input_high[i - j];
             let val_l = input_low[i - j];
-            if val_h > highest_high { highest_high = val_h; }
-            if val_l < lowest_low { lowest_low = val_l; }
+            if val_h > highest_high {
+                highest_high = val_h;
+            }
+            if val_l < lowest_low {
+                lowest_low = val_l;
+            }
         }
 
         let range = highest_high - lowest_low;
@@ -161,7 +165,7 @@ pub fn stoch_raw(
     // Fast %K starts at k_period - 1.
     // Slow %K starts at (k_period - 1) + (k_slow_period - 1) = k_period + k_slow_period - 2
     let k_slow_start_idx = opt_k_period + opt_k_slow_period - 2;
-    
+
     if len > k_slow_start_idx {
         let mut sum = 0.0;
         for i in 0..opt_k_slow_period {
@@ -180,7 +184,7 @@ pub fn stoch_raw(
     // Slow %K starts at k_slow_start_idx.
     // %D starts at k_slow_start_idx + (d_period - 1) = k_period + k_slow_period + d_period - 3
     let d_start_idx = k_slow_start_idx + opt_d_period - 1;
-    
+
     if len > d_start_idx {
         let mut sum = 0.0;
         for i in 0..opt_d_period {
@@ -322,7 +326,6 @@ pub fn stoch(
         output_d,
     );
 
-
     Ok(())
 }
 
@@ -347,8 +350,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 

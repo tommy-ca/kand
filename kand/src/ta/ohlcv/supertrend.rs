@@ -3,7 +3,6 @@ use crate::{KandError, TAFloat, TAInt, ta::types::Signal};
 
 /// Returns the lookback period required for Supertrend calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> usize {
     opt_period
 }
@@ -250,7 +249,6 @@ pub fn supertrend(
 
 /// Computes the next Supertrend values incrementally without input validation.
 #[inline]
-#[must_use]
 pub fn supertrend_inc_raw(
     input_high: TAFloat,
     input_low: TAFloat,
@@ -416,8 +414,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -559,8 +557,14 @@ mod tests {
         let opt_multiplier = 3.0;
 
         let (trend_arrow, supertrend_arrow, atr_arrow, upper_arrow, lower_arrow) =
-            supertrend_arrow(&high_arrow, &low_arrow, &close_arrow, opt_period, opt_multiplier)
-                .unwrap();
+            supertrend_arrow(
+                &high_arrow,
+                &low_arrow,
+                &close_arrow,
+                opt_period,
+                opt_multiplier,
+            )
+            .unwrap();
 
         assert_eq!(trend_arrow.len(), 25);
         assert_eq!(supertrend_arrow.len(), 25);

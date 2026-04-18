@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
+import importlib
+import inspect
 import os
 import sys
-import inspect
-import importlib
 
 
 def generate_stub_file(package_name: str, output_path: str):
@@ -32,7 +32,8 @@ def generate_stub_file(package_name: str, output_path: str):
         "Type hints and function signatures stub file for IDE autocompletion."
     )
     pyi_lines.append(
-        "Auto-generated to avoid manual maintenance. Can be enhanced with more precise type annotations."
+        "Auto-generated to avoid manual maintenance. "
+        "Can be enhanced with more precise type annotations."
     )
     pyi_lines.append('"""')
     pyi_lines.append("")

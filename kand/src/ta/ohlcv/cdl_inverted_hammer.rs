@@ -209,7 +209,9 @@ pub fn cdl_inverted_hammer(
 
     // Fill initial values
     for i in 0..lookback {
-        output_signals[i] = <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Neutral);
+        output_signals[i] = <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+            crate::ta::types::Signal::Neutral,
+        );
         output_body_avg[i] = TAFloat::NAN;
     }
 
@@ -218,7 +220,6 @@ pub fn cdl_inverted_hammer(
 
 /// Processes a single candlestick for Inverted Hammer detection without validation.
 #[inline]
-#[must_use]
 pub fn cdl_inverted_hammer_inc_raw(
     input_open: TAFloat,
     input_high: TAFloat,
@@ -346,8 +347,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
@@ -402,10 +403,30 @@ mod tests {
         }
 
         // Test specific signals
-        assert_eq!(output_signals[19], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-08 14:05
-        assert_eq!(output_signals[23], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-08 14:25
-        assert_eq!(output_signals[25], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-08 14:35
-        assert_eq!(output_signals[28], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-08 14:50
+        assert_eq!(
+            output_signals[19],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bullish
+            )
+        ); // TV BTCUSDT.P 5m 2025-02-08 14:05
+        assert_eq!(
+            output_signals[23],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bullish
+            )
+        ); // TV BTCUSDT.P 5m 2025-02-08 14:25
+        assert_eq!(
+            output_signals[25],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bullish
+            )
+        ); // TV BTCUSDT.P 5m 2025-02-08 14:35
+        assert_eq!(
+            output_signals[28],
+            <crate::ta::types::Signal as Into<crate::TAInt>>::into(
+                crate::ta::types::Signal::Bullish
+            )
+        ); // TV BTCUSDT.P 5m 2025-02-08 14:50
 
         // Test incremental calculation matches regular calculation
         let mut prev_body_avg = output_body_avg[13]; // First valid body average
@@ -433,25 +454,31 @@ mod tests {
     fn test_cdl_inverted_hammer_arrow() {
         use crate::ta::types::TAArrowArray;
 
-        let input_open = vec![100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0];
-        let input_high = vec![105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0, 116.0, 117.0, 118.0, 119.0];
-        let input_low = vec![99.0, 100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0];
-        let input_close = vec![101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0];
+        let input_open = vec![
+            100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0,
+            112.0, 113.0, 114.0,
+        ];
+        let input_high = vec![
+            105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0, 116.0,
+            117.0, 118.0, 119.0,
+        ];
+        let input_low = vec![
+            99.0, 100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0,
+            111.0, 112.0, 113.0,
+        ];
+        let input_close = vec![
+            101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0, 112.0,
+            113.0, 114.0, 115.0,
+        ];
 
         let open_arrow = TAArrowArray::from(input_open);
         let high_arrow = TAArrowArray::from(input_high);
         let low_arrow = TAArrowArray::from(input_low);
         let close_arrow = TAArrowArray::from(input_close);
 
-        let (sig, _) = cdl_inverted_hammer_arrow(
-            &open_arrow,
-            &high_arrow,
-            &low_arrow,
-            &close_arrow,
-            14,
-            2.0,
-        )
-        .unwrap();
+        let (sig, _) =
+            cdl_inverted_hammer_arrow(&open_arrow, &high_arrow, &low_arrow, &close_arrow, 14, 2.0)
+                .unwrap();
 
         assert_eq!(sig.len(), 15);
     }

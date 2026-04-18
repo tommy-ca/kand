@@ -25,6 +25,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "ha", signature = (open, high, low, close))]
+#[allow(clippy::type_complexity)]
 pub fn ha_py(
     py: Python,
     open: PyReadonlyArray1<TAFloat>,
@@ -99,8 +100,17 @@ pub fn ha_inc_py(
     prev_ha_open: TAFloat,
     prev_ha_close: TAFloat,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat)> {
-    py.detach(|| ha::ha_inc(curr_open, curr_high, curr_low, curr_close, prev_ha_open, prev_ha_close))
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    py.detach(|| {
+        ha::ha_inc(
+            curr_open,
+            curr_high,
+            curr_low,
+            curr_close,
+            prev_ha_open,
+            prev_ha_close,
+        )
+    })
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
 #[cfg(feature = "arrow")]

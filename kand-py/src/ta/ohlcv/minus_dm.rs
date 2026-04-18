@@ -89,10 +89,8 @@ pub fn minus_dm_inc_py(
     period: usize,
 ) -> PyResult<TAFloat> {
     // Perform the incremental -DM calculation while releasing the GIL
-    py.detach(|| {
-        minus_dm::minus_dm_inc(high, prev_high, low, prev_low, prev_minus_dm, period)
-    })
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    py.detach(|| minus_dm::minus_dm_inc(high, prev_high, low, prev_low, prev_minus_dm, period))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
 // Arrow wrapper

@@ -27,6 +27,7 @@ use pyo3::prelude::*;
 ///   ```
 #[pyfunction]
 #[pyo3(name = "ecl", signature = (high, low, close))]
+#[allow(clippy::type_complexity)]
 pub fn ecl_py(
     py: Python,
     high: PyReadonlyArray1<TAFloat>,
@@ -136,4 +137,3 @@ pub fn ecl_inc_py(
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     })
 }
-

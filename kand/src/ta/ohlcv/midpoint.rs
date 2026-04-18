@@ -5,7 +5,6 @@ use crate::ta::types::TAArrowArray;
 
 /// Returns the lookback period for Midpoint calculation without input validation.
 #[inline]
-#[must_use]
 pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
     (opt_period - 1) as TAPeriod
 }
@@ -152,7 +151,7 @@ pub fn midpoint(
     output_lowest: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_price.len();
-    let lookback = lookback(opt_period)? as usize;
+    let lookback = lookback(opt_period)?;
 
     #[cfg(feature = "check")]
     {
@@ -195,7 +194,6 @@ pub fn midpoint(
 
 /// Core incremental calculation for Midpoint value without error checking.
 #[inline]
-#[must_use]
 pub fn midpoint_inc_raw(
     input_price: TAFloat,
     prev_highest: TAFloat,
@@ -295,8 +293,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
