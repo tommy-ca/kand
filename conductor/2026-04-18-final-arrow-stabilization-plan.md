@@ -37,3 +37,8 @@ While the Rust core is Arrow-native and stable, the Python and WASM bindings req
 - Compile bindings: `cargo check -p kand-py --features arrow` and `cargo check -p kand-wasm`.
 - Benchmark: `cargo bench -p kand --features arrow`.
 - Test: `cargo test --workspace --features arrow`.
+
+## Schedule
+1. **Stabilization Phase (Day 1):** Execute Phase 1 units.
+2. **Benchmarking Phase (Day 2):** Execute Phase 2 units.
+3. **Audit Phase (Day 3):** Execute Phase 3 units.
