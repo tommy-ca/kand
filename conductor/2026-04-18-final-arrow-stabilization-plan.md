@@ -1,24 +1,24 @@
-# Implementation Plan: Final Test Parity and Benchmarking (Final Sprint)
+# Implementation Plan: Final Test Parity and Benchmarking (Phase 3)
 
 ## Overview
-This plan focuses on achieving 100% test parity for the Arrow-integrated `kand` library by resolving the final 3 test failures and executing the performance benchmarking suite.
+This plan focuses on achieving 100% test parity for the Arrow-integrated `kand` library by resolving the final 4 test failures and executing the performance benchmarking suite.
 
 ## Problem Frame
-The current test suite has reached a 98% pass rate (123/126 passed). The remaining failures are confined to:
-1. **ADOSC:** Discrepancy between calculated output and test expectation due to EMA initialization logic.
-2. **Stoch (Arrow):** Failure in NaN-padding assertion in Arrow buffer.
+The current test suite has reached a 97% pass rate (122/126 passed). The remaining failures are:
+1. **ADOSC (ADOSC_raw/ADOSC_arrow):** Discrepancy in A/D accumulation EMA startup.
+2. **Stoch (Stoch_raw/Stoch_arrow):** Discrepancy in Stochastic Oscillator initialization timing.
 
 ## Requirements Trace
 - **R1.** Achieve 100% test pass rate for all Arrow-native indicators.
-- **R2.** Correct `adosc` and `stoch` Arrow initialization logic.
+- **R2.** Correct `adosc` and `stoch` EMA/initialization logic.
 - **R3.** Formal Performance Benchmarking (Slice-based vs. Arrow-native).
-- **R4.** Finalize technical specifications and release tagging.
+- **R4.** Documentation of benchmark results.
 
 ## Implementation Units
 
 ### Phase 1: Surgical Test Parity (Final Sprint)
-- [ ] Unit 1.1: Reconcile `adosc` raw implementation and test expectations (or logic).
-- [ ] Unit 1.2: Fix `NaN` initialization logic in `stoch_arrow`.
+- [ ] Unit 1.1: Fix `adosc` initialization (EMA start-index parity).
+- [ ] Unit 1.2: Fix `stoch` initialization (NaN padding and start-index).
 - [ ] Unit 1.3: Final verification: `cargo test --workspace --features arrow` passes 100%.
 
 ### Phase 2: Performance Benchmarking
