@@ -46,3 +46,42 @@ pub fn sma_arrow_wasm(
         std::mem::size_of::<f64>(),
     ))
 }
+
+/**
+ * Vectorized stateful SMA for multiple independent streams.
+ */
+#[cfg(feature = "arrow")]
+#[wasm_bindgen]
+pub struct BatchSMAWasm {
+    inner: kand::ta::ohlcv::sma::BatchSMA,
+}
+
+#[cfg(feature = "arrow")]
+#[wasm_bindgen]
+impl BatchSMAWasm {
+    #[wasm_bindgen(constructor)]
+    pub fn new(period: usize, num_streams: usize) -> Result<BatchSMAWasm, JsValue> {
+        let inner = kand::ta::ohlcv::sma::BatchSMA::new(period, num_streams)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    #[wasm_bindgen(js_name = nextBatch)]
+    pub fn next_batch(&mut self, input_buffer: &WasmBuffer) -> Result<WasmBuffer, JsValue> {
+        use arrow::datatypes::Float64Type;
+        use kand::ta::traits::BatchIndicator;
+
+        let input_arrow = input_buffer.to_arrow_array::<Float64Type>();
+        let result = self.inner.next_batch(input_arrow)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        let len = result.len();
+        let buffer = result.values().inner().clone();
+        
+        Ok(WasmBuffer::from_parts(
+            buffer,
+            len,
+            std::mem::size_of::<f64>(),
+        ))
+    }
+}

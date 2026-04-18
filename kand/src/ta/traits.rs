@@ -36,4 +36,8 @@ pub trait BatchIndicator {
     /// Returns the entire batch state as an Arrow RecordBatch.
     #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<RecordBatch, KandError>;
+
+    /// Restores the entire batch state from an Arrow RecordBatch.
+    #[cfg(feature = "arrow")]
+    fn from_record_batch(&mut self, batch: &RecordBatch) -> Result<(), KandError>;
 }

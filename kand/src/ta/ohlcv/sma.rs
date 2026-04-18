@@ -69,14 +69,39 @@ impl crate::ta::traits::Indicator for StatefulSMA {
 
     #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        // Placeholder for persistence
-        Err(KandError::InvalidData)
+        use arrow::array::{UInt64Array, Float64Array};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("period", DataType::UInt64, false),
+            Field::new("sum", DataType::Float64, false),
+            Field::new("window", DataType::Float64, false),
+        ]));
+
+        let period_arr = UInt64Array::from(vec![self.period as u64]);
+        let sum_arr = Float64Array::from(vec![self.sum]);
+        let window_arr = Float64Array::from(self.window.clone());
+
+        arrow::record_batch::RecordBatch::try_new(schema, vec![
+            Arc::new(period_arr),
+            Arc::new(sum_arr),
+            Arc::new(window_arr),
+        ]).map_err(|_| KandError::InvalidData)
     }
 
-    #[cfg(feature = "arrow")]
-    fn from_record_batch(&mut self, _batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
-        // Placeholder for restoration
-        Err(KandError::InvalidData)
+    fn from_record_batch(&mut self, batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
+        use arrow::array::{UInt64Array, Float64Array};
+
+        let period = batch.column(0).as_any().downcast_ref::<UInt64Array>().ok_or(KandError::InvalidData)?.value(0) as usize;
+        let sum = batch.column(1).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?.value(0);
+        let window = batch.column(2).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?;
+
+        self.period = period;
+        self.sum = sum;
+        self.window = window.values().to_vec();
+
+        Ok(())
     }
 }
 
@@ -180,7 +205,63 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
     }
 
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        Err(KandError::InvalidData) // Placeholder
+        use arrow::array::{UInt64Array, Float64Array, FixedSizeListArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new_with_metadata(
+            vec![
+                Field::new("sum", DataType::Float64, false),
+                Field::new("window", DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float64, true)), self.period as i32), false),
+            ],
+            std::collections::HashMap::from([
+                ("period".to_string(), self.period.to_string()),
+                ("cursor".to_string(), self.cursor.to_string()),
+                ("count".to_string(), self.count.to_string()),
+            ])
+        ));
+
+        let sums_arr = Arc::new(Float64Array::new(arrow_buffer::ScalarBuffer::new(self.sums.as_slice().into(), 0, self.num_streams), None)) as Arc<dyn arrow::array::Array>;
+        
+        let windows_data = Float64Array::new(arrow_buffer::ScalarBuffer::new(self.windows.as_slice().into(), 0, self.num_streams * self.period), None);
+        let windows_arr = Arc::new(FixedSizeListArray::new(
+            Arc::new(Field::new("item", DataType::Float64, true)),
+            self.period as i32,
+            Arc::new(windows_data),
+            None
+        )) as Arc<dyn arrow::array::Array>;
+
+        arrow::record_batch::RecordBatch::try_new(schema, vec![
+            sums_arr,
+            windows_arr,
+        ]).map_err(|_| KandError::InvalidData)
+    }
+
+    fn from_record_batch(&mut self, batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
+        use arrow::array::{Float64Array, FixedSizeListArray};
+
+        let period = batch.schema().metadata().get("period").ok_or(KandError::InvalidData)?.parse().map_err(|_| KandError::InvalidData)?;
+        let cursor = batch.schema().metadata().get("cursor").ok_or(KandError::InvalidData)?.parse().map_err(|_| KandError::InvalidData)?;
+        let count = batch.schema().metadata().get("count").ok_or(KandError::InvalidData)?.parse().map_err(|_| KandError::InvalidData)?;
+        
+        let num_streams = batch.num_rows();
+        
+        let sums = batch.column(0).as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?;
+        let windows_list = batch.column(1).as_any().downcast_ref::<FixedSizeListArray>().ok_or(KandError::InvalidData)?;
+        let windows = windows_list.values().as_any().downcast_ref::<Float64Array>().ok_or(KandError::InvalidData)?;
+
+        self.period = period;
+        self.num_streams = num_streams;
+        self.cursor = cursor;
+        self.count = count;
+        
+        self.sums = arrow_buffer::MutableBuffer::from_len_zeroed(sums.len() * std::mem::size_of::<TAFloat>());
+        self.sums.typed_data_mut::<TAFloat>().copy_from_slice(sums.values());
+        
+        self.windows = arrow_buffer::MutableBuffer::from_len_zeroed(windows.len() * std::mem::size_of::<TAFloat>());
+        self.windows.typed_data_mut::<TAFloat>().copy_from_slice(windows.values());
+
+        Ok(())
     }
 }
 
@@ -358,6 +439,18 @@ mod tests {
         let out = batch_sma.next_batch(input).unwrap();
         assert_relative_eq!(out.value(0), 12.0);
         assert_relative_eq!(out.value(1), 22.0);
+
+        // Test persistence
+        let batch = batch_sma.to_record_batch().unwrap();
+        let mut new_batch_sma = BatchSMA::new(3, 2).unwrap();
+        new_batch_sma.from_record_batch(&batch).unwrap();
+
+        // t4
+        let input = TAArrowArray::from(vec![14.0, 24.0]);
+        let out = new_batch_sma.next_batch(input).unwrap();
+        // sum = 12 + 13 + 14 = 39 / 3 = 13.0
+        assert_relative_eq!(out.value(0), 13.0);
+        assert_relative_eq!(out.value(1), 23.0);
     }
 
     #[test]

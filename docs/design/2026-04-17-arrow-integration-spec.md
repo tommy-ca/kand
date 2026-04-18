@@ -33,6 +33,14 @@ The library utilizes a **Thread-Local Block Cache** to minimize heap allocations
 4.  **Alignment**: Guaranteed 64-byte alignment for SIMD compatibility.
 5.  **NaN Padding**: Consistent initial-period padding.
 
+## 3. Macro Strategy
+To support 75+ indicators efficiently, specialized macros automate Arrow variant generation:
+- **`kand_arrow_wrapper!`**: Single-output floating point indicators.
+- **`kand_arrow_wrapper_multi!`**: Multi-output indicators (e.g., MACD, BBands). Supports mixed types (e.g., `TAFloat` and `TAInt`).
+- **`kand_arrow_wrapper_int!`**: Single-output integer indicators (e.g., candle patterns).
+
+All macros are integrated with the `BlockPool` for automatic memory management across Rust, Python, and WASM.
+
 ## 4. Stateful Indicator Framework (Streaming V1)
 
 To support high-density streaming (thousands of assets) and standardized persistence, `kand` provides encapsulated stateful indicator traits.

@@ -92,7 +92,14 @@ fn kand(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ta::ohlcv::macd::macd_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::macd::macd_inc_py, m)?)?;
     #[cfg(feature = "arrow")]
+    m.add_function(wrap_pyfunction!(ta::ohlcv::ema::ema_arrow, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_class::<ta::ohlcv::ema::BatchEMA_py>()?;
+
+    #[cfg(feature = "arrow")]
     m.add_function(wrap_pyfunction!(ta::ohlcv::macd::macd_arrow, m)?)?;
+    #[cfg(feature = "arrow")]
+    m.add_class::<ta::ohlcv::macd::BatchMACD_py>()?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::medprice::medprice_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::medprice::medprice_inc_py, m)?)?;
     m.add_function(wrap_pyfunction!(ta::ohlcv::mfi::mfi_py, m)?)?;
