@@ -250,7 +250,6 @@ crate::kand_arrow_wrapper_int!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::Array;
 
     #[test]
     fn test_cdl_dragonfly_doji() {

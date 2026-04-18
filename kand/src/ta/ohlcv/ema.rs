@@ -1,4 +1,5 @@
 use crate::{KandError, TAFloat, TAPeriod, helper::period_to_k};
+use arrow::array::Array;
 
 /// Returns the lookback period for EMA without input validation.
 #[inline]
@@ -23,7 +24,7 @@ pub const fn lookback_raw(opt_period: TAPeriod) -> TAPeriod {
 ///
 /// # Example
 /// ```
-/// use kand::ohlcv::ema;
+/// use kand::ta::ohlcv::ema;
 /// let period = 14;
 /// let lookback = ema::lookback(period).unwrap();
 /// assert_eq!(lookback, 13); // lookback is period - 1
@@ -40,6 +41,7 @@ pub const fn lookback(opt_period: TAPeriod) -> Result<TAPeriod, KandError> {
 }
 
 /// Stateful implementation of Exponential Moving Average (EMA).
+#[derive(Clone)]
 pub struct StatefulEMA {
     period: TAPeriod,
     multiplier: TAFloat,
@@ -97,27 +99,27 @@ impl crate::ta::traits::Indicator for StatefulEMA {
         use std::sync::Arc;
 
         let schema = Arc::new(Schema::new(vec![
-            Field::new("period", DataType::UInt64, false),
-            Field::new("multiplier", DataType::Float64, false),
+            Field::new("__kand_period", DataType::UInt64, false),
+            Field::new("__kand_multiplier", DataType::Float64, false),
+            Field::new("__kand_count", DataType::UInt64, false),
             Field::new("prev_ema", DataType::Float64, false),
             Field::new("sum", DataType::Float64, false),
-            Field::new("count", DataType::UInt64, false),
         ]));
 
         let period_arr = UInt64Array::from(vec![self.period as u64]);
         let multiplier_arr = Float64Array::from(vec![self.multiplier]);
+        let count_arr = UInt64Array::from(vec![self.count as u64]);
         let prev_ema_arr = Float64Array::from(vec![self.prev_ema]);
         let sum_arr = Float64Array::from(vec![self.sum]);
-        let count_arr = UInt64Array::from(vec![self.count as u64]);
 
         arrow::record_batch::RecordBatch::try_new(
             schema,
             vec![
                 Arc::new(period_arr),
                 Arc::new(multiplier_arr),
+                Arc::new(count_arr),
                 Arc::new(prev_ema_arr),
                 Arc::new(sum_arr),
-                Arc::new(count_arr),
             ],
         )
         .map_err(|_| KandError::InvalidData)
@@ -142,30 +144,30 @@ impl crate::ta::traits::Indicator for StatefulEMA {
             .downcast_ref::<Float64Array>()
             .ok_or(KandError::InvalidData)?
             .value(0);
-        let prev_ema = batch
+        let count = batch
             .column(2)
             .as_any()
-            .downcast_ref::<Float64Array>()
+            .downcast_ref::<UInt64Array>()
             .ok_or(KandError::InvalidData)?
-            .value(0);
-        let sum = batch
+            .value(0) as usize;
+        let prev_ema = batch
             .column(3)
             .as_any()
             .downcast_ref::<Float64Array>()
             .ok_or(KandError::InvalidData)?
             .value(0);
-        let count = batch
+        let sum = batch
             .column(4)
             .as_any()
-            .downcast_ref::<UInt64Array>()
+            .downcast_ref::<Float64Array>()
             .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
+            .value(0);
 
         self.period = period;
         self.multiplier = multiplier;
+        self.count = count;
         self.prev_ema = prev_ema;
         self.sum = sum;
-        self.count = count;
 
         Ok(())
     }
@@ -181,6 +183,21 @@ pub struct BatchEMA {
     states: arrow_buffer::MutableBuffer,
     // Buffer storing whether we are in the initial SMA phase or EMA phase
     counts: Vec<usize>, // Could be optimized to a single usize if all streams sync
+}
+
+#[cfg(feature = "arrow")]
+impl Clone for BatchEMA {
+    fn clone(&self) -> Self {
+        let mut new_states = arrow_buffer::MutableBuffer::new(self.states.len());
+        new_states.extend_from_slice(self.states.as_slice());
+        Self {
+            period: self.period,
+            num_streams: self.num_streams,
+            multiplier: self.multiplier,
+            states: new_states,
+            counts: self.counts.clone(),
+        }
+    }
 }
 
 #[cfg(feature = "arrow")]
@@ -266,16 +283,19 @@ impl crate::ta::traits::BatchIndicator for BatchEMA {
         use arrow::datatypes::{DataType, Field, Schema};
         use std::sync::Arc;
 
-        let schema = Arc::new(Schema::new_with_metadata(
-            vec![
-                Field::new("state", DataType::Float64, false),
-                Field::new("count", DataType::UInt64, false),
-            ],
-            std::collections::HashMap::from([
-                ("period".to_string(), self.period.to_string()),
-                ("multiplier".to_string(), self.multiplier.to_string()),
-            ]),
-        ));
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("__kand_period", DataType::UInt64, false),
+            Field::new("__kand_multiplier", DataType::Float64, false),
+            Field::new("state", DataType::Float64, false),
+            Field::new("count", DataType::UInt64, false),
+        ]));
+
+        let period_arr = Arc::new(UInt64Array::from(vec![
+            self.period as u64;
+            self.num_streams
+        ])) as Arc<dyn arrow::array::Array>;
+        let multiplier_arr = Arc::new(Float64Array::from(vec![self.multiplier; self.num_streams]))
+            as Arc<dyn arrow::array::Array>;
 
         let states_arr = Arc::new(Float64Array::new(
             arrow_buffer::ScalarBuffer::new(self.states.as_slice().into(), 0, self.num_streams),
@@ -285,8 +305,11 @@ impl crate::ta::traits::BatchIndicator for BatchEMA {
             self.counts.iter().map(|&c| c as u64).collect::<Vec<_>>(),
         )) as Arc<dyn arrow::array::Array>;
 
-        arrow::record_batch::RecordBatch::try_new(schema, vec![states_arr, counts_arr])
-            .map_err(|_| KandError::InvalidData)
+        arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![period_arr, multiplier_arr, states_arr, counts_arr],
+        )
+        .map_err(|_| KandError::InvalidData)
     }
 
     #[cfg(feature = "arrow")]
@@ -296,30 +319,31 @@ impl crate::ta::traits::BatchIndicator for BatchEMA {
     ) -> Result<(), KandError> {
         use arrow::array::{Float64Array, UInt64Array};
 
-        let period = batch
-            .schema()
-            .metadata()
-            .get("period")
-            .ok_or(KandError::InvalidData)?
-            .parse()
-            .map_err(|_| KandError::InvalidData)?;
-        let multiplier = batch
-            .schema()
-            .metadata()
-            .get("multiplier")
-            .ok_or(KandError::InvalidData)?
-            .parse()
-            .map_err(|_| KandError::InvalidData)?;
-
         let num_streams = batch.num_rows();
+        if num_streams == 0 {
+            return Err(KandError::InvalidData);
+        }
+
+        let period = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let multiplier = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0);
 
         let states = batch
-            .column(0)
+            .column(2)
             .as_any()
             .downcast_ref::<Float64Array>()
             .ok_or(KandError::InvalidData)?;
         let counts = batch
-            .column(1)
+            .column(3)
             .as_any()
             .downcast_ref::<UInt64Array>()
             .ok_or(KandError::InvalidData)?;
@@ -352,10 +376,7 @@ pub fn ema_raw(
     let lookback = lookback_raw(opt_period);
 
     // Calculate initial SMA
-    let mut sum = input_prices[0];
-    for value in input_prices.iter().take(opt_period).skip(1) {
-        sum += *value;
-    }
+    let sum: TAFloat = input_prices.iter().take(opt_period).sum();
     let mut prev_ma = sum / (opt_period as TAFloat);
     output_ema[lookback] = prev_ma;
 
@@ -409,7 +430,7 @@ pub fn ema_raw(
 ///
 /// # Example
 /// ```
-/// use kand::ohlcv::ema;
+/// use kand::ta::ohlcv::ema;
 /// let prices = vec![10.0, 11.0, 12.0, 13.0, 14.0];
 /// let period = 3;
 /// let mut ema_values = vec![0.0; prices.len()];
@@ -448,7 +469,7 @@ pub fn ema(
     {
         for price in input_prices {
             // NaN check
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -457,12 +478,7 @@ pub fn ema(
     ema_raw(input_prices, opt_period, opt_k, output_ema);
 
     // Fill initial values with NAN
-    #[cfg(feature = "allow-nan")]
-    {
-        for value in output_ema.iter_mut().take(lookback) {
-            *value = TAFloat::NAN;
-        }
-    }
+    output_ema[..lookback].fill(TAFloat::NAN);
 
     Ok(())
 }
@@ -501,7 +517,7 @@ pub fn ema_inc_raw(input_price: TAFloat, prev_ema: TAFloat, multiplier: TAFloat)
 ///
 /// # Example
 /// ```
-/// use kand::ohlcv::ema;
+/// use kand::ta::ohlcv::ema;
 /// let current_price = 15.0;
 /// let prev_ema = 14.5;
 /// let period = 14;
@@ -526,7 +542,7 @@ pub fn ema_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_price.is_null() || prev_ema.is_null() {
+        if input_price.is_nan() || prev_ema.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -550,7 +566,6 @@ crate::kand_arrow_wrapper!(
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
-    use arrow::array::Array;
 
     use super::*;
 
@@ -613,7 +628,6 @@ mod tests {
         ema(&input_prices, opt_period, None, &mut output_ema).unwrap();
 
         // First 13 values should be NaN
-        #[cfg(feature = "allow-nan")]
         for value in output_ema.iter().take(13) {
             assert!(value.is_nan());
         }

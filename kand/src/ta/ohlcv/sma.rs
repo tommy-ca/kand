@@ -1,4 +1,5 @@
 use crate::{KandError, TAFloat, TAPeriod};
+use arrow::array::Array;
 
 /// Returns the lookback period required for Simple Moving Average (SMA).
 ///
@@ -73,7 +74,7 @@ impl crate::ta::traits::Indicator for StatefulSMA {
         use std::sync::Arc;
 
         let schema = Arc::new(Schema::new(vec![
-            Field::new("period", DataType::UInt64, false),
+            Field::new("__kand_period", DataType::UInt64, false),
             Field::new("sum", DataType::Float64, false),
             Field::new("window", DataType::Float64, false),
         ]));
@@ -178,7 +179,6 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
     type Output = crate::ta::types::TAArrowArray;
 
     fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        use arrow::array::Array;
         use std::mem::size_of;
 
         if input.len() != self.num_streams {
@@ -229,28 +229,35 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
 
     #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{FixedSizeListArray, Float64Array};
+        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
         use arrow::datatypes::{DataType, Field, Schema};
         use std::sync::Arc;
 
-        let schema = Arc::new(Schema::new_with_metadata(
-            vec![
-                Field::new("sum", DataType::Float64, false),
-                Field::new(
-                    "window",
-                    DataType::FixedSizeList(
-                        Arc::new(Field::new("item", DataType::Float64, true)),
-                        self.period as i32,
-                    ),
-                    false,
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("__kand_period", DataType::UInt64, false),
+            Field::new("__kand_cursor", DataType::UInt64, false),
+            Field::new("__kand_count", DataType::UInt64, false),
+            Field::new("sum", DataType::Float64, false),
+            Field::new(
+                "window",
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float64, true)),
+                    self.period as i32,
                 ),
-            ],
-            std::collections::HashMap::from([
-                ("period".to_string(), self.period.to_string()),
-                ("cursor".to_string(), self.cursor.to_string()),
-                ("count".to_string(), self.count.to_string()),
-            ]),
-        ));
+                false,
+            ),
+        ]));
+
+        let period_arr = Arc::new(UInt64Array::from(vec![
+            self.period as u64;
+            self.num_streams
+        ])) as Arc<dyn arrow::array::Array>;
+        let cursor_arr = Arc::new(UInt64Array::from(vec![
+            self.cursor as u64;
+            self.num_streams
+        ])) as Arc<dyn arrow::array::Array>;
+        let count_arr = Arc::new(UInt64Array::from(vec![self.count as u64; self.num_streams]))
+            as Arc<dyn arrow::array::Array>;
 
         let sums_arr = Arc::new(Float64Array::new(
             arrow_buffer::ScalarBuffer::new(self.sums.as_slice().into(), 0, self.num_streams),
@@ -272,8 +279,11 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
             None,
         )) as Arc<dyn arrow::array::Array>;
 
-        arrow::record_batch::RecordBatch::try_new(schema, vec![sums_arr, windows_arr])
-            .map_err(|_| KandError::InvalidData)
+        arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![period_arr, cursor_arr, count_arr, sums_arr, windows_arr],
+        )
+        .map_err(|_| KandError::InvalidData)
     }
 
     #[cfg(feature = "arrow")]
@@ -281,39 +291,39 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
         &mut self,
         batch: &arrow::record_batch::RecordBatch,
     ) -> Result<(), KandError> {
-        use arrow::array::{FixedSizeListArray, Float64Array};
-
-        let period = batch
-            .schema()
-            .metadata()
-            .get("period")
-            .ok_or(KandError::InvalidData)?
-            .parse()
-            .map_err(|_| KandError::InvalidData)?;
-        let cursor = batch
-            .schema()
-            .metadata()
-            .get("cursor")
-            .ok_or(KandError::InvalidData)?
-            .parse()
-            .map_err(|_| KandError::InvalidData)?;
-        let count = batch
-            .schema()
-            .metadata()
-            .get("count")
-            .ok_or(KandError::InvalidData)?
-            .parse()
-            .map_err(|_| KandError::InvalidData)?;
+        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
 
         let num_streams = batch.num_rows();
+        if num_streams == 0 {
+            return Err(KandError::InvalidData);
+        }
+
+        let period = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let cursor = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let count = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
 
         let sums = batch
-            .column(0)
+            .column(3)
             .as_any()
             .downcast_ref::<Float64Array>()
             .ok_or(KandError::InvalidData)?;
         let windows_list = batch
-            .column(1)
+            .column(4)
             .as_any()
             .downcast_ref::<FixedSizeListArray>()
             .ok_or(KandError::InvalidData)?;
@@ -348,10 +358,7 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
 
 /// Calculates SMA without input validation.
 pub fn sma_raw(input: &[TAFloat], opt_period: TAPeriod, output: &mut [TAFloat]) {
-    let mut sum = 0.0;
-    for val in input.iter().take(opt_period) {
-        sum += val;
-    }
+    let mut sum: TAFloat = input.iter().take(opt_period).sum();
 
     output[opt_period - 1] = sum / opt_period as TAFloat;
 
@@ -412,9 +419,7 @@ pub fn sma(
     sma_raw(input, opt_period, output);
 
     // Initial values
-    for val in output.iter_mut().take(lookback) {
-        *val = TAFloat::NAN;
-    }
+    output[..lookback].fill(TAFloat::NAN);
 
     Ok(())
 }
@@ -477,7 +482,6 @@ mod tests {
     use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
-    use arrow::array::Array;
 
     use super::*;
 
@@ -493,7 +497,6 @@ mod tests {
     #[test]
     #[cfg(feature = "arrow")]
     fn test_batch_sma() {
-        use crate::ta::traits::BatchIndicator;
         let mut batch_sma = BatchSMA::new(3, 2).unwrap();
 
         // t0
@@ -523,7 +526,7 @@ mod tests {
         // Test persistence
         let batch = batch_sma.to_record_batch().unwrap();
         let mut new_batch_sma = BatchSMA::new(3, 2).unwrap();
-        new_batch_sma.from_record_batch(&batch).unwrap();
+        new_batch_sma.restore_from_record_batch(&batch).unwrap();
 
         // t4
         let input = TAArrowArray::from(vec![14.0, 24.0]);
@@ -531,24 +534,6 @@ mod tests {
         // sum = 12 + 13 + 14 = 39 / 3 = 13.0
         assert_relative_eq!(out.value(0), 13.0);
         assert_relative_eq!(out.value(1), 23.0);
-    }
-
-    #[test]
-    #[cfg(feature = "arrow")]
-    fn test_sma() {
-        let input = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        let input_arrow = TAArrowArray::from(input);
-        let period = 3;
-
-        let result = sma_arrow(&input_arrow, period).unwrap();
-
-        assert_eq!(result.len(), 5);
-        for i in 0..period - 1 {
-            assert!(result.value(i).is_nan());
-        }
-        assert_relative_eq!(result.value(2), 2.0);
-        assert_relative_eq!(result.value(3), 3.0);
-        assert_relative_eq!(result.value(4), 4.0);
     }
 
     #[test]

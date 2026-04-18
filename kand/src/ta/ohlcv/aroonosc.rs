@@ -385,7 +385,6 @@ crate::kand_arrow_wrapper_multi!(
 mod tests {
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
-    use arrow::array::Array;
 
     use super::*;
 

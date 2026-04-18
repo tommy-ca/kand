@@ -48,4 +48,4 @@ The `kand` library is now a state-of-the-art technical analysis engine. It provi
 
 ---
 *Date: 2026-04-18*
-*Release: v0.2.2-arrow-v4*
+*Status: Transitioning to V5 (Enterprise Durability)*

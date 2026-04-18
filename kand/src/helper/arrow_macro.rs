@@ -147,7 +147,7 @@ macro_rules! kand_arrow_wrapper_int {
         pub fn $name(
             $($input_name: &$crate::ta::types::TAArrowArray,)+
             $($param_name: $param_type),*
-        ) -> Result<$crate::ta::types::TAArrowIntArray, $crate::KandError> {
+        ) -> Result<$crate::ta::types::TAArrowArray, $crate::KandError> {
             use arrow::array::Array;
             use std::mem::size_of;
 
@@ -186,7 +186,7 @@ macro_rules! kand_arrow_wrapper_int {
             // Computation
             $raw_fn($($input_name,)+ $($param_name,)* output_slice);
 
-            Ok($crate::ta::types::TAArrowIntArray::new(buffer.into(), None))
+            Ok($crate::ta::types::TAArrowArray::new(buffer.into(), None))
         }
     };
 }

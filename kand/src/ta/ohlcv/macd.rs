@@ -21,7 +21,7 @@ use crate::ta::types::TAArrowArray;
 ///
 /// # Example
 /// ```
-/// use kand::ohlcv::macd;
+/// use kand::ta::ohlcv::macd;
 /// let lookback = macd::lookback(12, 26, 9).unwrap();
 /// assert_eq!(lookback, 33); // 25 (slow EMA) + 8 (signal)
 /// ```
@@ -78,8 +78,13 @@ impl crate::ta::traits::Indicator for StatefulMACD {
     type Output = (TAFloat, TAFloat, TAFloat);
 
     fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        let fast = self.fast_ema.next(input)?;
-        let slow = self.slow_ema.next(input)?;
+        // Transactional Update: Clone states if failure is possible.
+        // For EMA, once parameters are validated, next() only fails on NaN if check-nan is enabled.
+        let mut fast_clone = self.fast_ema.clone();
+        let mut slow_clone = self.slow_ema.clone();
+
+        let fast = fast_clone.next(input)?;
+        let slow = slow_clone.next(input)?;
 
         let macd_val = if fast.is_nan() || slow.is_nan() {
             TAFloat::NAN
@@ -87,10 +92,11 @@ impl crate::ta::traits::Indicator for StatefulMACD {
             fast - slow
         };
 
+        let mut signal_clone = self.signal_ema.clone();
         let signal = if macd_val.is_nan() {
             TAFloat::NAN
         } else {
-            self.signal_ema.next(macd_val)?
+            signal_clone.next(macd_val)?
         };
 
         let hist = if macd_val.is_nan() || signal.is_nan() {
@@ -98,6 +104,11 @@ impl crate::ta::traits::Indicator for StatefulMACD {
         } else {
             macd_val - signal
         };
+
+        // All succeeded! Apply updates.
+        self.fast_ema = fast_clone;
+        self.slow_ema = slow_clone;
+        self.signal_ema = signal_clone;
 
         Ok((macd_val, signal, hist))
     }
@@ -245,8 +256,12 @@ impl crate::ta::traits::BatchIndicator for BatchMACD {
     fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
         use std::mem::size_of;
 
-        let fast = self.fast_ema.next_batch(input.clone())?;
-        let slow = self.slow_ema.next_batch(input)?;
+        // Transactional Update: Clone states to ensure atomicity.
+        let mut fast_clone = self.fast_ema.clone();
+        let mut slow_clone = self.slow_ema.clone();
+
+        let fast = fast_clone.next_batch(input.clone())?;
+        let slow = slow_clone.next_batch(input)?;
 
         let fast_values = fast.values();
         let slow_values = slow.values();
@@ -266,7 +281,8 @@ impl crate::ta::traits::BatchIndicator for BatchMACD {
         }
 
         let macd_arrow = crate::ta::types::TAArrowArray::new(macd_buffer.into(), None);
-        let signal_arrow = self.signal_ema.next_batch(macd_arrow.clone())?;
+        let mut signal_clone = self.signal_ema.clone();
+        let signal_arrow = signal_clone.next_batch(macd_arrow.clone())?;
 
         let signal_values = signal_arrow.values();
         let (ptr_h, hist_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
@@ -282,6 +298,11 @@ impl crate::ta::traits::BatchIndicator for BatchMACD {
                 hist_slice[i] = macd_slice[i] - signal_values[i];
             }
         }
+
+        // All succeeded! Apply updates.
+        self.fast_ema = fast_clone;
+        self.slow_ema = slow_clone;
+        self.signal_ema = signal_clone;
 
         Ok((
             macd_arrow,
@@ -474,7 +495,7 @@ pub fn macd_raw(
 ///
 /// # Example
 /// ```
-/// use kand::ohlcv::macd;
+/// use kand::ta::ohlcv::macd;
 ///
 /// let prices = vec![10.0, 12.0, 15.0, 11.0, 9.0, 10.0, 12.0];
 /// let mut macd_line = vec![0.0; prices.len()];
@@ -534,7 +555,7 @@ pub fn macd(
     {
         for price in input_price {
             // NaN check
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -551,20 +572,14 @@ pub fn macd(
     );
 
     // Fill initial values with NAN
-    #[cfg(feature = "allow-nan")]
-    {
-        for i in 0..lookback {
-            output_macd_line[i] = TAFloat::NAN;
-            output_signal_line[i] = TAFloat::NAN;
-            output_histogram[i] = TAFloat::NAN;
-        }
-    }
+    output_macd_line[..lookback].fill(TAFloat::NAN);
+    output_signal_line[..lookback].fill(TAFloat::NAN);
+    output_histogram[..lookback].fill(TAFloat::NAN);
 
     Ok(())
 }
 
 /// Calculate latest MACD values incrementally from previous state without validation.
-#[must_use]
 pub fn macd_inc_raw(
     input_price: TAFloat,
     prev_fast_ema: TAFloat,
@@ -623,7 +638,7 @@ pub fn macd_inc_raw(
 ///
 /// # Example
 /// ```
-/// use kand::ohlcv::macd;
+/// use kand::ta::ohlcv::macd;
 ///
 /// let (macd, signal, hist) = macd::macd_inc(
 ///     100.0, // current price
@@ -659,10 +674,10 @@ pub fn macd_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_price.is_null()
-            || prev_fast_ema.is_null()
-            || prev_slow_ema.is_null()
-            || prev_signal.is_null()
+        if input_price.is_nan()
+            || prev_fast_ema.is_nan()
+            || prev_slow_ema.is_nan()
+            || prev_signal.is_nan()
         {
             return Err(KandError::NaNDetected);
         }
@@ -701,11 +716,9 @@ crate::kand_arrow_wrapper_multi!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_stateful_macd() {
-        use crate::ta::traits::Indicator;
         let mut macd = StatefulMACD::new(2, 3, 2).unwrap();
 
         // Data: 10, 11, 12, 13, 14, 15

@@ -217,7 +217,6 @@ crate::kand_arrow_wrapper!(
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
-    use arrow::array::Array;
 
     use super::*;
 
