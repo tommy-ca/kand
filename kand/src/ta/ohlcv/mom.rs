@@ -3,258 +3,435 @@ use crate::{KandError, TAFloat, TAPeriod};
 /// Returns the lookback period for Momentum (MOM) calculation without input validation.
 #[inline]
 pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
-    opt_period as TAPeriod
+    opt_period
 }
 
-/// Returns the lookback period required for Momentum (MOM) calculation
-///
-/// # Description
-/// The lookback period determines how many data points are needed before the first valid output can be calculated.
-/// For momentum calculation, this equals the momentum period parameter.
-///
-/// # Arguments
-/// * `opt_period` - The number of periods to look back for momentum calculation (must be >= 2)
-///
-/// # Returns
-/// * `Result<TAPeriod, KandError>` - The lookback period on success, or error on failure
-///
-/// # Errors
-/// * `KandError::InvalidParameter` - If `opt_period` < 2 (when "check" feature is enabled)
-///
-/// # Example
-/// ```
-/// use kand::ohlcv::mom;
-///
-/// let period = 14;
-/// let lookback = mom::lookback(period).unwrap();
-/// assert_eq!(lookback, 14);
-/// ```
-pub const fn lookback(opt_period: usize) -> Result<TAPeriod, KandError> {
+/// Returns the lookback period required for MOM calculation.
+pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     #[cfg(feature = "check")]
     {
-        if opt_period < 2 {
+        if opt_period < 1 {
             return Err(KandError::InvalidParameter);
         }
     }
     Ok(lookback_raw(opt_period))
 }
 
-/// Core calculation for Momentum (MOM) without error checking.
-///
-/// # Arguments
-/// * `input_prices` - Array of input price values
-/// * `opt_period` - Number of periods to look back
-/// * `output_mom` - Array to store calculated momentum values
-pub fn mom_raw(input_prices: &[TAFloat], opt_period: usize, output_mom: &mut [TAFloat]) {
-    let len = input_prices.len();
-    let lookback = lookback_raw(opt_period) as usize;
+/// Stateful implementation of Momentum (MOM).
+#[derive(Clone)]
+pub struct StatefulMOM {
+    period: usize,
+    count: usize,
+    window: Vec<TAFloat>,
+    cursor: usize,
+}
 
-    // Calculate momentum
-    for i in lookback..len {
-        output_mom[i] = input_prices[i] - input_prices[i - opt_period];
-    }
-
-    // Fill initial values with NAN
-    for item in output_mom.iter_mut().take(lookback) {
-        *item = TAFloat::NAN;
+impl StatefulMOM {
+    /// Creates a new StatefulMOM instance.
+    pub fn new(period: usize) -> Result<Self, KandError> {
+        #[cfg(feature = "check")]
+        {
+            if period < 1 {
+                return Err(KandError::InvalidParameter);
+            }
+        }
+        Ok(Self {
+            period,
+            count: 0,
+            window: vec![0.0; period],
+            cursor: 0,
+        })
     }
 }
 
-/// Calculates Momentum (MOM) for an array of prices
-///
-/// # Description
-/// Momentum is a technical indicator that measures the rate of change in price movement by comparing
-/// the current price with the price from n periods ago. It helps identify trend strength and potential
-/// reversals.
-///
-/// # Mathematical Formula
-/// ```text
-/// MOM[i] = Price[i] - Price[i - n]
-/// ```
-/// Where:
-/// * `i` is the current period
-/// * `n` is the momentum period
-///
-/// # Calculation Principles
-/// 1. For each period after the lookback period:
-///    - Subtract the price from n periods ago from the current price
-/// 2. The first n periods are filled with NaN values
-///
-/// # Arguments
-/// * `input_prices` - Array of input price values
-/// * `opt_period` - Number of periods to look back (n)
-/// * `output_mom` - Array to store calculated momentum values
-///
-/// # Returns
-/// * `Result<(), KandError>` - Ok(()) on success, or error on failure
-///
-/// # Errors
-/// * `KandError::InvalidData` - If input array is empty
-/// * `KandError::LengthMismatch` - If output array length != input array length
-/// * `KandError::InvalidParameter` - If `opt_period` < 2
-/// * `KandError::InsufficientData` - If input length < lookback period
-/// * `KandError::NaNDetected` - If any input price is NaN (when "`check-nan`" feature is enabled)
-///
-/// # Example
-/// ```
-/// use kand::ohlcv::mom;
-///
-/// let input_prices = vec![2.0, 4.0, 6.0, 8.0, 10.0];
-/// let period = 2;
-/// let mut output_mom = vec![0.0; 5];
-///
-/// mom::mom(&input_prices, period, &mut output_mom).unwrap();
-/// // output_mom = [NaN, NaN, 4.0, 4.0, 4.0]
-/// ```
-pub fn mom(
-    input_prices: &[TAFloat],
-    opt_period: usize,
-    output_mom: &mut [TAFloat],
-) -> Result<(), KandError> {
-    let len = input_prices.len();
+impl crate::ta::traits::Indicator for StatefulMOM {
+    type Input = TAFloat;
+    type Output = TAFloat;
+
+    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        self.count += 1;
+        let old_val = self.window[self.cursor];
+        self.window[self.cursor] = input;
+        self.cursor = (self.cursor + 1) % self.period;
+
+        if self.count <= self.period {
+            Ok(TAFloat::NAN)
+        } else {
+            Ok(input - old_val)
+        }
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        use arrow::array::{Float64Array, UInt64Array};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("__kand_period", DataType::UInt64, false),
+            Field::new("__kand_count", DataType::UInt64, false),
+            Field::new("__kand_cursor", DataType::UInt64, false),
+            Field::new("__kand_window", DataType::Float64, false),
+        ]));
+
+        let period_arr = UInt64Array::from(vec![self.period as u64]);
+        let count_arr = UInt64Array::from(vec![self.count as u64]);
+        let cursor_arr = UInt64Array::from(vec![self.cursor as u64]);
+        let window_arr = Float64Array::from(self.window.clone());
+
+        arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(period_arr),
+                Arc::new(count_arr),
+                Arc::new(cursor_arr),
+                Arc::new(window_arr),
+            ],
+        )
+        .map_err(|_| KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        use arrow::array::{Float64Array, UInt64Array};
+
+        let period = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let count = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let cursor = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let window = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?;
+
+        self.period = period;
+        self.count = count;
+        self.cursor = cursor;
+        self.window = window.values().to_vec();
+
+        Ok(())
+    }
+}
+
+/// Vectorized implementation of Momentum (MOM) for multiple independent streams.
+#[cfg(feature = "arrow")]
+#[derive(Clone)]
+pub struct BatchMOM {
+    period: usize,
+    num_streams: usize,
+    counts: Vec<usize>,
+    cursors: Vec<usize>,
+    windows: arrow_buffer::MutableBuffer,
+}
+
+#[cfg(feature = "arrow")]
+impl BatchMOM {
+    /// Creates a new BatchMOM instance.
+    pub fn new(period: usize, num_streams: usize) -> Result<Self, KandError> {
+        use std::mem::size_of;
+        #[cfg(feature = "check")]
+        {
+            if period < 1 || num_streams == 0 {
+                return Err(KandError::InvalidParameter);
+            }
+        }
+
+        let mut windows = arrow_buffer::MutableBuffer::new(num_streams * period * size_of::<TAFloat>());
+        windows.resize(num_streams * period * size_of::<TAFloat>(), 0);
+
+        Ok(Self {
+            period,
+            num_streams,
+            counts: vec![0; num_streams],
+            cursors: vec![0; num_streams],
+            windows,
+        })
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl crate::ta::traits::BatchIndicator for BatchMOM {
+    type Input = crate::ta::types::TAArrowArray;
+    type Output = crate::ta::types::TAArrowArray;
+
+    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        use std::mem::size_of;
+
+        if input.len() != self.num_streams {
+            return Err(KandError::LengthMismatch);
+        }
+
+        let input_values = input.values();
+        let windows_slice = self.windows.typed_data_mut::<TAFloat>();
+
+        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
+            self.num_streams * size_of::<TAFloat>(),
+        );
+        let output_slice =
+            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
+
+        for s in 0..self.num_streams {
+            let val = input_values[s];
+            self.counts[s] += 1;
+
+            let window_offset = s * self.period + self.cursors[s];
+            let old_val = windows_slice[window_offset];
+            windows_slice[window_offset] = val;
+            self.cursors[s] = (self.cursors[s] + 1) % self.period;
+
+            if self.counts[s] <= self.period {
+                output_slice[s] = TAFloat::NAN;
+            } else {
+                output_slice[s] = val - old_val;
+            }
+        }
+
+        Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("__kand_period", DataType::UInt64, false),
+            Field::new("__kand_count", DataType::UInt64, false),
+            Field::new("__kand_cursor", DataType::UInt64, false),
+            Field::new(
+                "__kand_window",
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float64, true)),
+                    self.period as i32,
+                ),
+                false,
+            ),
+        ]));
+
+        let period_arr = Arc::new(UInt64Array::from(vec![self.period as u64; self.num_streams]))
+            as Arc<dyn arrow::array::Array>;
+        let counts_arr = Arc::new(UInt64Array::from(
+            self.counts.iter().map(|&c| c as u64).collect::<Vec<_>>(),
+        )) as Arc<dyn arrow::array::Array>;
+        let cursors_arr = Arc::new(UInt64Array::from(
+            self.cursors.iter().map(|&c| c as u64).collect::<Vec<_>>(),
+        )) as Arc<dyn arrow::array::Array>;
+
+        let windows_data = Float64Array::new(
+            arrow_buffer::ScalarBuffer::new(
+                self.windows.as_slice().into(),
+                0,
+                self.num_streams * self.period,
+            ),
+            None,
+        );
+        let windows_arr = Arc::new(FixedSizeListArray::new(
+            Arc::new(Field::new("item", DataType::Float64, true)),
+            self.period as i32,
+            Arc::new(windows_data),
+            None,
+        )) as Arc<dyn arrow::array::Array>;
+
+        arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![period_arr, counts_arr, cursors_arr, windows_arr],
+        )
+        .map_err(|_| KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
+
+        let num_streams = batch.num_rows();
+        if num_streams == 0 {
+            return Err(KandError::InvalidData);
+        }
+
+        let period = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let counts = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?;
+        let cursors = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?;
+        let windows_list = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<FixedSizeListArray>()
+            .ok_or(KandError::InvalidData)?;
+        let windows = windows_list
+            .values()
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?;
+
+        self.period = period;
+        self.num_streams = num_streams;
+        self.counts = counts.values().iter().map(|&c| c as usize).collect();
+        self.cursors = cursors.values().iter().map(|&c| c as usize).collect();
+
+        self.windows = arrow_buffer::MutableBuffer::from_len_zeroed(
+            windows.len() * std::mem::size_of::<TAFloat>(),
+        );
+        self.windows
+            .typed_data_mut::<TAFloat>()
+            .copy_from_slice(windows.values());
+
+        Ok(())
+    }
+}
+
+/// Calculates MOM without input validation.
+pub fn mom_raw(input: &[TAFloat], opt_period: usize, output: &mut [TAFloat]) {
+    for i in opt_period..input.len() {
+        output[i] = input[i] - input[i - opt_period];
+    }
+}
+
+/// Calculates the Momentum (MOM) for a price series.
+pub fn mom(input: &[TAFloat], opt_period: usize, output: &mut [TAFloat]) -> Result<(), KandError> {
+    let len = input.len();
     let lookback = lookback(opt_period)?;
 
     #[cfg(feature = "check")]
     {
-        // Empty data check
         if len == 0 {
             return Err(KandError::InvalidData);
         }
-
-        // Data sufficiency check
+        if len != output.len() {
+            return Err(KandError::LengthMismatch);
+        }
         if len <= lookback {
             return Err(KandError::InsufficientData);
-        }
-
-        // Length consistency check
-        if output_mom.len() != len {
-            return Err(KandError::LengthMismatch);
         }
     }
 
     #[cfg(feature = "check-nan")]
     {
-        // NaN check
-        for price in input_prices {
-            if price.is_null() {
+        for price in input {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
     }
 
-    mom_raw(input_prices, opt_period, output_mom);
+    mom_raw(input, opt_period, output);
+
+    // Initial values
+    output[..lookback].fill(TAFloat::NAN);
 
     Ok(())
 }
 
-/// Core incremental calculation for Momentum (MOM) without error checking.
+/// Calculates MOM incrementally without validation.
 #[inline]
 pub fn mom_inc_raw(input_current_price: TAFloat, input_old_price: TAFloat) -> TAFloat {
     input_current_price - input_old_price
 }
 
-/// Calculates the latest Momentum (MOM) value incrementally
-///
-/// # Description
-/// This function provides an optimized way to calculate the latest momentum value
-/// when streaming data is available, without needing the full price history.
-///
-/// # Arguments
-/// * `input_current_price` - The current period's price value
-/// * `input_old_price` - The price value from n periods ago
-///
-/// # Returns
-/// * `Result<TAFloat, KandError>` - The calculated momentum value on success, or error on failure
-///
-/// # Errors
-/// * `KandError::NaNDetected` - If any input price is NaN (when "`check-nan`" feature is enabled)
-///
-/// # Example
-/// ```
-/// use kand::ohlcv::mom;
-///
-/// let current_price = 10.0;
-/// let old_price = 6.0;
-/// let momentum = mom::mom_inc(current_price, old_price).unwrap();
-/// assert_eq!(momentum, 4.0);
-/// ```
-pub fn mom_inc(
-    input_current_price: TAFloat,
-    input_old_price: TAFloat,
-) -> Result<TAFloat, KandError> {
+/// Calculates MOM incrementally for a single value.
+pub fn mom_inc(input_current_price: TAFloat, input_old_price: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input_current_price.is_null() || input_old_price.is_null() {
+        if input_current_price.is_nan() || input_old_price.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }
-
     Ok(mom_inc_raw(input_current_price, input_old_price))
 }
 
-#[cfg(feature = "arrow")]
+// Arrow wrapper
 crate::kand_arrow_wrapper!(
     mom_arrow,
     crate::ta::ohlcv::mom::mom_raw,
-    inputs: { input_prices },
+    inputs: { input },
     params: { opt_period: usize },
     lookback_params: { opt_period }
 );
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
-
-    use super::*;
+    use arrow::array::Array;
 
     #[test]
     fn test_mom_calculation() {
-        let input_prices = vec![
-            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
-            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
-            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0, 35114.5, 35097.2,
-            35092.0, 35073.2, 35139.3,
-        ];
-        let opt_period = 14;
-        let mut output_mom = vec![0.0; input_prices.len()];
+        let prices = vec![1.0, 2.0, 5.0, 4.0, 8.0];
+        let period = 2;
+        let mut output = vec![0.0; 5];
 
-        mom(&input_prices, opt_period, &mut output_mom).unwrap();
+        mom(&prices, period, &mut output).unwrap();
 
-        // First 14 values should be NaN
-        for value in output_mom.iter().take(14) {
-            assert!(value.is_nan());
-        }
+        assert!(output[0].is_nan());
+        assert!(output[1].is_nan());
+        assert_relative_eq!(output[2], 4.0, epsilon = 0.0001);
+        assert_relative_eq!(output[3], 2.0, epsilon = 0.0001);
+        assert_relative_eq!(output[4], 3.0, epsilon = 0.0001);
+    }
 
-        // Test expected values
-        let expected_values = [
-            -125.8, -180.2, -191.4, -156.6, -112.5, -230.0, -263.3, -299.3, -197.6, -142.9, -95.1,
-            -115.4, -115.3, -68.7, -17.1, 98.1,
-        ];
-
-        for (i, expected) in expected_values.iter().enumerate() {
-            assert_relative_eq!(output_mom[i + 14], *expected, epsilon = 0.1);
-        }
-
-        // Test incremental calculation
-        for i in opt_period..input_prices.len() {
-            let result = mom_inc(input_prices[i], input_prices[i - opt_period]).unwrap();
-            assert_relative_eq!(result, output_mom[i], epsilon = 0.00001);
-        }
+    #[test]
+    fn test_stateful_mom() {
+        let mut mom_state = StatefulMOM::new(2).unwrap();
+        assert!(mom_state.next(1.0).unwrap().is_nan());
+        assert!(mom_state.next(2.0).unwrap().is_nan());
+        assert_relative_eq!(mom_state.next(5.0).unwrap(), 4.0);
+        assert_relative_eq!(mom_state.next(4.0).unwrap(), 2.0);
     }
 
     #[test]
     #[cfg(feature = "arrow")]
-    fn test_mom_arrow() {
-        let input_prices = vec![2.0, 4.0, 6.0, 8.0, 10.0];
-        let period = 2;
+    fn test_batch_mom() {
+        let mut batch_mom = BatchMOM::new(2, 2).unwrap();
 
-        let prices_arrow = TAArrowArray::from(input_prices);
-        let result = mom_arrow(&prices_arrow, period).unwrap();
+        // t0
+        let input = TAArrowArray::from(vec![1.0, 10.0]);
+        let out = batch_mom.next_batch(input).unwrap();
+        assert!(out.value(0).is_nan());
 
-        assert_eq!(result.len(), 5);
-        assert!(result.value(0).is_nan());
-        assert!(result.value(1).is_nan());
-        assert_relative_eq!(result.value(2), 4.0, epsilon = 0.0001);
+        // t1
+        let input = TAArrowArray::from(vec![2.0, 12.0]);
+        let out = batch_mom.next_batch(input).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t2
+        let input = TAArrowArray::from(vec![5.0, 15.0]);
+        let out = batch_mom.next_batch(input).unwrap();
+        assert_relative_eq!(out.value(0), 4.0);
+        assert_relative_eq!(out.value(1), 5.0);
     }
 }

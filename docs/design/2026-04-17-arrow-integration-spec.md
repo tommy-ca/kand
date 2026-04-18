@@ -24,22 +24,24 @@ Multi-component indicators must implement the **Explicit Commit Pattern**:
 2. Attempt component updates on the clone.
 3. Commit the clone to `self` only if all sub-operations succeed.
 
-## 3. Phase 6 Scaling Strategy (The Universal Macro)
+## 3. Universal Macro Strategy
 
-To scale stateful/batch support from ~4% to 100% of the library, a new **`kand_indicator!`** macro ecosystem is established.
+To scale stateful/batch support library-wide, a "Meta-Compiler" macro system is established in `kand/src/helper/arrow_macro.rs`.
 
-### 3.1 Macro Classification
-Indicators are classified into three types for automated generation:
-- **Sliding Window**: Requires a buffer of previous $N$ values (e.g., SMA, MOM, ROC).
-- **Recursive**: Depends on the previous single output value (e.g., EMA, RSI, ATR).
-- **Composite**: Composed of other stateful indicators (e.g., MACD, BBands).
+### 3.1 Macro Tiers
+- **`kand_arrow_wrapper!`**: Functional Arrow automation.
+- **`kand_indicator!`**: Stateful/Batch automation.
+- **Goal**: Transition from manual implementation of tiers to unified declarations.
 
-### 3.2 Automation Goals
-- Automated generation of `Stateful` structs and `Batch` managers.
-- Automated `RecordBatch` serialization following V5 standards.
-- Automated `BlockPool` integration for zero-allocation streaming.
+### 4. Enterprise Durability (V5 Standard)
 
-## 4. Quality & Verification
+#### 4.1 Transactional Persistence
+All state scalars are stored as **prefixed constant columns** (`__kand_`) in the state `RecordBatch`. This ensures persistence integrity across standard Arrow processing tools (Polars/DataFusion).
+
+#### 4.2 Explicit Commit Pattern
+Multi-component indicators (e.g., `MACD`) implement a **Transactional Commit** pattern. Sub-components are updated tentatively on state clones; parent state is only modified if all sub-operations succeed.
+
+## 5. Engineering Standards & Quality Assurance
 - **TDD Parity**: Mandatory numerical parity between all variants.
 - **Prek Gate**: Automated verification of formatting, linting (Clippy/Ruff), and type safety (Ty).
 - **Performance**: Goal of <15% overhead for Arrow variants vs. raw loops.

@@ -41,3 +41,18 @@ pub trait BatchIndicator {
     #[cfg(feature = "arrow")]
     fn restore_from_record_batch(&mut self, batch: &RecordBatch) -> Result<(), KandError>;
 }
+
+/// A trait defining the core logic for a technical indicator.
+///
+/// This can be used to generate stateful and batch variants automatically.
+pub trait IndicatorLogic {
+    type Input;
+    type Output;
+    type State: Clone;
+
+    /// Initializes the state for a single stream.
+    fn init_state(&self) -> Self::State;
+
+    /// Processes a single input and updates state.
+    fn next(&self, state: &mut Self::State, input: Self::Input) -> Self::Output;
+}

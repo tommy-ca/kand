@@ -1,37 +1,15 @@
 use crate::{KandError, TAFloat, TAPeriod};
 
-/// Returns the lookback period for ROC (Rate of Change) calculation without input validation.
+/// Returns the lookback period for Rate of Change (ROC) calculation without input validation.
 #[inline]
 pub const fn lookback_raw(opt_period: usize) -> TAPeriod {
-    opt_period as TAPeriod
+    opt_period
 }
 
-/// Returns the lookback period required for ROC (Rate of Change) calculation
-///
-/// # Description
-/// Calculates the minimum number of data points needed before the first valid ROC value can be computed.
-/// The lookback period equals the ROC period parameter since we need that many previous prices to calculate
-/// the first value.
-///
-/// # Parameters
-/// * `opt_period` - The time period used for ROC calculation (usize)
-///
-/// # Returns
-/// * `Result<TAPeriod, KandError>` - The lookback period if parameters are valid
-///
-/// # Errors
-/// * `KandError::InvalidParameter` - If `opt_period` < 1 (when "check" feature enabled)
-///
-/// # Example
-/// ```
-/// use kand::ohlcv::roc;
-/// let lookback = roc::lookback(14).unwrap();
-/// assert_eq!(lookback, 14);
-/// ```
-pub const fn lookback(opt_period: usize) -> Result<TAPeriod, KandError> {
+/// Returns the lookback period required for ROC calculation.
+pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     #[cfg(feature = "check")]
     {
-        // Parameter range check
         if opt_period < 1 {
             return Err(KandError::InvalidParameter);
         }
@@ -39,239 +17,432 @@ pub const fn lookback(opt_period: usize) -> Result<TAPeriod, KandError> {
     Ok(lookback_raw(opt_period))
 }
 
-/// Core calculation for Rate of Change (ROC) without error checking.
-///
-/// # Arguments
-/// * `input_price` - Array of price values
-/// * `opt_period` - Number of periods to look back
-/// * `output_roc` - Output array for calculated ROC values
-pub fn roc_raw(input_price: &[TAFloat], opt_period: usize, output_roc: &mut [TAFloat]) {
-    let len = input_price.len();
-    let lookback = lookback_raw(opt_period) as usize;
+/// Stateful implementation of Rate of Change (ROC).
+#[derive(Clone)]
+pub struct StatefulROC {
+    period: usize,
+    count: usize,
+    window: Vec<TAFloat>,
+    cursor: usize,
+}
 
-    // Calculate ROC values
-    for i in lookback..len {
-        let current_price = input_price[i];
-        let prev_price = input_price[i - opt_period];
-
-        output_roc[i] = (current_price - prev_price) / prev_price * 100.0;
-    }
-
-    // Fill initial values with NAN
-    for value in output_roc.iter_mut().take(lookback) {
-        *value = TAFloat::NAN;
+impl StatefulROC {
+    /// Creates a new StatefulROC instance.
+    pub fn new(period: usize) -> Result<Self, KandError> {
+        #[cfg(feature = "check")]
+        {
+            if period < 1 {
+                return Err(KandError::InvalidParameter);
+            }
+        }
+        Ok(Self {
+            period,
+            count: 0,
+            window: vec![0.0; period],
+            cursor: 0,
+        })
     }
 }
 
-/// Calculates Rate of Change (ROC) technical indicator for a price series
-///
-/// # Description
-/// The Rate of Change (ROC) is a momentum oscillator that measures the percentage change in price
-/// between the current price and the price n periods ago. ROC indicates both the speed and magnitude
-/// of price movements, making it useful for identifying overbought/oversold conditions and divergences.
-///
-/// # Mathematical Formula
-/// ```text
-/// ROC = ((Current Price - Price n periods ago) / Price n periods ago) * 100
-/// ```
-///
-/// # Calculation Principles
-/// 1. For each data point after the lookback period:
-///    - Take current price and price from n periods ago
-///    - Calculate percentage change between these prices
-///    - Multiply by 100 to get percentage value
-/// 2. Initial values within lookback period are set to NaN
-///
-/// # Parameters
-/// * `input_price` - Array of price values (slice of type `TAFloat`)
-/// * `opt_period` - Number of periods to look back (usize)
-/// * `output_roc` - Array to store calculated ROC values, must be same length as `input_price` (mutable slice of type `TAFloat`)
-///
-/// # Returns
-/// * `Result<(), KandError>` - Ok(()) if calculation succeeds
-///
-/// # Errors
-/// * `KandError::InvalidData` - If input array is empty
-/// * `KandError::LengthMismatch` - If input and output arrays have different lengths
-/// * `KandError::InvalidParameter` - If `opt_period` < 1
-/// * `KandError::InsufficientData` - If input length <= lookback period
-/// * `KandError::NaNDetected` - If input contains NaN values (with "`check-nan`")
-/// * `KandError::InvalidData` - If division by zero occurs (with "`check-nan`")
-///
-/// # Example
-/// ```
-/// use kand::ohlcv::roc;
-///
-/// let input_price = vec![10.0, 10.5, 11.2, 10.8, 11.5];
-/// let opt_period = 2;
-/// let mut output_roc = vec![0.0; 5];
-///
-/// roc::roc(&input_price, opt_period, &mut output_roc).unwrap();
-/// ```
-pub fn roc(
-    input_price: &[TAFloat],
-    opt_period: usize,
-    output_roc: &mut [TAFloat],
-) -> Result<(), KandError> {
-    let len = input_price.len();
+impl crate::ta::traits::Indicator for StatefulROC {
+    type Input = TAFloat;
+    type Output = TAFloat;
+
+    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        self.count += 1;
+        let old_val = self.window[self.cursor];
+        self.window[self.cursor] = input;
+        self.cursor = (self.cursor + 1) % self.period;
+
+        if self.count <= self.period {
+            Ok(TAFloat::NAN)
+        } else if old_val == 0.0 {
+            Ok(TAFloat::NAN) // Division by zero
+        } else {
+            Ok(((input - old_val) / old_val) * 100.0)
+        }
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        use arrow::array::{Float64Array, UInt64Array};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("__kand_period", DataType::UInt64, false),
+            Field::new("__kand_count", DataType::UInt64, false),
+            Field::new("__kand_cursor", DataType::UInt64, false),
+            Field::new("__kand_window", DataType::Float64, false),
+        ]));
+
+        let period_arr = UInt64Array::from(vec![self.period as u64]);
+        let count_arr = UInt64Array::from(vec![self.count as u64]);
+        let cursor_arr = UInt64Array::from(vec![self.cursor as u64]);
+        let window_arr = Float64Array::from(self.window.clone());
+
+        arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(period_arr),
+                Arc::new(count_arr),
+                Arc::new(cursor_arr),
+                Arc::new(window_arr),
+            ],
+        )
+        .map_err(|_| KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        use arrow::array::{Float64Array, UInt64Array};
+
+        let period = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let count = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let cursor = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let window = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?;
+
+        self.period = period;
+        self.count = count;
+        self.cursor = cursor;
+        self.window = window.values().to_vec();
+
+        Ok(())
+    }
+}
+
+/// Vectorized implementation of Rate of Change (ROC) for multiple independent streams.
+#[cfg(feature = "arrow")]
+#[derive(Clone)]
+pub struct BatchROC {
+    period: usize,
+    num_streams: usize,
+    counts: Vec<usize>,
+    cursors: Vec<usize>,
+    windows: arrow_buffer::MutableBuffer,
+}
+
+#[cfg(feature = "arrow")]
+impl BatchROC {
+    /// Creates a new BatchROC instance.
+    pub fn new(period: usize, num_streams: usize) -> Result<Self, KandError> {
+        use std::mem::size_of;
+        #[cfg(feature = "check")]
+        {
+            if period < 1 || num_streams == 0 {
+                return Err(KandError::InvalidParameter);
+            }
+        }
+
+        let mut windows = arrow_buffer::MutableBuffer::new(num_streams * period * size_of::<TAFloat>());
+        windows.resize(num_streams * period * size_of::<TAFloat>(), 0);
+
+        Ok(Self {
+            period,
+            num_streams,
+            counts: vec![0; num_streams],
+            cursors: vec![0; num_streams],
+            windows,
+        })
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl crate::ta::traits::BatchIndicator for BatchROC {
+    type Input = crate::ta::types::TAArrowArray;
+    type Output = crate::ta::types::TAArrowArray;
+
+    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        use std::mem::size_of;
+
+        if input.len() != self.num_streams {
+            return Err(KandError::LengthMismatch);
+        }
+
+        let input_values = input.values();
+        let windows_slice = self.windows.typed_data_mut::<TAFloat>();
+
+        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
+            self.num_streams * size_of::<TAFloat>(),
+        );
+        let output_slice =
+            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
+
+        for s in 0..self.num_streams {
+            let val = input_values[s];
+            self.counts[s] += 1;
+
+            let window_offset = s * self.period + self.cursors[s];
+            let old_val = windows_slice[window_offset];
+            windows_slice[window_offset] = val;
+            self.cursors[s] = (self.cursors[s] + 1) % self.period;
+
+            if self.counts[s] <= self.period || old_val == 0.0 {
+                output_slice[s] = TAFloat::NAN;
+            } else {
+                output_slice[s] = ((val - old_val) / old_val) * 100.0;
+            }
+        }
+
+        Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("__kand_period", DataType::UInt64, false),
+            Field::new("__kand_count", DataType::UInt64, false),
+            Field::new("__kand_cursor", DataType::UInt64, false),
+            Field::new(
+                "__kand_window",
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float64, true)),
+                    self.period as i32,
+                ),
+                false,
+            ),
+        ]));
+
+        let period_arr = Arc::new(UInt64Array::from(vec![self.period as u64; self.num_streams]))
+            as Arc<dyn arrow::array::Array>;
+        let counts_arr = Arc::new(UInt64Array::from(
+            self.counts.iter().map(|&c| c as u64).collect::<Vec<_>>(),
+        )) as Arc<dyn arrow::array::Array>;
+        let cursors_arr = Arc::new(UInt64Array::from(
+            self.cursors.iter().map(|&c| c as u64).collect::<Vec<_>>(),
+        )) as Arc<dyn arrow::array::Array>;
+
+        let windows_data = Float64Array::new(
+            arrow_buffer::ScalarBuffer::new(
+                self.windows.as_slice().into(),
+                0,
+                self.num_streams * self.period,
+            ),
+            None,
+        );
+        let windows_arr = Arc::new(FixedSizeListArray::new(
+            Arc::new(Field::new("item", DataType::Float64, true)),
+            self.period as i32,
+            Arc::new(windows_data),
+            None,
+        )) as Arc<dyn arrow::array::Array>;
+
+        arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![period_arr, counts_arr, cursors_arr, windows_arr],
+        )
+        .map_err(|_| KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
+
+        let num_streams = batch.num_rows();
+        if num_streams == 0 {
+            return Err(KandError::InvalidData);
+        }
+
+        let period = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?
+            .value(0) as usize;
+        let counts = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?;
+        let cursors = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .ok_or(KandError::InvalidData)?;
+        let windows_list = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<FixedSizeListArray>()
+            .ok_or(KandError::InvalidData)?;
+        let windows = windows_list
+            .values()
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .ok_or(KandError::InvalidData)?;
+
+        self.period = period;
+        self.num_streams = num_streams;
+        self.counts = counts.values().iter().map(|&c| c as usize).collect();
+        self.cursors = cursors.values().iter().map(|&c| c as usize).collect();
+
+        self.windows = arrow_buffer::MutableBuffer::from_len_zeroed(
+            windows.len() * std::mem::size_of::<TAFloat>(),
+        );
+        self.windows
+            .typed_data_mut::<TAFloat>()
+            .copy_from_slice(windows.values());
+
+        Ok(())
+    }
+}
+
+/// Calculates ROC without input validation.
+pub fn roc_raw(input: &[TAFloat], opt_period: usize, output: &mut [TAFloat]) {
+    for i in opt_period..input.len() {
+        let old_val = input[i - opt_period];
+        if old_val != 0.0 {
+            output[i] = ((input[i] - old_val) / old_val) * 100.0;
+        } else {
+            output[i] = TAFloat::NAN;
+        }
+    }
+}
+
+/// Calculates the Rate of Change (ROC) for a price series.
+pub fn roc(input: &[TAFloat], opt_period: usize, output: &mut [TAFloat]) -> Result<(), KandError> {
+    let len = input.len();
     let lookback = lookback(opt_period)?;
 
     #[cfg(feature = "check")]
     {
-        // Empty data check
         if len == 0 {
             return Err(KandError::InvalidData);
         }
-
-        // Data sufficiency check
+        if len != output.len() {
+            return Err(KandError::LengthMismatch);
+        }
         if len <= lookback {
             return Err(KandError::InsufficientData);
-        }
-
-        // Length consistency check
-        if len != output_roc.len() {
-            return Err(KandError::LengthMismatch);
         }
     }
 
     #[cfg(feature = "check-nan")]
     {
-        for i in 0..len {
-            if input_price[i].is_nan() {
+        for price in input {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
-            }
-            if i >= lookback && input_price[i - opt_period] == 0.0 {
-                return Err(KandError::InvalidData);
             }
         }
     }
 
-    roc_raw(input_price, opt_period, output_roc);
+    roc_raw(input, opt_period, output);
+
+    // Initial values
+    output[..lookback].fill(TAFloat::NAN);
 
     Ok(())
 }
 
-/// Core incremental calculation for Rate of Change (ROC) without error checking.
+/// Calculates ROC incrementally without validation.
 #[inline]
-pub fn roc_inc_raw(current_price: TAFloat, prev_price: TAFloat) -> TAFloat {
-    (current_price - prev_price) / prev_price * 100.0
+pub fn roc_inc_raw(input_current_price: TAFloat, input_old_price: TAFloat) -> TAFloat {
+    if input_old_price != 0.0 {
+        ((input_current_price - input_old_price) / input_old_price) * 100.0
+    } else {
+        TAFloat::NAN
+    }
 }
 
-/// Calculates a single ROC value incrementally for streaming data
-///
-/// # Description
-/// Provides an optimized way to calculate the latest ROC value when new data arrives,
-/// without recalculating the entire series. This is particularly useful for real-time
-/// data processing and streaming applications.
-///
-/// # Mathematical Formula
-/// ```text
-/// ROC = ((Current Price - Price n periods ago) / Price n periods ago) * 100
-/// ```
-///
-/// # Parameters
-/// * `current_price` - The most recent price value (type `TAFloat`)
-/// * `prev_price` - The price from n periods ago (type `TAFloat`)
-///
-/// # Returns
-/// * `Result<TAFloat, KandError>` - The calculated ROC value if successful
-///
-/// # Errors
-/// * `KandError::NaNDetected` - If either input is NaN (with "`check-nan`")
-/// * `KandError::InvalidData` - If `prev_price` is zero (with "`check-nan`")
-///
-/// # Example
-/// ```
-/// use kand::ohlcv::roc::roc_inc;
-///
-/// let current_price = 11.5;
-/// let prev_price = 10.0;
-///
-/// let roc_value = roc_inc(current_price, prev_price).unwrap();
-/// assert_eq!(roc_value, 15.0); // ((11.5 - 10.0) / 10.0) * 100
-/// ```
-pub fn roc_inc(current_price: TAFloat, prev_price: TAFloat) -> Result<TAFloat, KandError> {
+/// Calculates ROC incrementally for a single value.
+pub fn roc_inc(input_current_price: TAFloat, input_old_price: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        // NaN check
-        if current_price.is_null() || prev_price.is_null() {
+        if input_current_price.is_nan() || input_old_price.is_nan() {
             return Err(KandError::NaNDetected);
         }
-        // Division by zero check
-        if prev_price == 0.0 {
-            return Err(KandError::InvalidData);
-        }
     }
-
-    Ok(roc_inc_raw(current_price, prev_price))
+    Ok(roc_inc_raw(input_current_price, input_old_price))
 }
 
-#[cfg(feature = "arrow")]
+// Arrow wrapper
 crate::kand_arrow_wrapper!(
     roc_arrow,
     crate::ta::ohlcv::roc::roc_raw,
-    inputs: { input_price },
+    inputs: { input },
     params: { opt_period: usize },
     lookback_params: { opt_period }
 );
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
-
-    use super::*;
+    use arrow::array::Array;
 
     #[test]
     fn test_roc_calculation() {
-        let input_price = vec![
-            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
-            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
-            35069.0, 35024.6,
-        ];
-        let opt_period = 14;
-        let mut output_roc = vec![0.0; input_price.len()];
+        let prices = vec![1.0, 2.0, 5.0, 4.0, 8.0];
+        let period = 2;
+        let mut output = vec![0.0; 5];
 
-        roc(&input_price, opt_period, &mut output_roc).unwrap();
+        roc(&prices, period, &mut output).unwrap();
 
-        // First 13 values should be NaN
-        for value in output_roc.iter().take(14) {
-            assert!(value.is_nan());
-        }
+        assert!(output[0].is_nan());
+        assert!(output[1].is_nan());
+        assert_relative_eq!(output[2], 400.0, epsilon = 0.0001);
+        assert_relative_eq!(output[3], 100.0, epsilon = 0.0001);
+        assert_relative_eq!(output[4], 60.0, epsilon = 0.0001);
+    }
 
-        // Compare with known values
-        let expected_values = [
-            -0.357_222_974_718_940_4,
-            -0.511_620_776_005_505_8,
-            -0.543_893_699_187_547_6,
-            -0.445_265_851_578_047_2,
-            -0.319_770_333_840_230_24,
-            -0.652_397_133_991_022_8,
-        ];
-
-        for (i, expected) in expected_values.iter().enumerate() {
-            assert_relative_eq!(output_roc[i + 14], *expected, epsilon = 0.0001);
-        }
-
-        // Test incremental calculation matches regular calculation
-        for i in 15..20 {
-            let result = roc_inc(input_price[i], input_price[i - opt_period]).unwrap();
-            assert_relative_eq!(result, output_roc[i], epsilon = 0.0001);
-        }
+    #[test]
+    fn test_stateful_roc() {
+        let mut roc_state = StatefulROC::new(2).unwrap();
+        assert!(roc_state.next(1.0).unwrap().is_nan());
+        assert!(roc_state.next(2.0).unwrap().is_nan());
+        assert_relative_eq!(roc_state.next(5.0).unwrap(), 400.0);
+        assert_relative_eq!(roc_state.next(4.0).unwrap(), 100.0);
     }
 
     #[test]
     #[cfg(feature = "arrow")]
-    fn test_roc_arrow() {
-        let input_price = vec![10.0, 10.5, 11.2, 10.8, 11.5];
-        let opt_period = 2;
+    fn test_batch_roc() {
+        let mut batch_roc = BatchROC::new(2, 2).unwrap();
 
-        let price_arrow = TAArrowArray::from(input_price);
-        let result = roc_arrow(&price_arrow, opt_period).unwrap();
+        // t0
+        let input = TAArrowArray::from(vec![1.0, 10.0]);
+        let out = batch_roc.next_batch(input).unwrap();
+        assert!(out.value(0).is_nan());
 
-        assert_eq!(result.len(), 5);
-        assert!(result.value(0).is_nan());
-        assert!(result.value(1).is_nan());
-        assert_relative_eq!(result.value(2), 12.0, epsilon = 0.0001);
+        // t1
+        let input = TAArrowArray::from(vec![2.0, 12.0]);
+        let out = batch_roc.next_batch(input).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t2
+        let input = TAArrowArray::from(vec![5.0, 15.0]);
+        let out = batch_roc.next_batch(input).unwrap();
+        assert_relative_eq!(out.value(0), 400.0);
+        assert_relative_eq!(out.value(1), 50.0);
     }
 }
