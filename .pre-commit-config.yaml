@@ -36,3 +36,10 @@ repos:
         language: system
         types: [python]
         pass_filenames: true
+
+      - id: ty-check
+        name: ty check
+        entry: uv run ty check --exclude kand-py/python/benches --ignore unresolved-import
+        language: system
+        types: [python]
+        pass_filenames: false

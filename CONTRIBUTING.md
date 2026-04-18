@@ -63,7 +63,7 @@ When making changes, please follow this general workflow:
 
 We use `prek` to automate code quality checks. It is a high-performance alternative to `pre-commit` that uses the same configuration format. The hooks are configured to run:
 - **Rust**: `cargo fmt`, `cargo clippy`.
-- **Python**: `ruff check`, `ruff format` (via `uv`).
+- **Python**: `ruff check`, `ruff format` (via `uv`), `ty check` (high-performance type checking).
 - **Generic**: Whitespace, end-of-file, and YAML validation.
 
 Install the hooks once:

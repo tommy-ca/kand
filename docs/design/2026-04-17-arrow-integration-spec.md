@@ -62,7 +62,7 @@ To maintain high technical integrity across the multi-language codebase, `kand` 
 ### 5.1 Automated Quality Gates (prek)
 A unified `prek` workflow automates the following checks:
 - **Rust Consistency**: Enforced via `cargo fmt` (style) and `cargo clippy` (correctness). All builds must be 100% warning-free.
-- **Python Excellence**: Enforced via `ruff` for ultra-fast linting and formatting.
+- **Python Excellence**: Enforced via `ruff` for ultra-fast linting and formatting, and `ty` for high-performance type checking.
 - **Dependency Management**: Python dependencies and tools are managed exclusively through `uv` native commands.
 
 ### 5.2 Naming & Conventions

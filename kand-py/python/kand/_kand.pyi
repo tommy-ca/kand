@@ -35,6 +35,10 @@ def ad(high, low, close, volume):
     """
     ...
 
+def ad_arrow(high, low, close, volume):
+    """No docstring available."""
+    ...
+
 def ad_inc(high, low, close, volume, prev_ad):
     """
     Computes the latest Accumulation/Distribution (A/D) value incrementally.
@@ -67,7 +71,7 @@ def ad_inc(high, low, close, volume, prev_ad):
     """
     ...
 
-def adosc(high, low, close, volume, fast_period, slow_period):
+def adosc(high, low, close, volume, fast_period, slow_period, ma_type):
     """
     Calculate Accumulation/Distribution Oscillator (A/D Oscillator or ADOSC)
 
@@ -83,12 +87,7 @@ def adosc(high, low, close, volume, fast_period, slow_period):
       slow_period: Slow period for A/D Oscillator calculation.
 
     Returns:
-      A tuple of 4 1-D NumPy arrays containing:
-      - ADOSC values
-      - A/D Line values
-      - Fast EMA values
-      - Slow EMA values
-      Each array has the same length as the input, with the first `slow_period-1` elements containing NaN values.
+      A 1-D NumPy array containing ADOSC values.
 
     Examples:
       ```python
@@ -98,22 +97,16 @@ def adosc(high, low, close, volume, fast_period, slow_period):
       >>> low = np.array([8.0, 9.0, 10.0, 9.5, 8.5])
       >>> close = np.array([9.0, 10.0, 11.0, 10.0, 9.0])
       >>> volume = np.array([100.0, 150.0, 200.0, 150.0, 100.0])
-      >>> adosc, ad, fast_ema, slow_ema = kand.adosc(high, low, close, volume, 3, 5)
+      >>> adosc = kand.adosc(high, low, close, volume, 3, 5, 0)
       ```
     """
     ...
 
-def adosc_inc(
-    high,
-    low,
-    close,
-    volume,
-    prev_ad,
-    prev_fast_ema,
-    prev_slow_ema,
-    fast_period,
-    slow_period,
-):
+def adosc_arrow(high, low, close, volume, fast_period, slow_period, ma_type):
+    """No docstring available."""
+    ...
+
+def adosc_inc(high, low, close, volume, prev_ad, prev_fast_ema, prev_slow_ema, fast_period, slow_period, ma_type):
     """
     Calculate latest A/D Oscillator value incrementally
 
@@ -130,6 +123,7 @@ def adosc_inc(
         prev_slow_ema: Previous slow EMA value.
         fast_period: Fast EMA period.
         slow_period: Slow EMA period.
+        ma_type: Moving average type.
 
     Returns:
         A tuple containing (ADOSC, AD, Fast EMA, Slow EMA) values.
@@ -147,6 +141,7 @@ def adosc_inc(
         ...     90.0,  # prev_slow_ema
         ...     3,     # fast_period
         ...     10,    # slow_period
+        ...     0      # ma_type (SMA/EMA)
         ... )
         ```
     """
@@ -185,18 +180,11 @@ def adx(high, low, close, period):
     """
     ...
 
-def adx_inc(
-    high,
-    low,
-    prev_high,
-    prev_low,
-    prev_close,
-    prev_adx,
-    prev_smoothed_plus_dm,
-    prev_smoothed_minus_dm,
-    prev_smoothed_tr,
-    period,
-):
+def adx_arrow(high, low, close, period):
+    """No docstring available."""
+    ...
+
+def adx_inc(high, low, prev_high, prev_low, prev_close, prev_adx, prev_smoothed_plus_dm, prev_smoothed_minus_dm, prev_smoothed_tr, period):
     """
     Calculate the latest ADX value incrementally
 
@@ -273,19 +261,11 @@ def adxr(high, low, close, period):
     """
     ...
 
-def adxr_inc(
-    high,
-    low,
-    prev_high,
-    prev_low,
-    prev_close,
-    prev_adx,
-    prev_adx_period_ago,
-    prev_smoothed_plus_dm,
-    prev_smoothed_minus_dm,
-    prev_smoothed_tr,
-    period,
-):
+def adxr_arrow(high, low, close, period):
+    """No docstring available."""
+    ...
+
+def adxr_inc(high, low, prev_high, prev_low, prev_close, prev_adx, prev_adx_period_ago, prev_smoothed_plus_dm, prev_smoothed_minus_dm, prev_smoothed_tr, period):
     """
     Calculate the latest ADXR value incrementally
 
@@ -364,6 +344,10 @@ def aroon(high, low, period):
     """
     ...
 
+def aroon_arrow(high, low, period):
+    """No docstring available."""
+    ...
+
 def aroon_inc(high, low, prev_high, prev_low, days_since_high, days_since_low, period):
     """
     Calculate the next Aroon values incrementally.
@@ -435,9 +419,11 @@ def aroonosc(high, low, period):
     """
     ...
 
-def aroonosc_inc(
-    high, low, prev_high, prev_low, days_since_high, days_since_low, period
-):
+def aroonosc_arrow(high, low, period):
+    """No docstring available."""
+    ...
+
+def aroonosc_inc(high, low, prev_high, prev_low, days_since_high, days_since_low, period):
     """
     Calculate the next Aroon Oscillator value incrementally.
 
@@ -504,6 +490,10 @@ def atr(high, low, close, period):
     """
     ...
 
+def atr_arrow(high, low, close, period):
+    """No docstring available."""
+    ...
+
 def atr_inc(high, low, prev_close, prev_atr, period):
     """
     Calculate the next ATR value incrementally.
@@ -533,83 +523,16 @@ def atr_inc(high, low, prev_close, prev_atr, period):
     """
     ...
 
-def bbands(price, period, dev_up, dev_down):
-    """
-    Calculate Bollinger Bands for a NumPy array.
-
-    Bollinger Bands consist of:
-    - A middle band (N-period simple moving average)
-    - An upper band (K standard deviations above middle band)
-    - A lower band (K standard deviations below middle band)
-
-    Args:
-      price: Input price values as a 1-D NumPy array of type `TAFloat`.
-      period: The time period for calculations (must be >= 2).
-      dev_up: Number of standard deviations for upper band.
-      dev_down: Number of standard deviations for lower band.
-
-    Returns:
-      A tuple of 7 1-D NumPy arrays containing:
-      - Upper band values
-      - Middle band values
-      - Lower band values
-      - SMA values
-      - Variance values
-      - Sum values
-      - Sum of squares values
-      The first (period-1) elements of each array contain NaN values.
-
-    Examples:
-      ```python
-      >>> import numpy as np
-      >>> import kand
-      >>> price = np.array([10.0, 11.0, 12.0, 13.0, 14.0])
-      >>> upper, middle, lower, sma, var, sum, sum_sq = kand.bbands(price, 3, 2.0, 2.0)
-      ```
-    """
+def bbands_arrow(price, period, multiplier_up, multiplier_down, ma_type):
+    """No docstring available."""
     ...
 
-def bbands_inc(
-    price, prev_sma, prev_sum, prev_sum_sq, old_price, period, dev_up, dev_down
-):
-    """
-    Calculate the next Bollinger Bands values incrementally.
+def bbands_inc_py(price, prev_sma, prev_sum, prev_sum_sq, old_price, period, dev_up, dev_down, ma_type):
+    """No docstring available."""
+    ...
 
-    Args:
-
-      price: The current price value.
-      prev_sma: The previous SMA value.
-      prev_sum: The previous sum for variance calculation.
-      prev_sum_sq: The previous sum of squares for variance calculation.
-      old_price: The oldest price value to be removed from the period.
-      period: The time period for calculations (must be >= 2).
-      dev_up: Number of standard deviations for upper band.
-      dev_down: Number of standard deviations for lower band.
-
-    Returns:
-      A tuple containing:
-      - Upper Band value
-      - Middle Band value
-      - Lower Band value
-      - New SMA value
-      - New Sum value
-      - New Sum of Squares value
-
-    Examples:
-      ```python
-      >>> import kand
-      >>> upper, middle, lower, sma, sum, sum_sq = kand.bbands_inc(
-      ...     10.0,   # price
-      ...     9.5,    # prev_sma
-      ...     28.5,   # prev_sum
-      ...     272.25, # prev_sum_sq
-      ...     9.0,    # old_price
-      ...     3,      # period
-      ...     2.0,    # dev_up
-      ...     2.0     # dev_down
-      ... )
-      ```
-    """
+def bbands_py(price, period, dev_up, dev_down, ma_type):
+    """No docstring available."""
     ...
 
 def bop(open, high, low, close):
@@ -640,6 +563,10 @@ def bop(open, high, low, close):
       >>> bop = kand.bop(open, high, low, close)
       ```
     """
+    ...
+
+def bop_arrow(open, high, low, close):
+    """No docstring available."""
     ...
 
 def bop_inc(open, high, low, close):
@@ -677,12 +604,8 @@ def cci(high, low, close, period):
       period: Window size for CCI calculation. Must be positive and less than input length.
 
     Returns:
-      A tuple of 1-D NumPy arrays containing:
-      - CCI values
-      - Typical prices
-      - SMA of typical prices
-      - Mean deviation values
-      Each array has the same length as the input, with the first `period-1` elements containing NaN values.
+      A 1-D NumPy array containing CCI values.
+      The array has the same length as the input, with the first `period-1` elements containing NaN values.
 
     Examples:
       ```python
@@ -691,24 +614,16 @@ def cci(high, low, close, period):
       >>> high = np.array([24.20, 24.07, 24.04, 23.87, 23.67])
       >>> low = np.array([23.85, 23.72, 23.64, 23.37, 23.46])
       >>> close = np.array([23.89, 23.95, 23.67, 23.78, 23.50])
-      >>> cci, tp, sma_tp, mean_dev = kand.cci(high, low, close, 3)
-      >>> print(cci)
-      [nan, nan, -100.0, 66.67, -133.33]
+      >>> cci = kand.cci(high, low, close, 3)
       ```
     """
     ...
 
-def cci_inc(
-    prev_sma_tp,
-    new_high,
-    new_low,
-    new_close,
-    old_high,
-    old_low,
-    old_close,
-    period,
-    tp_buffer,
-):
+def cci_arrow(high, low, close, period):
+    """No docstring available."""
+    ...
+
+def cci_inc(prev_sma_tp, new_high, new_low, new_close, old_high, old_low, old_close, period, tp_buffer):
     """
     Calculates the next CCI value incrementally.
 
@@ -773,6 +688,10 @@ def cdl_doji(open, high, low, close, body_percent, shadow_equal_percent):
     """
     ...
 
+def cdl_doji_arrow(open, high, low, close, body_percent, shadow_equal_percent):
+    """No docstring available."""
+    ...
+
 def cdl_doji_inc(open, high, low, close, body_percent, shadow_equal_percent):
     """
     Detects a Doji pattern in a single candlestick.
@@ -797,7 +716,7 @@ def cdl_doji_inc(open, high, low, close, body_percent, shadow_equal_percent):
     """
     ...
 
-def cdl_dragonfly_doji(open, high, low, close, body_percent):
+def cdl_dragonfly_doji(open, high, low, close, body_percent, shadow_percent):
     """
     Detects Dragonfly Doji candlestick patterns in price data.
 
@@ -806,7 +725,8 @@ def cdl_dragonfly_doji(open, high, low, close, body_percent):
       high: High prices as a 1-D NumPy array of type `TAFloat`.
       low: Low prices as a 1-D NumPy array of type `TAFloat`.
       close: Close prices as a 1-D NumPy array of type `TAFloat`.
-      body_percent: Maximum body size as percentage of total range (typically 5%).
+      body_percent: Maximum body size as percentage of total range (typically 5.0).
+      shadow_percent: Minimum shadow size as percentage of total range.
 
     Returns:
       A 1-D NumPy array containing pattern signals:
@@ -821,12 +741,16 @@ def cdl_dragonfly_doji(open, high, low, close, body_percent):
       >>> high = np.array([102.0, 103.0, 104.0])
       >>> low = np.array([98.0, 99.0, 100.0])
       >>> close = np.array([101.0, 102.0, 103.0])
-      >>> signals = kand.cdl_dragonfly_doji(open, high, low, close, 5.0)
+      >>> signals = kand.cdl_dragonfly_doji(open, high, low, close, 5.0, 10.0)
       ```
     """
     ...
 
-def cdl_dragonfly_doji_inc(open, high, low, close, body_percent):
+def cdl_dragonfly_doji_arrow(open, high, low, close, body_percent, shadow_percent):
+    """No docstring available."""
+    ...
+
+def cdl_dragonfly_doji_inc(open, high, low, close, body_percent, shadow_percent):
     """
     Detects a Dragonfly Doji pattern in a single candlestick.
 
@@ -837,6 +761,7 @@ def cdl_dragonfly_doji_inc(open, high, low, close, body_percent):
       low: Low price.
       close: Close price.
       body_percent: Maximum body size as percentage of total range.
+      shadow_percent: Minimum shadow size as percentage of total range.
 
     Returns:
       Signal value:
@@ -846,7 +771,7 @@ def cdl_dragonfly_doji_inc(open, high, low, close, body_percent):
     Examples:
       ```python
       >>> import kand
-      >>> signal = kand.cdl_dragonfly_doji_inc(100.0, 102.0, 98.0, 100.1, 5.0)
+      >>> signal = kand.cdl_dragonfly_doji_inc(100.0, 102.0, 98.0, 100.1, 5.0, 10.0)
       ```
     """
     ...
@@ -878,6 +803,10 @@ def cdl_gravestone_doji(open, high, low, close, body_percent):
       >>> signals = kand.cdl_gravestone_doji(open, high, low, close, 5.0)
       ```
     """
+    ...
+
+def cdl_gravestone_doji_arrow(open, high, low, close, body_percent):
+    """No docstring available."""
     ...
 
 def cdl_gravestone_doji_inc(open, high, low, close, body_percent):
@@ -935,6 +864,10 @@ def cdl_hammer(open, high, low, close, period, factor):
       >>> signals, body_avg = kand.cdl_hammer(open, high, low, close, 14, 2.0)
       ```
     """
+    ...
+
+def cdl_hammer_arrow(open, high, low, close, period, factor):
+    """No docstring available."""
     ...
 
 def cdl_hammer_inc(open, high, low, close, prev_body_avg, period, factor):
@@ -998,6 +931,10 @@ def cdl_inverted_hammer(open, high, low, close, period, factor):
     """
     ...
 
+def cdl_inverted_hammer_arrow(open, high, low, close, period, factor):
+    """No docstring available."""
+    ...
+
 def cdl_inverted_hammer_inc(open, high, low, close, prev_body_avg, period, factor):
     """
     Detects an Inverted Hammer pattern in a single candlestick.
@@ -1058,6 +995,10 @@ def cdl_long_shadow(open, high, low, close, period, shadow_factor):
       >>> signals, body_avg = kand.cdl_long_shadow(open, high, low, close, 14, 75.0)
       ```
     """
+    ...
+
+def cdl_long_shadow_arrow(open, high, low, close, period, shadow_factor):
+    """No docstring available."""
     ...
 
 def cdl_long_shadow_inc(open, high, low, close, prev_body_avg, period, shadow_factor):
@@ -1123,6 +1064,10 @@ def cdl_marubozu(open, high, low, close, period, shadow_percent):
     """
     ...
 
+def cdl_marubozu_arrow(open, high, low, close, period, shadow_percent):
+    """No docstring available."""
+    ...
+
 def cdl_marubozu_inc(open, high, low, close, prev_body_avg, period, shadow_percent):
     """
     Detects a Marubozu pattern in a single candlestick.
@@ -1153,6 +1098,93 @@ def cdl_marubozu_inc(open, high, low, close, prev_body_avg, period, shadow_perce
     """
     ...
 
+def correl(input0, input1, period):
+    """
+    Calculate Pearson's Correlation Coefficient between two NumPy arrays
+
+    The Pearson Correlation Coefficient measures the linear correlation between two variables,
+    returning a value between -1 and +1, where:
+    - +1 indicates perfect positive correlation
+    - -1 indicates perfect negative correlation
+    - 0 indicates no linear correlation
+
+    Args:
+      input0: First input series as a 1-D NumPy array of type `TAFloat`.
+      input1: Second input series as a 1-D NumPy array of type `TAFloat`.
+      period: Period for calculation (must be >= 2).
+
+    Returns:
+      A tuple of six 1-D NumPy arrays containing:
+      - Correlation coefficient values
+      - Running sum of series 0
+      - Running sum of series 1
+      - Running sum of squares of series 0
+      - Running sum of squares of series 1
+      - Running sum of products
+      Each array has the same length as the input, with the first (period-1) elements containing NaN values.
+
+    Examples:
+      ```python
+      >>> import numpy as np
+      >>> import kand
+      >>> series1 = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+      >>> series2 = np.array([2.0, 4.0, 6.0, 8.0, 10.0])
+      >>> correl, sum0, sum1, sum0_sq, sum1_sq, sum01 = kand.correl(series1, series2, 3)
+      ```
+    """
+    ...
+
+def correl_arrow(input0, input1, period):
+    """No docstring available."""
+    ...
+
+def correl_inc(new0, new1, old0, old1, prev_sum0, prev_sum1, prev_sum0_sq, prev_sum1_sq, prev_sum01, period):
+    """
+    Calculate the latest Correlation value incrementally
+
+    This function provides an optimized way to update the Correlation value when new data arrives,
+    avoiding full recalculation of the entire series.
+
+    Args:
+      new0: The newest value from series 0 to add
+      new1: The newest value from series 1 to add
+      old0: The oldest value from series 0 to remove
+      old1: The oldest value from series 1 to remove
+      prev_sum0: Previous sum of series 0
+      prev_sum1: Previous sum of series 1
+      prev_sum0_sq: Previous sum of squares of series 0
+      prev_sum1_sq: Previous sum of squares of series 1
+      prev_sum01: Previous sum of products
+      period: Period for calculation (must be >= 2)
+
+    Returns:
+      A tuple containing:
+      - New correlation value
+      - New sum of series 0
+      - New sum of series 1
+      - New sum of squares of series 0
+      - New sum of squares of series 1
+      - New sum of products
+
+    Examples:
+      ```python
+      >>> import kand
+      >>> correl, sum0, sum1, sum0_sq, sum1_sq, sum01 = kand.correl_inc(
+      ...     4.0,    # new value for series 0
+      ...     8.0,    # new value for series 1
+      ...     1.0,    # old value for series 0
+      ...     2.0,    # old value for series 1
+      ...     6.0,    # previous sum of series 0
+      ...     12.0,   # previous sum of series 1
+      ...     14.0,   # previous sum of squares of series 0
+      ...     56.0,   # previous sum of squares of series 1
+      ...     28.0,   # previous sum of products
+      ...     3       # period
+      ... )
+      ```
+    """
+    ...
+
 def dema(input_price, period):
     """
     Calculates Double Exponential Moving Average (DEMA) over NumPy arrays.
@@ -1176,6 +1208,10 @@ def dema(input_price, period):
       >>> dema, ema1, ema2 = kand.dema(prices, 3)
       ```
     """
+    ...
+
+def dema_arrow(data, period):
+    """No docstring available."""
     ...
 
 def dema_inc(price, prev_ema1, prev_ema2, period):
@@ -1232,17 +1268,11 @@ def dx(high, low, close, period):
     """
     ...
 
-def dx_inc(
-    input_high,
-    input_low,
-    prev_high,
-    prev_low,
-    prev_close,
-    prev_smoothed_plus_dm,
-    prev_smoothed_minus_dm,
-    prev_smoothed_tr,
-    opt_period,
-):
+def dx_arrow(high, low, close, period):
+    """No docstring available."""
+    ...
+
+def dx_inc(input_high, input_low, prev_high, prev_low, prev_close, prev_smoothed_plus_dm, prev_smoothed_minus_dm, prev_smoothed_tr, opt_period):
     """
     Calculates the latest DX value incrementally.
 
@@ -1366,6 +1396,10 @@ def ema(data, period, k=None):
     """
     ...
 
+def ema_arrow(input_prices, opt_period, opt_k):
+    """No docstring available."""
+    ...
+
 def ema_inc(price, prev_ema, period, k=None):
     """
     Computes the latest EMA value incrementally.
@@ -1411,12 +1445,10 @@ def macd(data, fast_period, slow_period, signal_period):
       signal_period: Period for signal line calculation (typically 9).
 
     Returns:
-      A tuple of five 1-D NumPy arrays containing:
+      A tuple of three 1-D NumPy arrays containing:
       - MACD line values
       - Signal line values
       - MACD histogram values
-      - Fast EMA values
-      - Slow EMA values
       Each array has the same length as the input, with initial elements containing NaN values.
 
     Examples:
@@ -1424,20 +1456,16 @@ def macd(data, fast_period, slow_period, signal_period):
       >>> import numpy as np
       >>> import kand
       >>> data = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-      >>> macd_line, signal_line, histogram, fast_ema, slow_ema = kand.macd(data, 2, 3, 2)
+      >>> macd_line, signal_line, histogram = kand.macd(data, 2, 3, 2)
       ```
     """
     ...
 
-def macd_inc(
-    price,
-    prev_fast_ema,
-    prev_slow_ema,
-    prev_signal,
-    fast_period,
-    slow_period,
-    signal_period,
-):
+def macd_arrow(data, fast_period, slow_period, signal_period):
+    """No docstring available."""
+    ...
+
+def macd_inc(price, prev_fast_ema, prev_slow_ema, prev_signal, fast_period, slow_period, signal_period):
     """
     Computes the latest MACD values incrementally from previous state.
 
@@ -1495,6 +1523,10 @@ def max(prices, period):
       >>> max_values = kand.max(prices, 3)
       ```
     """
+    ...
+
+def max_arrow(prices, period):
+    """No docstring available."""
     ...
 
 def max_inc(price, prev_max, old_price, period):
@@ -1601,6 +1633,10 @@ def mfi(high, low, close, volume, period):
       >>> mfi, typ_prices, money_flows, pos_flows, neg_flows = kand.mfi(high, low, close, volume, 2)
       ```
     """
+    ...
+
+def mfi_arrow(high, low, close, volume, period):
+    """No docstring available."""
     ...
 
 def midpoint(data, period):
@@ -1751,6 +1787,10 @@ def min(prices, period):
     """
     ...
 
+def min_arrow(prices, period):
+    """No docstring available."""
+    ...
+
 def min_inc(price, prev_min, prev_price, period):
     """
     Calculate the latest MIN value incrementally
@@ -1832,6 +1872,10 @@ def minus_dm(high, low, period):
       >>> result = kand.minus_dm(high, low, 3)
       ```
     """
+    ...
+
+def minus_dm_arrow(high, low, period):
+    """No docstring available."""
     ...
 
 def mom(data, period):
@@ -2038,16 +2082,7 @@ def plus_di(high, low, close, period):
     """
     ...
 
-def plus_di_inc(
-    high,
-    low,
-    prev_high,
-    prev_low,
-    prev_close,
-    prev_smoothed_plus_dm,
-    prev_smoothed_tr,
-    period,
-):
+def plus_di_inc(high, low, prev_high, prev_low, prev_close, prev_smoothed_plus_dm, prev_smoothed_tr, period):
     """
     Calculates the next +DI value incrementally using previous smoothed values.
 
@@ -2109,6 +2144,10 @@ def plus_dm(high, low, period):
       >>> result = kand.plus_dm(high, low, 3)
       ```
     """
+    ...
+
+def plus_dm_arrow(high, low, period):
+    """No docstring available."""
     ...
 
 def plus_dm_inc(high, prev_high, low, prev_low, prev_plus_dm, period):
@@ -2428,6 +2467,10 @@ def rsi(prices, period):
     """
     ...
 
+def rsi_arrow(prices, period):
+    """No docstring available."""
+    ...
+
 def rsi_inc(current_price, prev_price, prev_avg_gain, prev_avg_loss, period):
     """
     Calculates a single RSI value incrementally.
@@ -2482,9 +2525,7 @@ def sar(high, low, acceleration, maximum):
     """
     ...
 
-def sar_inc(
-    high, low, prev_high, prev_low, prev_sar, is_long, af, ep, acceleration, maximum
-):
+def sar_inc(high, low, prev_high, prev_low, prev_sar, is_long, af, ep, acceleration, maximum):
     """
     Incrementally updates the Parabolic SAR with new price data.
 
@@ -2539,6 +2580,10 @@ def sma(data, period):
         [nan, nan, 2.0, 3.0, 4.0]
         ```
     """
+    ...
+
+def sma_arrow(data, period):
+    """No docstring available."""
     ...
 
 def sma_inc(prev_sma, new_price, old_price, period):
@@ -2597,6 +2642,10 @@ def stddev(input, period):
       >>> stddev, sum, sum_sq = kand.stddev(prices, 3)
       ```
     """
+    ...
+
+def stddev_arrow(input, period):
+    """No docstring available."""
     ...
 
 def stddev_inc(price, prev_sum, prev_sum_sq, old_price, period):
@@ -2690,6 +2739,10 @@ def sum(input, period):
     """
     ...
 
+def sum_arrow(prices, period):
+    """No docstring available."""
+    ...
+
 def sum_inc(new_price, old_price, prev_sum):
     """
     Calculate the latest sum value incrementally
@@ -2750,18 +2803,7 @@ def supertrend(high, low, close, period, multiplier):
     """
     ...
 
-def supertrend_inc(
-    high,
-    low,
-    close,
-    prev_close,
-    prev_atr,
-    prev_trend,
-    prev_upper,
-    prev_lower,
-    period,
-    multiplier,
-):
+def supertrend_inc(high, low, close, prev_close, prev_atr, prev_trend, prev_upper, prev_lower, period, multiplier):
     """
     Calculates a single Supertrend value incrementally.
 
@@ -2840,17 +2882,11 @@ def t3(data, period, vfactor):
     """
     ...
 
-def t3_inc(
-    price,
-    prev_ema1,
-    prev_ema2,
-    prev_ema3,
-    prev_ema4,
-    prev_ema5,
-    prev_ema6,
-    period,
-    vfactor,
-):
+def t3_arrow(data, period, vfactor):
+    """No docstring available."""
+    ...
+
+def t3_inc(price, prev_ema1, prev_ema2, prev_ema3, prev_ema4, prev_ema5, prev_ema6, period, vfactor):
     """
     Incrementally calculates the next T3 value.
 
@@ -2925,6 +2961,10 @@ def tema(prices, period):
     """
     ...
 
+def tema_arrow(data, period):
+    """No docstring available."""
+    ...
+
 def tema_inc(new_price, prev_ema1, prev_ema2, prev_ema3, period):
     """
     Calculate the next TEMA value incrementally.
@@ -2972,6 +3012,7 @@ def trange(high, low, close):
     Returns:
       A new 1-D NumPy array containing the TR values. The array has the same length as the input,
       with the first element containing NaN value.
+
     Examples:
       ```python
       >>> import numpy as np
@@ -2984,6 +3025,10 @@ def trange(high, low, close):
       [nan, 3.0, 4.0]
       ```
     """
+    ...
+
+def trange_arrow(high, low, close):
+    """No docstring available."""
     ...
 
 def trange_inc(high, low, prev_close):
@@ -3034,6 +3079,10 @@ def trima(prices, period):
       >>> sma1, trima = kand.trima(prices, 3)
       ```
     """
+    ...
+
+def trima_arrow(data, period):
+    """No docstring available."""
     ...
 
 def trima_inc(prev_sma1, prev_sma2, new_price, old_price, old_sma1, period):
@@ -3158,6 +3207,10 @@ def typprice(high, low, close):
     """
     ...
 
+def typprice_arrow(high, low, close):
+    """No docstring available."""
+    ...
+
 def typprice_inc(high, low, close):
     """
     Calculates a single Typical Price value incrementally.
@@ -3205,6 +3258,10 @@ def var(prices, period):
       >>> var, sum, sum_sq = kand.var(prices, 3)
       ```
     """
+    ...
+
+def var_arrow(prices, period):
+    """No docstring available."""
     ...
 
 def var_inc(price, prev_sum, prev_sum_sq, old_price, period):
@@ -3266,13 +3323,7 @@ def vegas(prices):
     """
     ...
 
-def vegas_inc(
-    price,
-    prev_channel_upper,
-    prev_channel_lower,
-    prev_boundary_upper,
-    prev_boundary_lower,
-):
+def vegas_inc(price, prev_channel_upper, prev_channel_lower, prev_boundary_upper, prev_boundary_lower):
     """
     Incrementally calculates the next VEGAS values.
 
@@ -3439,9 +3490,11 @@ def willr(high, low, close, period):
     """
     ...
 
-def willr_inc(
-    prev_highest_high, prev_lowest_low, prev_high, prev_low, close, high, low
-):
+def willr_arrow(high, low, close, period):
+    """No docstring available."""
+    ...
+
+def willr_inc(prev_highest_high, prev_lowest_low, prev_high, prev_low, close, high, low):
     """
     Incrementally calculates Williams %R for the latest data point.
 
@@ -3496,6 +3549,10 @@ def wma(data, period):
         [nan, nan, 2.0, 3.0, 4.0]
         ```
     """
+    ...
+
+def wma_arrow(data, period):
+    """No docstring available."""
     ...
 
 def wma_inc(input_window, period):
