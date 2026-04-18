@@ -32,4 +32,5 @@ i64 = ["kand/i64"]                        # 64-bit integer
 check = ["kand/check"]                    # Basic validation checks
 check-nan = ["kand/check-nan"]            # Input NaN checks
 allow-nan = ["kand/allow-nan"]            # Allow NaN values in output data
-arrow = ["kand/arrow", "dep:pyo3-arrow"]  # Enable Apache Arrow support
+arrow = ["kand/arrow", "dep:pyo3-arrow"]
+arrow-wasm = ["kand/arrow"]  # Enable Apache Arrow support

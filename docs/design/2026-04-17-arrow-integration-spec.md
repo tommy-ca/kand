@@ -1,4 +1,4 @@
-# Technical Specification: Arrow Zero-Copy Integration (Updated v58.1.0)
+# Technical Specification: Arrow Zero-Copy Integration (Updated WASM-V4)
 
 ## Overview
 This document specifies the technical architecture for integrating Apache Arrow as a first-class, zero-copy data format in the `kand` ecosystem, leveraging `arrow-rs` v58.1.0 and `pyo3-arrow` v0.17.0.
@@ -7,16 +7,15 @@ This document specifies the technical architecture for integrating Apache Arrow 
 
 ### 1.1 Core `kand` Crate: Normalization Contract
 Every indicator exposes a three-tier implementation:
-1.  **`_raw`**: High-performance, slice-based, no validation.
+1.  **`_raw`**: High-performance, slice-based, zero validation.
 2.  **Safe Wrapper**: Validation, NaN handling, slice-based.
 3.  **`_arrow`**: Zero-copy, Arrow-native API with pooling.
 
-### 1.2 Performance Optimization (V3)
+### 1.2 Performance Optimization (V3 Core, V4 WASM)
 The library utilizes a **Thread-Local Block Cache** to minimize heap allocations.
 - **`BlockPool`**: Manages 64-byte aligned memory regions.
 - **`PooledAllocation`**: Implements the Arrow `Allocation` trait to return memory to the pool upon buffer drop.
-- **Bulk Initialization**: Uses `slice.fill(TAFloat::NAN)` which is optimized by the compiler to SIMD memory-fill instructions.
-- **Overhead**: Reduced to **11% - 17%** for batch operations, meeting the high-frequency trading performance requirements.
+- **WASM Integration (V4)**: `WasmBuffer` is integrated with the core `BlockPool`, providing 64-byte alignment (standard for Arrow/SIMD) and pooled reuse within the WASM linear memory.
 
 ### 1.3 Python & WASM Bindings
 #### 1.3.1 Python Bindings (`kand-py`)
@@ -25,6 +24,7 @@ The library utilizes a **Thread-Local Block Cache** to minimize heap allocations
 
 #### 1.3.2 WebAssembly Bindings (`kand-wasm`)
 - **Generic WasmBuffer**: Supports heterogeneous data types (`f64`, `i32`, `i64`) through a unified shared-memory protocol.
+- **Arrow Compatibility**: Exposes `_arrow` variants (e.g., `sma_arrow_wasm`) that produce pooled Arrow-native buffers, enabling zero-copy integration with JavaScript Arrow libraries (via the C Data Interface).
 
 ## 2. Test-Driven Development (TDD) Standard
 1.  **Validation Parity**: Errors match legacy slice variants.
@@ -38,4 +38,4 @@ The library utilizes a **Thread-Local Block Cache** to minimize heap allocations
 - **`kand_arrow_wrapper_multi!`**: Multi-output (supports mixed types).
 - **`kand_arrow_wrapper_int!`**: Single-output integer (pattern signals).
 
-All macros are now integrated with the `buffer_pool` for automatic memory management.
+All macros are integrated with the `buffer_pool` for automatic memory management across Rust, Python, and WASM.

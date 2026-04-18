@@ -704,6 +704,8 @@ dependencies = [
 name = "kand-wasm"
 version = "0.1.1"
 dependencies = [
+ "arrow",
+ "arrow-buffer",
  "kand",
  "wasm-bindgen",
 ]

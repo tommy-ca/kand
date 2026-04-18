@@ -10,6 +10,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 kand = { workspace = true }
 wasm-bindgen = { workspace = true }
+arrow = { version = "58.1.0", optional = true }
+arrow-buffer = { version = "58.1.0", optional = true }
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
@@ -23,3 +25,4 @@ i64 = ["kand/i64"]
 check = ["kand/check"]
 check-nan = ["kand/check-nan"]
 allow-nan = ["kand/allow-nan"]
+arrow = ["kand/arrow", "dep:arrow", "dep:arrow-buffer"]

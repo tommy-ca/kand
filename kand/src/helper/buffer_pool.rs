@@ -1,20 +1,29 @@
+#[cfg(feature = "arrow")]
 use std::alloc::{alloc, dealloc, Layout};
+#[cfg(feature = "arrow")]
 use std::ptr::NonNull;
+#[cfg(feature = "arrow")]
 use std::sync::Arc;
+#[cfg(feature = "arrow")]
 use arrow_buffer::Buffer;
 
 /// Standard alignment for Arrow buffers.
+#[cfg(feature = "arrow")]
 const ALIGNMENT: usize = 64;
 
 /// A block of memory managed by our pool.
+#[cfg(feature = "arrow")]
 struct Block {
     ptr: NonNull<u8>,
     layout: Layout,
 }
 
+#[cfg(feature = "arrow")]
 unsafe impl Send for Block {}
+#[cfg(feature = "arrow")]
 unsafe impl Sync for Block {}
 
+#[cfg(feature = "arrow")]
 impl Block {
     fn new(capacity: usize) -> Self {
         let layout = Layout::from_size_align(capacity, ALIGNMENT).unwrap();
@@ -26,6 +35,7 @@ impl Block {
     }
 }
 
+#[cfg(feature = "arrow")]
 impl Drop for Block {
     fn drop(&mut self) {
         unsafe { dealloc(self.ptr.as_ptr(), self.layout) };
@@ -33,14 +43,17 @@ impl Drop for Block {
 }
 
 /// A custom Allocation that returns its block to a pool on drop.
+#[cfg(feature = "arrow")]
 struct PooledAllocation {
     block: Option<Block>,
 }
 
 // In Arrow 58.1, Allocation is blanket implemented for RefUnwindSafe + Send + Sync.
 // We must ensure PooledAllocation satisfies these bounds.
+#[cfg(feature = "arrow")]
 impl std::panic::RefUnwindSafe for PooledAllocation {}
 
+#[cfg(feature = "arrow")]
 impl Drop for PooledAllocation {
     fn drop(&mut self) {
         if let Some(block) = self.block.take() {
@@ -56,6 +69,7 @@ thread_local! {
 }
 
 /// Acquires a block of memory of at least the given capacity.
+#[cfg(feature = "arrow")]
 fn acquire_block(capacity: usize) -> Block {
     BLOCK_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -68,6 +82,7 @@ fn acquire_block(capacity: usize) -> Block {
 }
 
 /// Releases a block of memory back to the cache.
+#[cfg(feature = "arrow")]
 fn release_block(block: Block) {
     BLOCK_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();

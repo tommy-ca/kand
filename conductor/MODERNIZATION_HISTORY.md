@@ -25,7 +25,12 @@ Successfully mitigated the heap allocation bottleneck through:
 - **SIMD Initialization**: Bulk `NaN` filling utilizing optimized compiler intrinsics.
 - **Result**: Reduced Arrow wrapper overhead to **11-19%** compared to raw loops, while enabling instantaneous multi-megabyte language handshakes.
 
-### 4. Ecosystem Upgrades
+### 4. V4 WASM Optimization (Pooled Shared Memory)
+- **`WasmBuffer` Evolution**: Refactored the WASM shared memory manager to be generic and integrated with the core `BlockPool`.
+- **64-byte Alignment**: Guaranteed Arrow-compliant alignment within the WASM heap for improved SIMD compatibility.
+- **Direct Arrow Consumption**: Implemented `to_arrow_array` and `from_parts` to allow WASM to consume and produce Arrow-native buffers zero-copy.
+
+### 5. Ecosystem Upgrades
 - Migrated to **Arrow-rs v58.1.0** and **PyO3 v0.28.3**.
 - Adopted the modern `py.detach()` pattern for thread-safe GIL management.
 - Implemented a generic `WasmBuffer<T>` for cross-platform zero-copy efficiency.
