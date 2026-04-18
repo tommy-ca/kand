@@ -1,5 +1,5 @@
 use super::trange;
-use crate::{KandError, TAFloat};
+use crate::{KandError, TAFloat, TAPeriod};
 
 /// Returns the lookback period required for ATR calculation.
 ///
@@ -34,396 +34,40 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period)
 }
 
-/// Stateful implementation of Average True Range (ATR).
-#[derive(Clone)]
-pub struct StatefulATR {
-    period: usize,
-    count: usize,
-    prev_atr: TAFloat,
-    prev_close: TAFloat,
-    tr_sum: TAFloat,
-}
-
-impl StatefulATR {
-    /// Creates a new StatefulATR instance.
-    pub fn new(period: usize) -> Result<Self, KandError> {
-        #[cfg(feature = "check")]
-        {
-            if period < 2 {
-                return Err(KandError::InvalidParameter);
-            }
-        }
-        Ok(Self {
-            period,
-            count: 0,
-            prev_atr: 0.0,
-            prev_close: 0.0,
-            tr_sum: 0.0,
-        })
-    }
-}
-
-impl crate::ta::traits::Indicator for StatefulATR {
-    type Input = (TAFloat, TAFloat, TAFloat); // high, low, close
-    type Output = TAFloat;
-
-    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        let (high, low, close) = input;
-        self.count += 1;
-
-        if self.count == 1 {
-            self.prev_close = close;
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    ATR,
+    type: recursive,
+    inputs: { high: TAFloat, low: TAFloat, close: TAFloat },
+    params: { period: TAPeriod },
+    state: { prev_atr: TAFloat, prev_close: TAFloat, tr_sum: TAFloat },
+    init: |period| {
+        (0.0, 0.0, 0.0)
+    },
+    next: |state, (high, low, close)| {
+        if state.__kand_count == 1 {
+            state.prev_close = close;
             Ok(TAFloat::NAN)
-        } else if self.count <= self.period {
-            let tr = super::trange::trange_inc_raw(high, low, self.prev_close);
-            self.tr_sum += tr;
-            self.prev_close = close;
+        } else if state.__kand_count <= state.period {
+            let tr = super::trange::trange_inc_raw(high, low, state.prev_close);
+            state.tr_sum += tr;
+            state.prev_close = close;
             Ok(TAFloat::NAN)
-        } else if self.count == self.period + 1 {
-            let tr = super::trange::trange_inc_raw(high, low, self.prev_close);
-            self.tr_sum += tr;
-            self.prev_atr = self.tr_sum / self.period as TAFloat;
-            self.prev_close = close;
-            Ok(self.prev_atr)
+        } else if state.__kand_count == state.period + 1 {
+            let tr = super::trange::trange_inc_raw(high, low, state.prev_close);
+            state.tr_sum += tr;
+            state.prev_atr = state.tr_sum / state.period as TAFloat;
+            state.prev_close = close;
+            Ok(state.prev_atr)
         } else {
-            let tr = super::trange::trange_inc_raw(high, low, self.prev_close);
-            self.prev_atr =
-                self.prev_atr.mul_add((self.period - 1) as TAFloat, tr) / (self.period as TAFloat);
-            self.prev_close = close;
-            Ok(self.prev_atr)
+            let tr = super::trange::trange_inc_raw(high, low, state.prev_close);
+            state.prev_atr =
+                state.prev_atr.mul_add((state.period - 1) as TAFloat, tr) / (state.period as TAFloat);
+            state.prev_close = close;
+            Ok(state.prev_atr)
         }
     }
-
-    #[cfg(feature = "arrow")]
-    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-        use arrow::datatypes::{DataType, Field, Schema};
-        use std::sync::Arc;
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("__kand_period", DataType::UInt64, false),
-            Field::new("__kand_count", DataType::UInt64, false),
-            Field::new("__kand_prev_atr", DataType::Float64, false),
-            Field::new("__kand_prev_close", DataType::Float64, false),
-            Field::new("__kand_tr_sum", DataType::Float64, false),
-        ]));
-
-        let period_arr = UInt64Array::from(vec![self.period as u64]);
-        let count_arr = UInt64Array::from(vec![self.count as u64]);
-        let prev_atr_arr = Float64Array::from(vec![self.prev_atr]);
-        let prev_close_arr = Float64Array::from(vec![self.prev_close]);
-        let tr_sum_arr = Float64Array::from(vec![self.tr_sum]);
-
-        arrow::record_batch::RecordBatch::try_new(
-            schema,
-            vec![
-                Arc::new(period_arr),
-                Arc::new(count_arr),
-                Arc::new(prev_atr_arr),
-                Arc::new(prev_close_arr),
-                Arc::new(tr_sum_arr),
-            ],
-        )
-        .map_err(|_| KandError::InvalidData)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn restore_from_record_batch(
-        &mut self,
-        batch: &arrow::record_batch::RecordBatch,
-    ) -> Result<(), KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-
-        let period = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let count = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let prev_atr = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0);
-        let prev_close = batch
-            .column(3)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0);
-        let tr_sum = batch
-            .column(4)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0);
-
-        self.period = period;
-        self.count = count;
-        self.prev_atr = prev_atr;
-        self.prev_close = prev_close;
-        self.tr_sum = tr_sum;
-
-        Ok(())
-    }
-}
-
-/// Vectorized implementation of Average True Range (ATR) for multiple independent streams.
-#[cfg(feature = "arrow")]
-pub struct BatchATR {
-    period: usize,
-    num_streams: usize,
-    counts: Vec<usize>,
-    prev_atrs: arrow_buffer::MutableBuffer,
-    prev_closes: arrow_buffer::MutableBuffer,
-    tr_sums: arrow_buffer::MutableBuffer,
-}
-
-#[cfg(feature = "arrow")]
-impl Clone for BatchATR {
-    fn clone(&self) -> Self {
-        let mut new_prev_atrs = arrow_buffer::MutableBuffer::new(self.prev_atrs.len());
-        new_prev_atrs.extend_from_slice(self.prev_atrs.as_slice());
-        let mut new_prev_closes = arrow_buffer::MutableBuffer::new(self.prev_closes.len());
-        new_prev_closes.extend_from_slice(self.prev_closes.as_slice());
-        let mut new_tr_sums = arrow_buffer::MutableBuffer::new(self.tr_sums.len());
-        new_tr_sums.extend_from_slice(self.tr_sums.as_slice());
-
-        Self {
-            period: self.period,
-            num_streams: self.num_streams,
-            counts: self.counts.clone(),
-            prev_atrs: new_prev_atrs,
-            prev_closes: new_prev_closes,
-            tr_sums: new_tr_sums,
-        }
-    }
-}
-
-#[cfg(feature = "arrow")]
-impl BatchATR {
-    /// Creates a new BatchATR instance.
-    pub fn new(period: usize, num_streams: usize) -> Result<Self, KandError> {
-        use std::mem::size_of;
-        #[cfg(feature = "check")]
-        {
-            if period < 2 || num_streams == 0 {
-                return Err(KandError::InvalidParameter);
-            }
-        }
-
-        let mut prev_atrs = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
-        prev_atrs.resize(num_streams * size_of::<TAFloat>(), 0);
-
-        let mut prev_closes = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
-        prev_closes.resize(num_streams * size_of::<TAFloat>(), 0);
-
-        let mut tr_sums = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
-        tr_sums.resize(num_streams * size_of::<TAFloat>(), 0);
-
-        Ok(Self {
-            period,
-            num_streams,
-            counts: vec![0; num_streams],
-            prev_atrs,
-            prev_closes,
-            tr_sums,
-        })
-    }
-}
-
-#[cfg(feature = "arrow")]
-impl crate::ta::traits::BatchIndicator for BatchATR {
-    type Input = (
-        crate::ta::types::TAArrowArray,
-        crate::ta::types::TAArrowArray,
-        crate::ta::types::TAArrowArray,
-    );
-    type Output = crate::ta::types::TAArrowArray;
-
-    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        use std::mem::size_of;
-
-        let (high, low, close) = input;
-        if high.len() != self.num_streams
-            || low.len() != self.num_streams
-            || close.len() != self.num_streams
-        {
-            return Err(KandError::LengthMismatch);
-        }
-
-        let high_values = high.values();
-        let low_values = low.values();
-        let close_values = close.values();
-
-        let prev_atrs_slice = self.prev_atrs.typed_data_mut::<TAFloat>();
-        let prev_closes_slice = self.prev_closes.typed_data_mut::<TAFloat>();
-        let tr_sums_slice = self.tr_sums.typed_data_mut::<TAFloat>();
-
-        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
-            self.num_streams * size_of::<TAFloat>(),
-        );
-        let output_slice =
-            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
-
-        for s in 0..self.num_streams {
-            let h = high_values[s];
-            let l = low_values[s];
-            let c = close_values[s];
-            self.counts[s] += 1;
-
-            if self.counts[s] == 1 {
-                prev_closes_slice[s] = c;
-                output_slice[s] = TAFloat::NAN;
-            } else if self.counts[s] <= self.period {
-                let tr = super::trange::trange_inc_raw(h, l, prev_closes_slice[s]);
-                tr_sums_slice[s] += tr;
-                prev_closes_slice[s] = c;
-                output_slice[s] = TAFloat::NAN;
-            } else if self.counts[s] == self.period + 1 {
-                let tr = super::trange::trange_inc_raw(h, l, prev_closes_slice[s]);
-                tr_sums_slice[s] += tr;
-                prev_atrs_slice[s] = tr_sums_slice[s] / self.period as TAFloat;
-                prev_closes_slice[s] = c;
-                output_slice[s] = prev_atrs_slice[s];
-            } else {
-                let tr = super::trange::trange_inc_raw(h, l, prev_closes_slice[s]);
-                prev_atrs_slice[s] = prev_atrs_slice[s].mul_add((self.period - 1) as TAFloat, tr)
-                    / (self.period as TAFloat);
-                prev_closes_slice[s] = c;
-                output_slice[s] = prev_atrs_slice[s];
-            }
-        }
-
-        Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
-    }
-
-    #[cfg(feature = "arrow")]
-    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-        use arrow::datatypes::{DataType, Field, Schema};
-        use std::sync::Arc;
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("__kand_period", DataType::UInt64, false),
-            Field::new("__kand_count", DataType::UInt64, false),
-            Field::new("__kand_prev_atr", DataType::Float64, false),
-            Field::new("__kand_prev_close", DataType::Float64, false),
-            Field::new("__kand_tr_sum", DataType::Float64, false),
-        ]));
-
-        let period_arr = Arc::new(UInt64Array::from(vec![
-            self.period as u64;
-            self.num_streams
-        ])) as Arc<dyn arrow::array::Array>;
-        let counts_arr = Arc::new(UInt64Array::from(
-            self.counts.iter().map(|&c| c as u64).collect::<Vec<_>>(),
-        )) as Arc<dyn arrow::array::Array>;
-
-        let prev_atrs_arr = Arc::new(Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(self.prev_atrs.as_slice().into(), 0, self.num_streams),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-        let prev_closes_arr = Arc::new(Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(
-                self.prev_closes.as_slice().into(),
-                0,
-                self.num_streams,
-            ),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-        let tr_sums_arr = Arc::new(Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(self.tr_sums.as_slice().into(), 0, self.num_streams),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-
-        arrow::record_batch::RecordBatch::try_new(
-            schema,
-            vec![
-                period_arr,
-                counts_arr,
-                prev_atrs_arr,
-                prev_closes_arr,
-                tr_sums_arr,
-            ],
-        )
-        .map_err(|_| KandError::InvalidData)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn restore_from_record_batch(
-        &mut self,
-        batch: &arrow::record_batch::RecordBatch,
-    ) -> Result<(), KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-
-        let num_streams = batch.num_rows();
-        if num_streams == 0 {
-            return Err(KandError::InvalidData);
-        }
-
-        let period = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let counts = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let prev_atrs = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let prev_closes = batch
-            .column(3)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let tr_sums = batch
-            .column(4)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-
-        self.period = period;
-        self.num_streams = num_streams;
-        self.counts = counts.values().iter().map(|&c| c as usize).collect();
-
-        self.prev_atrs = arrow_buffer::MutableBuffer::from_len_zeroed(
-            prev_atrs.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.prev_atrs
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(prev_atrs.values());
-
-        self.prev_closes = arrow_buffer::MutableBuffer::from_len_zeroed(
-            prev_closes.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.prev_closes
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(prev_closes.values());
-
-        self.tr_sums = arrow_buffer::MutableBuffer::from_len_zeroed(
-            tr_sums.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.tr_sums
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(tr_sums.values());
-
-        Ok(())
-    }
-}
+);
 
 /// Calculates Average True Range (ATR) without input validation for high performance.
 pub fn atr_raw(
@@ -454,6 +98,12 @@ pub fn atr_raw(
         output_atr[i] =
             output_atr[i - 1].mul_add((opt_period - 1) as TAFloat, tr) / (opt_period as TAFloat);
     }
+}
+
+/// Returns the lookback period for ATR without input validation.
+#[inline]
+pub const fn lookback_raw(opt_period: TAPeriod) -> TAPeriod {
+    opt_period
 }
 
 /// Calculates Average True Range (ATR) for an entire price series.
@@ -636,6 +286,7 @@ pub fn atr_inc(
 }
 
 // Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
     atr_arrow,
     crate::ta::ohlcv::atr::atr_raw,
@@ -650,6 +301,7 @@ mod tests {
     use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     #[test]
     fn test_stateful_atr() {
@@ -732,8 +384,8 @@ mod tests {
         )
         .unwrap();
 
-        // First 13 values should be NaN
-        for value in output_atr.iter().take(13) {
+        // First 14 values should be NaN
+        for value in output_atr.iter().take(14) {
             assert!(value.is_nan());
         }
 
@@ -771,6 +423,48 @@ mod tests {
             .unwrap();
             assert_relative_eq!(result, output_atr[i], epsilon = 0.0001);
             prev_atr = result;
+        }
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn test_atr_arrow() {
+        let input_high = TAArrowArray::from(vec![
+            35266.0, 35247.5, 35235.7, 35190.8, 35182.0, 35258.0, 35262.9, 35281.5, 35256.0,
+            35210.0, 35185.4, 35230.0, 35241.0, 35218.1, 35212.6, 35128.9, 35047.7, 35019.5,
+            35078.8, 35085.0, 35034.1, 34984.4, 35010.8, 35047.1, 35091.4,
+        ]);
+        let input_low = TAArrowArray::from(vec![
+            35216.1, 35206.5, 35180.0, 35130.7, 35153.6, 35174.7, 35202.6, 35202.8, 35175.0,
+            35166.0, 35170.9, 35154.1, 35186.0, 35143.9, 35080.1, 35021.1, 34950.1, 34966.0,
+            35012.3, 35022.2, 34931.6, 34911.0, 34952.5, 34977.9, 35039.0,
+        ]);
+        let input_close = TAArrowArray::from(vec![
+            35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
+            35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
+        ]);
+        let opt_period = 14;
+
+        let output_atr_arrow = atr_arrow(&input_high, &input_low, &input_close, opt_period).unwrap();
+
+        // Compare with known values
+        let expected_values = [
+            63.185_714_285_714_7,
+            66.372_448_979_592_43,
+            68.602_988_338_192_87,
+            67.524_203_456_893_39,
+            67.451_046_067_115_29,
+            67.118_828_490_892_98,
+            69.646_055_027_257_76,
+            69.914_193_953_882_3,
+            69.084_608_671_462_35,
+            69.092_850_909_214_83,
+            67.900_504_415_699_59,
+        ];
+
+        for (i, expected) in expected_values.iter().enumerate() {
+            assert_relative_eq!(output_atr_arrow.value(i + 14), *expected, epsilon = 0.0001);
         }
     }
 }
