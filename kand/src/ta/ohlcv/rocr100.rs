@@ -185,6 +185,7 @@ pub fn rocr100_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> 
     Ok(rocr100_inc_raw(input, prev))
 }
 
+// Arrow wrapper
 #[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
     rocr100_arrow,
@@ -194,11 +195,70 @@ crate::kand_arrow_wrapper!(
     lookback_params: { opt_period }
 );
 
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    ROCR100,
+    type: sliding_window,
+    inputs: { price: TAFloat },
+    params: { period: usize },
+    state: { },
+    init: |period| {
+        ()
+    },
+    next: |state, (price)| {
+        let old_val = state.__kand_window[state.__kand_cursor].0;
+        state.__kand_window[state.__kand_cursor] = (price,);
+        state.__kand_cursor = (state.__kand_cursor + 1) % state.period;
+
+        if state.__kand_count <= state.period {
+            Ok(TAFloat::NAN)
+        } else if old_val == 0.0 {
+            Ok(TAFloat::NAN)
+        } else {
+            Ok((price / old_val) * 100.0)
+        }
+    }
+);
+
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_rocr100() {
+        let mut rocr100_state = StatefulROCR100::new(2).unwrap();
+        assert!(rocr100_state.next((10.0,)).unwrap().is_nan());
+        assert!(rocr100_state.next((10.5,)).unwrap().is_nan());
+        assert_relative_eq!(rocr100_state.next((11.2,)).unwrap(), 112.0, epsilon = 0.0001);
+        assert_relative_eq!(rocr100_state.next((10.8,)).unwrap(), 102.85714285714288, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_rocr100() {
+        let mut batch_rocr100 = BatchROCR100::new(2, 2).unwrap();
+        let input = TAArrowArray::from(vec![10.0, 20.0]);
+
+        // t0
+        let out = batch_rocr100.next_batch((input.clone(),)).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t1
+        let input = TAArrowArray::from(vec![10.5, 21.0]);
+        let out = batch_rocr100.next_batch((input.clone(),)).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t2
+        let input = TAArrowArray::from(vec![11.2, 22.4]);
+        let out = batch_rocr100.next_batch((input.clone(),)).unwrap();
+        assert_relative_eq!(out.value(0), 112.0, epsilon = 0.0001);
+        assert_relative_eq!(out.value(1), 112.0, epsilon = 0.0001);
+    }
 
     #[test]
     fn test_rocr100_calculation() {

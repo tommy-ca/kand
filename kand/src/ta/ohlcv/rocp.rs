@@ -200,6 +200,7 @@ pub fn rocp_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> {
 }
 
 #[cfg(feature = "arrow")]
+// Arrow wrapper
 crate::kand_arrow_wrapper!(
     rocp_arrow,
     crate::ta::ohlcv::rocp::rocp_raw,
@@ -208,12 +209,70 @@ crate::kand_arrow_wrapper!(
     lookback_params: { opt_period }
 );
 
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    ROCP,
+    type: sliding_window,
+    inputs: { price: TAFloat },
+    params: { period: usize },
+    state: { },
+    init: |period| {
+        ()
+    },
+    next: |state, (price)| {
+        let old_val = state.__kand_window[state.__kand_cursor].0;
+        state.__kand_window[state.__kand_cursor] = (price,);
+        state.__kand_cursor = (state.__kand_cursor + 1) % state.period;
+
+        if state.__kand_count <= state.period {
+            Ok(TAFloat::NAN)
+        } else if old_val == 0.0 {
+            Ok(TAFloat::NAN)
+        } else {
+            Ok((price - old_val) / old_val)
+        }
+    }
+);
+
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_rocp() {
+        let mut rocp_state = StatefulROCP::new(2).unwrap();
+        assert!(rocp_state.next((10.0,)).unwrap().is_nan());
+        assert!(rocp_state.next((10.5,)).unwrap().is_nan());
+        assert_relative_eq!(rocp_state.next((11.2,)).unwrap(), 0.12, epsilon = 0.0001);
+        assert_relative_eq!(rocp_state.next((10.8,)).unwrap(), 0.02857, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_rocp() {
+        let mut batch_rocp = BatchROCP::new(2, 2).unwrap();
+        let input = TAArrowArray::from(vec![10.0, 20.0]);
+
+        // t0
+        let out = batch_rocp.next_batch((input.clone(),)).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t1
+        let input = TAArrowArray::from(vec![10.5, 21.0]);
+        let out = batch_rocp.next_batch((input.clone(),)).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t2
+        let input = TAArrowArray::from(vec![11.2, 22.4]);
+        let out = batch_rocp.next_batch((input.clone(),)).unwrap();
+        assert_relative_eq!(out.value(0), 0.12, epsilon = 0.0001);
+        assert_relative_eq!(out.value(1), 0.12, epsilon = 0.0001);
+    }
 
     #[test]
     fn test_rocp_calculation() {
