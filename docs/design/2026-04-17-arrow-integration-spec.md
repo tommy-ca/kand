@@ -33,9 +33,20 @@ The library utilizes a **Thread-Local Block Cache** to minimize heap allocations
 4.  **Alignment**: Guaranteed 64-byte alignment for SIMD compatibility.
 5.  **NaN Padding**: Consistent initial-period padding.
 
-## 3. Macro Strategy
-- **`kand_arrow_wrapper!`**: Single-output float.
-- **`kand_arrow_wrapper_multi!`**: Multi-output (supports mixed types).
-- **`kand_arrow_wrapper_int!`**: Single-output integer (pattern signals).
+## 4. Stateful Indicator Framework (Streaming V1)
 
-All macros are integrated with the `buffer_pool` for automatic memory management across Rust, Python, and WASM.
+To support high-density streaming (thousands of assets) and standardized persistence, `kand` provides encapsulated stateful indicator traits.
+
+### 4.1 `Indicator` and `BatchIndicator` Traits
+- **`Indicator`**: Standard interface for single-stream stateful indicators. Supports incremental updates via `next()` and state persistence via `to_record_batch()`.
+- **`BatchIndicator`**: Optimized for vectorized multi-stream updates. Processes $N$ streams simultaneously using Arrow arrays, leveraging data parallelism and the internal `BlockPool`.
+
+### 4.2 Vectorized State Management
+Batch indicators like `BatchSMA` manage internal state using Arrow-native structures:
+- **Circular Window Buffer**: Stores historical data for $N$ streams in a single aligned `MutableBuffer`.
+- **Zero-Allocation Updates**: High-frequency streaming updates utilize the `BlockPool` to avoid heap thrashing.
+- **Interoperability**: Batch states can be exported as `RecordBatch`, enabling state persistence across system restarts or distributed handovers.
+
+### 4.3 Python & WASM Stateful Objects
+- **Python**: Batch indicators are exposed as `#[pyclass]` objects (e.g., `kand.BatchSMA`), allowing Python quantitative engines to update thousands of asset states with a single vectorized call.
+- **WASM**: Stateful wrappers provide growth-resilient state management within the WASM heap.

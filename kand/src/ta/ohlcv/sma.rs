@@ -21,6 +21,169 @@ pub const fn lookback(opt_period: TAPeriod) -> Result<usize, KandError> {
     Ok(opt_period - 1)
 }
 
+/// Stateful implementation of Simple Moving Average (SMA).
+pub struct StatefulSMA {
+    period: TAPeriod,
+    window: Vec<TAFloat>,
+    sum: TAFloat,
+}
+
+impl StatefulSMA {
+    /// Creates a new StatefulSMA instance.
+    pub fn new(period: TAPeriod) -> Result<Self, KandError> {
+        #[cfg(feature = "check")]
+        {
+            if period < 2 {
+                return Err(KandError::InvalidParameter);
+            }
+        }
+        Ok(Self {
+            period,
+            window: Vec::with_capacity(period),
+            sum: 0.0,
+        })
+    }
+}
+
+impl crate::ta::traits::Indicator for StatefulSMA {
+    type Input = TAFloat;
+    type Output = TAFloat;
+
+    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        if self.window.len() < self.period {
+            self.window.push(input);
+            self.sum += input;
+            if self.window.len() == self.period {
+                Ok(self.sum / self.period as TAFloat)
+            } else {
+                Ok(TAFloat::NAN)
+            }
+        } else {
+            let old_val = self.window[0];
+            self.window.rotate_left(1);
+            self.window[self.period - 1] = input;
+            self.sum += input - old_val;
+            Ok(self.sum / self.period as TAFloat)
+        }
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        // Placeholder for persistence
+        Err(KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn from_record_batch(&mut self, _batch: &arrow::record_batch::RecordBatch) -> Result<(), KandError> {
+        // Placeholder for restoration
+        Err(KandError::InvalidData)
+    }
+}
+
+/// Vectorized implementation of Simple Moving Average (SMA) for multiple independent streams.
+#[cfg(feature = "arrow")]
+pub struct BatchSMA {
+    period: TAPeriod,
+    num_streams: usize,
+    // Buffer storing the last 'period' values for each stream.
+    // Layout: [s0_t0, s0_t1, ..., s0_tP-1, s1_t0, ...]
+    windows: arrow_buffer::MutableBuffer,
+    // Buffer storing the current sum for each stream.
+    sums: arrow_buffer::MutableBuffer,
+    // Current index in the circular windows buffer.
+    cursor: usize,
+    // Number of values received so far (to handle initial NaN period).
+    count: usize,
+}
+
+#[cfg(feature = "arrow")]
+impl BatchSMA {
+    /// Creates a new BatchSMA instance for a fixed number of streams.
+    pub fn new(period: TAPeriod, num_streams: usize) -> Result<Self, KandError> {
+        use std::mem::size_of;
+        #[cfg(feature = "check")]
+        {
+            if period < 2 || num_streams == 0 {
+                return Err(KandError::InvalidParameter);
+            }
+        }
+
+        let mut windows = arrow_buffer::MutableBuffer::new(num_streams * period * size_of::<TAFloat>());
+        windows.resize(num_streams * period * size_of::<TAFloat>(), 0);
+        
+        let mut sums = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
+        sums.resize(num_streams * size_of::<TAFloat>(), 0);
+
+        Ok(Self {
+            period,
+            num_streams,
+            windows,
+            sums,
+            cursor: 0,
+            count: 0,
+        })
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl crate::ta::traits::BatchIndicator for BatchSMA {
+    type Input = crate::ta::types::TAArrowArray;
+    type Output = crate::ta::types::TAArrowArray;
+
+    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        use arrow::array::Array;
+        use std::mem::size_of;
+
+        if input.len() != self.num_streams {
+            return Err(KandError::LengthMismatch);
+        }
+
+        if input.null_count() > 0 {
+            return Err(KandError::InvalidData);
+        }
+
+        let input_values = input.values();
+        let sums_slice = self.sums.typed_data_mut::<TAFloat>();
+        let windows_slice = self.windows.typed_data_mut::<TAFloat>();
+        
+        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(self.num_streams * size_of::<TAFloat>());
+        let output_slice = unsafe {
+            std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams)
+        };
+
+        self.count += 1;
+        let is_valid = self.count >= self.period;
+
+        for s in 0..self.num_streams {
+            let val = input_values[s];
+            let window_offset = s * self.period + self.cursor;
+            let old_val = windows_slice[window_offset];
+            
+            windows_slice[window_offset] = val;
+            
+            if self.count <= self.period {
+                sums_slice[s] += val;
+            } else {
+                sums_slice[s] += val - old_val;
+            }
+
+            if is_valid {
+                output_slice[s] = sums_slice[s] / self.period as TAFloat;
+            } else {
+                output_slice[s] = TAFloat::NAN;
+            }
+        }
+
+        self.cursor = (self.cursor + 1) % self.period;
+
+        Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
+    }
+
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData) // Placeholder
+    }
+}
+
 /// Calculates SMA without input validation.
 pub fn sma_raw(input: &[TAFloat], opt_period: TAPeriod, output: &mut [TAFloat]) {
     let mut sum = 0.0;
@@ -152,9 +315,50 @@ crate::kand_arrow_wrapper!(
 mod tests {
     use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
+    use crate::ta::traits::{Indicator, BatchIndicator};
     use approx::assert_relative_eq;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_sma() {
+        let mut sma = StatefulSMA::new(3).unwrap();
+        assert!(sma.next(10.0).unwrap().is_nan());
+        assert!(sma.next(11.0).unwrap().is_nan());
+        assert_relative_eq!(sma.next(12.0).unwrap(), 11.0);
+        assert_relative_eq!(sma.next(13.0).unwrap(), 12.0);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_sma() {
+        use crate::ta::traits::BatchIndicator;
+        let mut batch_sma = BatchSMA::new(3, 2).unwrap();
+        
+        // t0
+        let input = TAArrowArray::from(vec![10.0, 20.0]);
+        let out = batch_sma.next_batch(input).unwrap();
+        assert!(out.value(0).is_nan());
+        assert!(out.value(1).is_nan());
+
+        // t1
+        let input = TAArrowArray::from(vec![11.0, 21.0]);
+        let out = batch_sma.next_batch(input).unwrap();
+        assert!(out.value(0).is_nan());
+        assert!(out.value(1).is_nan());
+
+        // t2 - first valid
+        let input = TAArrowArray::from(vec![12.0, 22.0]);
+        let out = batch_sma.next_batch(input).unwrap();
+        assert_relative_eq!(out.value(0), 11.0);
+        assert_relative_eq!(out.value(1), 21.0);
+
+        // t3
+        let input = TAArrowArray::from(vec![13.0, 23.0]);
+        let out = batch_sma.next_batch(input).unwrap();
+        assert_relative_eq!(out.value(0), 12.0);
+        assert_relative_eq!(out.value(1), 22.0);
+    }
 
     #[test]
     #[cfg(feature = "arrow")]
