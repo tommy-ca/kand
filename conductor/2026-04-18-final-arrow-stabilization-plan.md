@@ -1,28 +1,27 @@
-# Implementation Plan: Arrow Integration Stabilization & Benchmarking (Rescheduled)
+# Implementation Plan: Arrow Integration Stabilization & Benchmarking (Refined)
 
 ## Overview
-This plan focuses on finalizing the stabilization of the Python (`kand-py`) bindings to resolve compilation errors and subsequently executing the performance benchmarking suite.
+This plan focuses on rectifying the test assertions and numerical precision mismatches identified during the recent test run. The core library's Arrow integration is functional, but test assertions expect `null` values where the current implementation correctly provides `NaN` for non-data periods.
 
 ## Problem Frame
-The Rust core is Arrow-native and stable. The Python bindings require targeted fixes for `MAType` conversion and error propagation to achieve successful compilation and type-safe interoperability. Once stabilized, we will move to performance benchmarking to validate the Arrow zero-copy throughput improvements.
+The current test suite uses `assert!(result.is_null(i))` for empty periods, but the `_arrow` implementation (and `allow-nan` feature) uses `NAN`. We must update assertions to `assert!(result.is_nan(i))` or equivalent to reflect the "No-Null" policy. Additionally, some indicators exhibit slight floating-point drifts in the Arrow-native implementation which require tuning numerical epsilon tolerances in tests.
 
 ## Requirements Trace
-- **R1.** Finalize Python binding wrappers for indicators using `MAType` (ADOSC, BBands).
-- **R2.** Ensure consistent Python return types (tuples for multi-output).
+- **R1.** Align test assertions with "No-Null" (use `NaN`) policy.
+- **R2.** Resolve floating-point precision drifts in Arrow variants.
 - **R3.** Formal Performance Benchmarking (Slice-based vs. Arrow-native).
-- **R4.** Clean compilation and warning-free build.
+- **R4.** Documentation of benchmark results.
 
 ## Key Technical Decisions
-- **Consistency:** Python macro signatures must be 1:1 with core indicators.
-- **Benchmarking:** Use `criterion` to compare slice-based (`_raw`) vs Arrow-native (`_arrow`) throughput.
+- **Assertion Standards:** Update all Arrow tests to use `result.is_nan(i)` for empty-period verification.
+- **Precision:** Use `approx::assert_relative_eq!` with appropriately tuned epsilon values for all numerical parity tests.
 
 ## Implementation Units
 
-### Phase 1: Python Binding Stabilization (High Priority)
-- [ ] Unit 1.1: Fix `MAType` conversion in `adosc_py` and `bbands_py` (accept `u32`, convert to `MAType`).
-- [ ] Unit 1.2: Correct return type pattern matching in `aroon_inc_py` and `aroonosc_inc_py` (using `Ok((...))`).
-- [ ] Unit 1.3: Systematic removal of all `Signal` import warnings in core `kand`.
-- [ ] Unit 1.4: Final verify: `cargo check -p kand-py --features arrow`.
+### Phase 1: Test & Assertion Stabilization
+- [ ] Unit 1.1: Standardize test assertions across all `ohlcv` indicators to use `is_nan()`.
+- [ ] Unit 1.2: Tune floating-point tolerances (`epsilon`) for `adosc`, `adx`, `dx`, `adxr`, etc.
+- [ ] Unit 1.3: Verification: `cargo test --workspace --features arrow` passes 100%.
 
 ### Phase 2: Performance Benchmarking
 - [ ] Unit 2.1: Implement benchmark suite (`kand/benches/bench_main.rs`).
@@ -34,11 +33,10 @@ The Rust core is Arrow-native and stable. The Python bindings require targeted f
 - [ ] Unit 3.2: Tag v0.2.2-arrow release.
 
 ## Verification
-- Compile bindings: `cargo check -p kand-py --features arrow`.
-- Benchmark: `cargo bench -p kand --features arrow`.
 - Test: `cargo test --workspace --features arrow`.
+- Benchmark: `cargo bench -p kand --features arrow`.
 
-## Rescheduled Timeline
-1. **Binding Stabilization:** Finalize Python logic today.
-2. **Benchmarking:** Execution and analysis scheduled for next session.
-3. **Audit:** Final security audit and release tagging.
+## Schedule
+1. **Stabilization Phase (Day 1):** Execute Phase 1 units to reach 100% pass rate.
+2. **Benchmarking Phase (Day 2):** Execute Phase 2 units.
+3. **Audit Phase (Day 3):** Execute Phase 3 units.
