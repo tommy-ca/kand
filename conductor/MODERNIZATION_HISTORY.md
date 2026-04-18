@@ -30,11 +30,10 @@ Successfully mitigated the heap allocation bottleneck through:
 - **64-byte Alignment**: Guaranteed Arrow-compliant alignment within the WASM heap for improved SIMD compatibility.
 - **Direct Arrow Consumption**: Implemented `to_arrow_array` and `from_parts` to allow WASM to consume and produce Arrow-native buffers zero-copy.
 
-### 5. Production Readiness & Stateful Streaming
-- **`Indicator` Traits**: Defined standard traits for single-stream and vectorized multi-stream stateful indicators.
-- **`BatchIndicator`**: Implemented `BatchSMA` as a proof-of-concept for high-density streaming, enabling parallel state updates for thousands of assets using vectorized Arrow operations.
-- **Persistence**: Added infrastructure for exporting/importing indicator states as Arrow `RecordBatch`.
-- **Production Audit**: Verified `BlockPool` safety, alignment, and thread-local isolation for mission-critical trading environments.
+### 5. Phase 5: Enterprise Durability (V5 Completed)
+- **Columnar Persistence**: Configuration and transient state scalars (periods, counts, cursors) are now stored as `__kand_` prefixed 1-element columns in the state `RecordBatch`. This ensures 100% data integrity when states are processed by external Arrow query engines (Polars/DataFusion).
+- **Atomic "Transactional" Updates**: Multi-component indicators (e.g., `MACD`) now implement a transactional update pattern. Internal sub-components are updated tentatively on a cloned state; the parent state is only committed if all sub-operations succeed, preventing state corruption during streaming errors.
+- **`Indicator` Traits**: Standardized the `Indicator` and `BatchIndicator` traits with a robust `restore_from_record_batch` API.
 
 ### 6. Automated Quality & Modern Workflow
 - **Unified Quality Gates**: Established a comprehensive `prek` workflow (ultra-performant alternative to `pre-commit`) to enforce 100% warning-free builds.
@@ -48,4 +47,4 @@ The `kand` library is now a state-of-the-art technical analysis engine. It provi
 
 ---
 *Date: 2026-04-18*
-*Status: Transitioning to V5 (Enterprise Durability)*
+*Release: v0.2.3-durability*

@@ -243,7 +243,7 @@ mod tests {
         let input_price = vec![100.0; 700];
         let input_arrow = TAArrowArray::from(input_price);
 
-        let (upper, lower, b_upper, b_lower) = vegas_arrow(&input_arrow).unwrap();
+        let (upper, _lower, _b_upper, _b_lower) = vegas_arrow(&input_arrow).unwrap();
 
         assert_eq!(upper.len(), 700);
         let lookback = lookback().unwrap();

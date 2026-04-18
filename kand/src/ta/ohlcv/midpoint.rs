@@ -357,7 +357,7 @@ mod tests {
 
         let price_arrow = TAArrowArray::from(input_price);
 
-        let (midpoint, highest, lowest) = midpoint_arrow(&price_arrow, opt_period).unwrap();
+        let (midpoint, _highest, _lowest) = midpoint_arrow(&price_arrow, opt_period).unwrap();
 
         assert_eq!(midpoint.len(), 5);
         assert!(midpoint.value(0).is_nan());

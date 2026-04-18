@@ -380,7 +380,7 @@ mod tests {
         let low_arrow = TAArrowArray::from(input_low);
         let close_arrow = TAArrowArray::from(input_close);
 
-        let (output_open, output_high, output_low, output_close) =
+        let (output_open, _output_high, _output_low, output_close) =
             ha_arrow(&open_arrow, &high_arrow, &low_arrow, &close_arrow).unwrap();
 
         assert_eq!(output_open.len(), 5);

@@ -716,6 +716,7 @@ crate::kand_arrow_wrapper_multi!(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ta::traits::Indicator;
 
     #[test]
     fn test_stateful_macd() {

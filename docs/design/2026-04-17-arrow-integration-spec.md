@@ -37,9 +37,9 @@ To ensure 100% interoperability with external Arrow tools (Polars, DataFusion), 
 - Values are repeated for all rows in a `BatchIndicator` state to maintain schema consistency.
 - This prevents data loss when states are passed through joins, filters, or aggregations that strip metadata.
 
-#### 2.2.2 Atomic State Updates
-Multi-component indicators (e.g., `MACD`) must implement a **Transactional Commit** pattern:
-- Components are updated tentatively.
+#### 2.2.2 Atomic State Updates (Explicit Commit)
+Multi-component indicators (e.g., `MACD`) implement a **Transactional Commit** pattern:
+- Components are updated tentatively on state clones.
 - If any sub-component fails, the parent state remains unchanged.
 - Successful updates are committed atomically to ensure state integrity.
 
@@ -54,3 +54,4 @@ A single `kand_indicator!` macro automates the generation of the full indicator 
 2.  **Numerical Parity**: Bit-identical results.
 3.  **Persistence Integrity**: 0 data loss across save/load cycles in Polars.
 4.  **Atomicity**: Verified rollback on partial update failures.
+5.  **Quality Gates**: Automated `prek` hooks (clippy, ruff, ty) must pass 100%.

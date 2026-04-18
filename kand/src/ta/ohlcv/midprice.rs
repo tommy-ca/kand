@@ -221,7 +221,7 @@ pub fn midprice_inc_raw(
 /// ```
 /// use kand::ohlcv::midprice;
 ///
-/// let (midprice, highest, lowest) = midprice::midprice_inc(
+/// let (midprice, _highest, _lowest) = midprice::midprice_inc(
 ///     10.5, // current high
 ///     9.8,  // current low
 ///     10.2, // previous highest high
@@ -362,7 +362,7 @@ mod tests {
         let high_arrow = TAArrowArray::from(input_high);
         let low_arrow = TAArrowArray::from(input_low);
 
-        let (midprice, highest, lowest) =
+        let (midprice, _highest, _lowest) =
             midprice_arrow(&high_arrow, &low_arrow, opt_period).unwrap();
 
         assert_eq!(midprice.len(), 5);

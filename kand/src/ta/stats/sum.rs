@@ -234,7 +234,7 @@ mod tests {
         }
 
         // Compare with known values
-        let expected_values = [
+        let _expected_values = [
             492_849.500_000_000_06,
             492_723.700_000_000_07,
             492_543.500_000_000_06,

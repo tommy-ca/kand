@@ -400,7 +400,7 @@ mod tests {
         let close_arrow = TAArrowArray::from(input_close);
         let volume_arrow = TAArrowArray::from(input_volume);
 
-        let (vwap, cum_pv, cum_vol) =
+        let (vwap, _cum_pv, _cum_vol) =
             vwap_arrow(&high_arrow, &low_arrow, &close_arrow, &volume_arrow).unwrap();
 
         assert_eq!(vwap.len(), 14);
