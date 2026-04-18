@@ -103,6 +103,16 @@ new_ema = ema_inc(new_price, prev_ema, period=3)
 
 ---
 
+### Examples
+
+| Language | Topic | Link |
+|----------|-------|------|
+| **Rust** | Native Arrow Usage | [`kand/examples/arrow_sma.rs`](./kand/examples/arrow_sma.rs) |
+| **Python** | Polars Zero-Copy Interop | [`kand-py/python/examples/polars_interop.py`](./kand-py/python/examples/polars_interop.py) |
+| **WASM** | Shared Memory Protocol | [`kand-wasm/README.md`](./kand-wasm/README.md) |
+
+---
+
 ### Rust API
 
 The Rust interface in `kand` provides a high-performance, type-safe implementation of EMA with flexible parameter control. It supports both Vec and ndarray inputs for batch and incremental calculations, as shown below.
