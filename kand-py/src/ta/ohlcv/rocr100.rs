@@ -1,6 +1,7 @@
 use kand::{TAFloat, ohlcv::rocr100};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
+use crate::kand_py_arrow_wrapper;
 
 /// Computes the Rate of Change Ratio * 100 (ROCR100) over a NumPy array.
 ///
@@ -47,6 +48,13 @@ pub fn rocr100_py(
     Ok(output.into_pyarray(py).into())
 }
 
+kand_py_arrow_wrapper!(
+    rocr100_arrow,
+    rocr100::rocr100_arrow,
+    inputs: { data },
+    params: { period: usize }
+);
+
 /// Calculates a single ROCR100 value incrementally.
 ///
 /// This function provides an optimized way to calculate the latest ROCR100 value
@@ -68,7 +76,11 @@ pub fn rocr100_py(
 ///   ```
 #[pyfunction]
 #[pyo3(name = "rocr100_inc", signature = (current_price, prev_price))]
-pub fn rocr100_inc_py(current_price: TAFloat, prev_price: TAFloat) -> PyResult<TAFloat> {
-    rocr100::rocr100_inc(current_price, prev_price)
+pub fn rocr100_inc_py(
+    py: Python,
+    current_price: TAFloat,
+    prev_price: TAFloat,
+) -> PyResult<TAFloat> {
+    py.allow_threads(|| rocr100::rocr100_inc(current_price, prev_price))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }

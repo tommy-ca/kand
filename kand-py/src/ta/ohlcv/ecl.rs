@@ -136,3 +136,12 @@ pub fn ecl_inc_py(
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     })
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_py_arrow_wrapper_multi!(
+    ecl_arrow,
+    kand::ohlcv::ecl::ecl_arrow,
+    inputs: { high, low, close },
+    params: {},
+    output_count: 10
+);

@@ -1,104 +1,94 @@
 use kand::ta::ohlcv::adosc;
+use crate::WasmBuffer;
+use crate::ta::types::MAType;
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+#[derive(Default)]
+pub struct ADOSCResult {
+    pub adosc: f64,
+    pub ad: f64,
+    pub ad_fast_ema: f64,
+    pub ad_slow_ema: f64,
+}
 
 /**
  * Returns the lookback period for ADOSC calculation.
- * @param {number} opt_fast_period - The time period for the fast EMA (must be >= 2).
- * @param {number} opt_slow_period - The time period for the slow EMA (must be >= fast_period).
- * @returns {number} The lookback period.
- * @throws {Error} If parameters are invalid.
  */
 #[wasm_bindgen(js_name = adoscLookback)]
 pub fn adosc_lookback_wasm(
     opt_fast_period: usize,
     opt_slow_period: usize,
+    opt_ma_type: MAType,
 ) -> Result<usize, JsValue> {
-    adosc::lookback(opt_fast_period, opt_slow_period).map_err(|e| JsValue::from_str(&e.to_string()))
+    adosc::lookback(opt_fast_period, opt_slow_period, opt_ma_type.into())
+        .map(|v| v as usize)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**
- * Calculates the Chaikin A/D Oscillator (ADOSC).
- * @param {Float64Array} input_high - Array of high prices.
- * @param {Float64Array} input_low - Array of low prices.
- * @param {Float64Array} input_close - Array of close prices.
- * @param {Float64Array} input_volume - Array of volume values.
- * @param {number} opt_fast_period - The time period for the fast EMA (must be >= 2).
- * @param {number} opt_slow_period - The time period for the slow EMA (must be >= fast_period).
- * @returns {Float64Array} An array of ADOSC values.
- * @throws {Error} If inputs are invalid or calculation fails.
+ * Calculates the Chaikin A/D Oscillator (ADOSC) using zero-copy WasmBuffers.
  */
-#[wasm_bindgen(js_name = adosc)]
-pub fn adosc_wasm(
-    input_high: Vec<f64>,
-    input_low: Vec<f64>,
-    input_close: Vec<f64>,
-    input_volume: Vec<f64>,
+#[wasm_bindgen(js_name = adoscZeroCopy)]
+#[allow(clippy::too_many_arguments)]
+pub fn adosc_wasm_zero_copy(
+    input_high: &WasmBuffer,
+    input_low: &WasmBuffer,
+    input_close: &WasmBuffer,
+    input_volume: &WasmBuffer,
     opt_fast_period: usize,
     opt_slow_period: usize,
-) -> Result<Vec<f64>, JsValue> {
+    opt_ma_type: MAType,
+    output_adosc: &mut WasmBuffer,
+) -> Result<(), JsValue> {
     let len = input_high.len();
-    let mut output_adosc = vec![0.0; len];
-    let mut output_ad = vec![0.0; len];
-    let mut output_ad_fast_ema = vec![0.0; len];
-    let mut output_ad_slow_ema = vec![0.0; len];
-
     adosc::adosc(
-        &input_high,
-        &input_low,
-        &input_close,
-        &input_volume,
+        input_high.as_slice::<f64>(len),
+        input_low.as_slice::<f64>(len),
+        input_close.as_slice::<f64>(len),
+        input_volume.as_slice::<f64>(len),
         opt_fast_period,
         opt_slow_period,
-        &mut output_adosc,
-        &mut output_ad,
-        &mut output_ad_fast_ema,
-        &mut output_ad_slow_ema,
+        opt_ma_type.into(),
+        output_adosc.as_mut_slice::<f64>(len),
     )
-    .map_err(|e| JsValue::from_str(&e.to_string()))?;
-
-    Ok(output_adosc)
+    .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /**
  * Calculates the next ADOSC value incrementally.
- * @param {number} input_high - The current high price.
- * @param {number} input_low - The current low price.
- * @param {number} input_close - The current close price.
- * @param {number} input_volume - The current volume.
- * @param {number} opt_fast_period - The time period for the fast EMA.
- * @param {number} opt_slow_period - The time period for the slow EMA.
- * @param {number} prev_ad - The previous A/D value.
- * @param {number} prev_fast_ema - The previous fast EMA of the A/D line.
- * @param {number} prev_slow_ema - The previous slow EMA of the A/D line.
- * @returns {number} The new ADOSC value.
- * @throws {Error} If inputs are invalid or calculation fails.
  */
 #[wasm_bindgen(js_name = adoscInc)]
+#[allow(clippy::too_many_arguments)]
 pub fn adosc_inc_wasm(
     input_high: f64,
     input_low: f64,
     input_close: f64,
     input_volume: f64,
+    prev_ad: f64,
+    prev_ad_fast_ema: f64,
+    prev_ad_slow_ema: f64,
     opt_fast_period: usize,
     opt_slow_period: usize,
-    prev_ad: f64,
-    prev_fast_ema: f64,
-    prev_slow_ema: f64,
-) -> Result<f64, JsValue> {
-    // For incremental calculation, we only need the final ADOSC value.
-    // The core `adosc_inc` function returns a tuple with intermediate values, which we can discard here.
-    let (output_adosc, _, _, _) = adosc::adosc_inc(
+    opt_ma_type: MAType,
+) -> Result<ADOSCResult, JsValue> {
+    adosc::adosc_inc(
         input_high,
         input_low,
         input_close,
         input_volume,
         prev_ad,
-        prev_fast_ema,
-        prev_slow_ema,
+        prev_ad_fast_ema,
+        prev_ad_slow_ema,
         opt_fast_period,
         opt_slow_period,
+        opt_ma_type.into(),
     )
-    .map_err(|e| JsValue::from_str(&e.to_string()))?;
-
-    Ok(output_adosc)
+    .map(|(adosc, ad, ad_fast_ema, ad_slow_ema)| ADOSCResult {
+        adosc,
+        ad,
+        ad_fast_ema,
+        ad_slow_ema,
+    })
+    .map_err(|e| JsValue::from_str(&e.to_string()))
 }

@@ -1,6 +1,7 @@
 use kand::{TAFloat, ohlcv::mom};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
+use crate::kand_py_arrow_wrapper;
 
 /// Computes the Momentum (MOM) over a NumPy array.
 ///
@@ -44,6 +45,13 @@ pub fn mom_py(
     // Convert the output array to a Python object
     Ok(output.into_pyarray(py).into())
 }
+
+kand_py_arrow_wrapper!(
+    mom_arrow,
+    mom::mom_arrow,
+    inputs: { data },
+    params: { period: usize }
+);
 
 /// Calculates the next Momentum (MOM) value incrementally.
 ///

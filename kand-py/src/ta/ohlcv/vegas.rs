@@ -98,18 +98,30 @@ pub fn vegas_py(
 #[pyfunction]
 #[pyo3(name = "vegas_inc", signature = (price, prev_channel_upper, prev_channel_lower, prev_boundary_upper, prev_boundary_lower))]
 pub fn vegas_inc_py(
+    py: Python,
     price: TAFloat,
     prev_channel_upper: TAFloat,
     prev_channel_lower: TAFloat,
     prev_boundary_upper: TAFloat,
     prev_boundary_lower: TAFloat,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat)> {
-    vegas::vegas_inc(
-        price,
-        prev_channel_upper,
-        prev_channel_lower,
-        prev_boundary_upper,
-        prev_boundary_lower,
-    )
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    py.allow_threads(|| {
+        vegas::vegas_inc(
+            price,
+            prev_channel_upper,
+            prev_channel_lower,
+            prev_boundary_upper,
+            prev_boundary_lower,
+        )
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    })
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_py_arrow_wrapper_multi!(
+    vegas_arrow,
+    kand::ohlcv::vegas::vegas_arrow,
+    inputs: { prices },
+    params: {},
+    output_count: 4
+);

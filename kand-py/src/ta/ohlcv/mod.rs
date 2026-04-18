@@ -20,6 +20,7 @@ pub mod dema;
 pub mod dx;
 pub mod ecl;
 pub mod ema;
+pub mod ha;
 pub mod macd;
 pub mod medprice;
 pub mod mfi;

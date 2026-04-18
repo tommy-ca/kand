@@ -54,5 +54,8 @@ Each batch follows a **Specs -> Tests -> Impl -> Audit** cycle.
 
 - [x] **Unit 3.1: Python Binding Auto-Scaling (COMPLETED)**
 
-- [ ] **Unit 3.2: Performance & Security Audit**
+- [x] **Unit 3.2: WASM Binding Auto-Scaling (COMPLETED)**
+  - Done: Updated `WasmBuffer` and refactored all remaining indicators to use generic `WasmBuffer::as_slice` and `as_mut_slice`.
+
+- [ ] **Unit 3.3: Performance & Security Audit**
   **Goal:** Final pass with specialized agents to verify zero-copy and memory safety.

@@ -98,6 +98,7 @@ pub fn sar_py(
 #[pyfunction]
 #[pyo3(name = "sar_inc", signature = (high, low, prev_high, prev_low, prev_sar, is_long, af, ep, acceleration, maximum))]
 pub fn sar_inc_py(
+    py: Python,
     high: TAFloat,
     low: TAFloat,
     prev_high: TAFloat,
@@ -109,17 +110,28 @@ pub fn sar_inc_py(
     acceleration: TAFloat,
     maximum: TAFloat,
 ) -> PyResult<(TAFloat, bool, TAFloat, TAFloat)> {
-    sar::sar_inc(
-        high,
-        low,
-        prev_high,
-        prev_low,
-        prev_sar,
-        is_long,
-        af,
-        ep,
-        acceleration,
-        maximum,
-    )
+    py.allow_threads(|| {
+        sar::sar_inc(
+            high,
+            low,
+            prev_high,
+            prev_low,
+            prev_sar,
+            is_long,
+            af,
+            ep,
+            acceleration,
+            maximum,
+        )
+    })
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+
+#[cfg(feature = "arrow")]
+crate::kand_py_arrow_wrapper_multi!(
+    sar_arrow,
+    kand::ta::ohlcv::sar::sar_arrow,
+    inputs: { high, low },
+    params: { acceleration: TAFloat, maximum: TAFloat },
+    output_count: 4
+);

@@ -1,6 +1,7 @@
 use kand::{TAFloat, ohlcv::natr};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
+use crate::kand_py_arrow_wrapper;
 
 /// Computes the Normalized Average True Range (NATR) over NumPy arrays.
 ///
@@ -59,6 +60,13 @@ pub fn natr_py(
     // Convert the output array to a Python object
     Ok(output.into_pyarray(py).into())
 }
+
+kand_py_arrow_wrapper!(
+    natr_arrow,
+    natr::natr_arrow,
+    inputs: { high, low, close },
+    params: { period: usize }
+);
 
 /// Calculates the next NATR value incrementally.
 ///
