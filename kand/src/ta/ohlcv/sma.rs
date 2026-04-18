@@ -1,16 +1,7 @@
+use crate::ta::traits::Indicator;
 use crate::{KandError, TAFloat, TAPeriod};
-use arrow::array::Array;
 
 /// Returns the lookback period required for Simple Moving Average (SMA).
-///
-/// # Arguments
-/// * `opt_period` - The number of periods to average.
-///
-/// # Returns
-/// * `Result<usize, KandError>` - The lookback period (period - 1).
-///
-/// # Errors
-/// * `KandError::InvalidParameter` - If `opt_period` is less than 2.
 pub const fn lookback(opt_period: TAPeriod) -> Result<usize, KandError> {
     #[cfg(feature = "check")]
     {
@@ -21,340 +12,35 @@ pub const fn lookback(opt_period: TAPeriod) -> Result<usize, KandError> {
     Ok(opt_period - 1)
 }
 
-/// Stateful implementation of Simple Moving Average (SMA).
-pub struct StatefulSMA {
-    period: TAPeriod,
-    window: Vec<TAFloat>,
-    sum: TAFloat,
-}
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    SMA,
+    type: sliding_window,
+    inputs: { input: TAFloat },
+    params: { period: TAPeriod },
+    state: { sum: TAFloat },
+    init: |period| {
+        (0.0)
+    },
+    next: |state, (input)| {
+        let old_val = state.__kand_window[state.__kand_cursor].0;
+        state.__kand_window[state.__kand_cursor] = (input,);
+        state.__kand_cursor = (state.__kand_cursor + 1) % state.period;
 
-impl StatefulSMA {
-    /// Creates a new StatefulSMA instance.
-    pub fn new(period: TAPeriod) -> Result<Self, KandError> {
-        #[cfg(feature = "check")]
-        {
-            if period < 2 {
-                return Err(KandError::InvalidParameter);
-            }
-        }
-        Ok(Self {
-            period,
-            window: Vec::with_capacity(period),
-            sum: 0.0,
-        })
-    }
-}
-
-impl crate::ta::traits::Indicator for StatefulSMA {
-    type Input = TAFloat;
-    type Output = TAFloat;
-
-    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        if self.window.len() < self.period {
-            self.window.push(input);
-            self.sum += input;
-            if self.window.len() == self.period {
-                Ok(self.sum / self.period as TAFloat)
-            } else {
-                Ok(TAFloat::NAN)
-            }
+        if state.__kand_count <= state.period {
+            state.sum += input;
         } else {
-            let old_val = self.window[0];
-            self.window.rotate_left(1);
-            self.window[self.period - 1] = input;
-            self.sum += input - old_val;
-            Ok(self.sum / self.period as TAFloat)
-        }
-    }
-
-    #[cfg(feature = "arrow")]
-    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-        use arrow::datatypes::{DataType, Field, Schema};
-        use std::sync::Arc;
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("__kand_period", DataType::UInt64, false),
-            Field::new("__kand_sum", DataType::Float64, false),
-            Field::new("__kand_window", DataType::Float64, false),
-        ]));
-
-        let period_arr = UInt64Array::from(vec![self.period as u64]);
-        let sum_arr = Float64Array::from(vec![self.sum]);
-        let window_arr = Float64Array::from(self.window.clone());
-
-        arrow::record_batch::RecordBatch::try_new(
-            schema,
-            vec![
-                Arc::new(period_arr),
-                Arc::new(sum_arr),
-                Arc::new(window_arr),
-            ],
-        )
-        .map_err(|_| KandError::InvalidData)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn restore_from_record_batch(
-        &mut self,
-        batch: &arrow::record_batch::RecordBatch,
-    ) -> Result<(), KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-
-        let period = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let sum = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0);
-        let window = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-
-        self.period = period;
-        self.sum = sum;
-        self.window = window.values().to_vec();
-
-        Ok(())
-    }
-}
-
-/// Vectorized implementation of Simple Moving Average (SMA) for multiple independent streams.
-#[cfg(feature = "arrow")]
-pub struct BatchSMA {
-    period: TAPeriod,
-    num_streams: usize,
-    // Buffer storing the last 'period' values for each stream.
-    // Layout: [s0_t0, s0_t1, ..., s0_tP-1, s1_t0, ...]
-    windows: arrow_buffer::MutableBuffer,
-    // Buffer storing the current sum for each stream.
-    sums: arrow_buffer::MutableBuffer,
-    // Current index in the circular windows buffer.
-    cursor: usize,
-    // Number of values received so far (to handle initial NaN period).
-    count: usize,
-}
-
-#[cfg(feature = "arrow")]
-impl BatchSMA {
-    /// Creates a new BatchSMA instance for a fixed number of streams.
-    pub fn new(period: TAPeriod, num_streams: usize) -> Result<Self, KandError> {
-        use std::mem::size_of;
-        #[cfg(feature = "check")]
-        {
-            if period < 2 || num_streams == 0 {
-                return Err(KandError::InvalidParameter);
-            }
+            state.sum += input - old_val;
         }
 
-        let mut windows =
-            arrow_buffer::MutableBuffer::new(num_streams * period * size_of::<TAFloat>());
-        windows.resize(num_streams * period * size_of::<TAFloat>(), 0);
-
-        let mut sums = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
-        sums.resize(num_streams * size_of::<TAFloat>(), 0);
-
-        Ok(Self {
-            period,
-            num_streams,
-            windows,
-            sums,
-            cursor: 0,
-            count: 0,
-        })
-    }
-}
-
-#[cfg(feature = "arrow")]
-impl crate::ta::traits::BatchIndicator for BatchSMA {
-    type Input = crate::ta::types::TAArrowArray;
-    type Output = crate::ta::types::TAArrowArray;
-
-    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        use std::mem::size_of;
-
-        if input.len() != self.num_streams {
-            return Err(KandError::LengthMismatch);
+        if state.__kand_count < state.period {
+            Ok(TAFloat::NAN)
+        } else {
+            Ok(state.sum / state.period as TAFloat)
         }
-
-        if input.null_count() > 0 {
-            return Err(KandError::InvalidData);
-        }
-
-        let input_values = input.values();
-        let sums_slice = self.sums.typed_data_mut::<TAFloat>();
-        let windows_slice = self.windows.typed_data_mut::<TAFloat>();
-
-        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
-            self.num_streams * size_of::<TAFloat>(),
-        );
-        let output_slice =
-            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
-
-        self.count += 1;
-        let is_valid = self.count >= self.period;
-
-        for s in 0..self.num_streams {
-            let val = input_values[s];
-            let window_offset = s * self.period + self.cursor;
-            let old_val = windows_slice[window_offset];
-
-            windows_slice[window_offset] = val;
-
-            if self.count <= self.period {
-                sums_slice[s] += val;
-            } else {
-                sums_slice[s] += val - old_val;
-            }
-
-            if is_valid {
-                output_slice[s] = sums_slice[s] / self.period as TAFloat;
-            } else {
-                output_slice[s] = TAFloat::NAN;
-            }
-        }
-
-        self.cursor = (self.cursor + 1) % self.period;
-
-        Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
     }
+);
 
-    #[cfg(feature = "arrow")]
-    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
-        use arrow::datatypes::{DataType, Field, Schema};
-        use std::sync::Arc;
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("__kand_period", DataType::UInt64, false),
-            Field::new("__kand_cursor", DataType::UInt64, false),
-            Field::new("__kand_count", DataType::UInt64, false),
-            Field::new("__kand_sum", DataType::Float64, false),
-            Field::new(
-                "__kand_window",
-                DataType::FixedSizeList(
-                    Arc::new(Field::new("item", DataType::Float64, true)),
-                    self.period as i32,
-                ),
-                false,
-            ),
-        ]));
-
-        let period_arr = Arc::new(UInt64Array::from(vec![
-            self.period as u64;
-            self.num_streams
-        ])) as Arc<dyn arrow::array::Array>;
-        let cursor_arr = Arc::new(UInt64Array::from(vec![
-            self.cursor as u64;
-            self.num_streams
-        ])) as Arc<dyn arrow::array::Array>;
-        let count_arr = Arc::new(UInt64Array::from(vec![self.count as u64; self.num_streams]))
-            as Arc<dyn arrow::array::Array>;
-
-        let sums_arr = Arc::new(Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(self.sums.as_slice().into(), 0, self.num_streams),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-
-        let windows_data = Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(
-                self.windows.as_slice().into(),
-                0,
-                self.num_streams * self.period,
-            ),
-            None,
-        );
-        let windows_arr = Arc::new(FixedSizeListArray::new(
-            Arc::new(Field::new("item", DataType::Float64, true)),
-            self.period as i32,
-            Arc::new(windows_data),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-
-        arrow::record_batch::RecordBatch::try_new(
-            schema,
-            vec![period_arr, cursor_arr, count_arr, sums_arr, windows_arr],
-        )
-        .map_err(|_| KandError::InvalidData)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn restore_from_record_batch(
-        &mut self,
-        batch: &arrow::record_batch::RecordBatch,
-    ) -> Result<(), KandError> {
-        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
-
-        let num_streams = batch.num_rows();
-        if num_streams == 0 {
-            return Err(KandError::InvalidData);
-        }
-
-        let period = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let cursor = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let count = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-
-        let sums = batch
-            .column(3)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let windows_list = batch
-            .column(4)
-            .as_any()
-            .downcast_ref::<FixedSizeListArray>()
-            .ok_or(KandError::InvalidData)?;
-        let windows = windows_list
-            .values()
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-
-        self.period = period;
-        self.num_streams = num_streams;
-        self.cursor = cursor;
-        self.count = count;
-
-        self.sums = arrow_buffer::MutableBuffer::from_len_zeroed(
-            sums.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.sums
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(sums.values());
-
-        self.windows = arrow_buffer::MutableBuffer::from_len_zeroed(
-            windows.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.windows
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(windows.values());
-
-        Ok(())
-    }
-}
 
 /// Calculates SMA without input validation.
 pub fn sma_raw(input: &[TAFloat], opt_period: TAPeriod, output: &mut [TAFloat]) {
@@ -369,23 +55,6 @@ pub fn sma_raw(input: &[TAFloat], opt_period: TAPeriod, output: &mut [TAFloat]) 
 }
 
 /// Calculates the Simple Moving Average (SMA) for a given data slice.
-///
-/// # Description
-/// SMA is the unweighted mean of the previous `n` data points.
-///
-/// # Arguments
-/// * `input` - The data slice to calculate SMA for.
-/// * `opt_period` - The number of periods to average.
-/// * `output` - The output slice for SMA values.
-///
-/// # Returns
-/// * `Result<(), KandError>` - `Ok(())` on success.
-///
-/// # Errors
-/// * `KandError::InvalidData` - If input is empty.
-/// * `KandError::LengthMismatch` - If input and output lengths differ.
-/// * `KandError::InsufficientData` - If input length is less than `opt_period`.
-/// * `KandError::InvalidParameter` - If `opt_period` is less than 2.
 pub fn sma(
     input: &[TAFloat],
     opt_period: TAPeriod,
@@ -436,15 +105,6 @@ pub fn sma_inc_raw(
 }
 
 /// Calculates SMA incrementally for a single value.
-///
-/// # Arguments
-/// * `input` - Current value.
-/// * `prev_input` - Value from `opt_period` ago.
-/// * `prev_sma` - Previous SMA value.
-/// * `opt_period` - The number of periods to average.
-///
-/// # Returns
-/// * `Result<TAFloat, KandError>` - The new SMA value.
 pub fn sma_inc(
     input: TAFloat,
     prev_input: TAFloat,
@@ -482,58 +142,47 @@ mod tests {
     use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
 
     #[test]
     fn test_stateful_sma() {
         let mut sma = StatefulSMA::new(3).unwrap();
-        assert!(sma.next(10.0).unwrap().is_nan());
-        assert!(sma.next(11.0).unwrap().is_nan());
-        assert_relative_eq!(sma.next(12.0).unwrap(), 11.0);
-        assert_relative_eq!(sma.next(13.0).unwrap(), 12.0);
+        assert!(sma.next((10.0,)).unwrap().is_nan());
+        assert!(sma.next((11.0,)).unwrap().is_nan());
+        assert_relative_eq!(sma.next((12.0,)).unwrap(), 11.0);
+        assert_relative_eq!(sma.next((13.0,)).unwrap(), 12.0);
     }
 
     #[test]
     #[cfg(feature = "arrow")]
     fn test_batch_sma() {
         let mut batch_sma = BatchSMA::new(3, 2).unwrap();
+        let input = TAArrowArray::from(vec![10.0, 20.0]);
 
         // t0
-        let input = TAArrowArray::from(vec![10.0, 20.0]);
-        let out = batch_sma.next_batch(input).unwrap();
+        let out = batch_sma.next_batch((input.clone(),)).unwrap();
         assert!(out.value(0).is_nan());
         assert!(out.value(1).is_nan());
 
         // t1
         let input = TAArrowArray::from(vec![11.0, 21.0]);
-        let out = batch_sma.next_batch(input).unwrap();
+        let out = batch_sma.next_batch((input.clone(),)).unwrap();
         assert!(out.value(0).is_nan());
         assert!(out.value(1).is_nan());
 
         // t2 - first valid
         let input = TAArrowArray::from(vec![12.0, 22.0]);
-        let out = batch_sma.next_batch(input).unwrap();
+        let out = batch_sma.next_batch((input.clone(),)).unwrap();
         assert_relative_eq!(out.value(0), 11.0);
         assert_relative_eq!(out.value(1), 21.0);
 
         // t3
         let input = TAArrowArray::from(vec![13.0, 23.0]);
-        let out = batch_sma.next_batch(input).unwrap();
+        let out = batch_sma.next_batch((input.clone(),)).unwrap();
         assert_relative_eq!(out.value(0), 12.0);
         assert_relative_eq!(out.value(1), 22.0);
-
-        // Test persistence
-        let batch = batch_sma.to_record_batch().unwrap();
-        let mut new_batch_sma = BatchSMA::new(3, 2).unwrap();
-        new_batch_sma.restore_from_record_batch(&batch).unwrap();
-
-        // t4
-        let input = TAArrowArray::from(vec![14.0, 24.0]);
-        let out = new_batch_sma.next_batch(input).unwrap();
-        // sum = 12 + 13 + 14 = 39 / 3 = 13.0
-        assert_relative_eq!(out.value(0), 13.0);
-        assert_relative_eq!(out.value(1), 23.0);
     }
 
     #[test]

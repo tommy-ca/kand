@@ -1,27 +1,7 @@
+use crate::ta::traits::Indicator;
 use crate::{KandError, TAFloat};
 
 /// Calculates the lookback period required for RSI (Relative Strength Index) calculation.
-///
-/// The lookback period equals the input parameter period since RSI needs historical data points
-/// to establish the initial average gain and loss values.
-///
-/// # Arguments
-/// * `opt_period` - The number of periods to look back for RSI calculation (must be >= 2)
-///
-/// # Returns
-/// * `Result<usize, KandError>` - The required lookback period on success
-///
-/// # Errors
-/// * `KandError::InvalidParameter` - If `opt_period` is less than 2
-///
-/// # Example
-/// ```
-/// use kand::ta::ohlcv::rsi;
-///
-/// let opt_period = 14;
-/// let lookback = rsi::lookback(opt_period).unwrap();
-/// assert_eq!(lookback, 14);
-/// ```
 pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     #[cfg(feature = "check")]
     {
@@ -32,432 +12,64 @@ pub const fn lookback(opt_period: usize) -> Result<usize, KandError> {
     Ok(opt_period)
 }
 
-/// Stateful implementation of Relative Strength Index (RSI).
-#[derive(Clone)]
-pub struct StatefulRSI {
-    period: usize,
-    count: usize,
-    avg_gain: TAFloat,
-    avg_loss: TAFloat,
-    prev_price: TAFloat,
-}
-
-impl StatefulRSI {
-    /// Creates a new StatefulRSI instance.
-    pub fn new(period: usize) -> Result<Self, KandError> {
-        #[cfg(feature = "check")]
-        {
-            if period < 2 {
-                return Err(KandError::InvalidParameter);
-            }
-        }
-        Ok(Self {
-            period,
-            count: 0,
-            avg_gain: 0.0,
-            avg_loss: 0.0,
-            prev_price: 0.0,
-        })
-    }
-}
-
-impl crate::ta::traits::Indicator for StatefulRSI {
-    type Input = TAFloat;
-    type Output = TAFloat;
-
-    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        self.count += 1;
-        if self.count == 1 {
-            self.prev_price = input;
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    RSI,
+    type: recursive,
+    inputs: { input: TAFloat },
+    params: { period: usize },
+    state: { avg_gain: TAFloat, avg_loss: TAFloat, prev_price: TAFloat },
+    init: |period| {
+        (0.0, 0.0, 0.0)
+    },
+    next: |state, (input)| {
+        if state.__kand_count == 1 {
+            state.prev_price = input;
             Ok(TAFloat::NAN)
-        } else if self.count <= self.period {
-            let diff = input - self.prev_price;
+        } else if state.__kand_count <= state.period {
+            let diff = input - state.prev_price;
             if diff > 0.0 {
-                self.avg_gain += diff;
+                state.avg_gain += diff;
             } else {
-                self.avg_loss += diff.abs();
+                state.avg_loss += diff.abs();
             }
-            self.prev_price = input;
+            state.prev_price = input;
 
-            if self.count == self.period + 1 {
-                self.avg_gain /= self.period as TAFloat;
-                self.avg_loss /= self.period as TAFloat;
+            if state.__kand_count == state.period + 1 {
+                state.avg_gain /= state.period as TAFloat;
+                state.avg_loss /= state.period as TAFloat;
 
-                if self.avg_loss == 0.0 {
+                if state.avg_loss == 0.0 {
                     Ok(100.0)
                 } else {
-                    let rs = self.avg_gain / self.avg_loss;
+                    let rs = state.avg_gain / state.avg_loss;
                     Ok(100.0 - (100.0 / (1.0 + rs)))
                 }
             } else {
                 Ok(TAFloat::NAN)
             }
         } else {
-            let diff = input - self.prev_price;
+            let diff = input - state.prev_price;
             let (curr_gain, curr_loss) = if diff > 0.0 {
                 (diff, 0.0)
             } else {
                 (0.0, diff.abs())
             };
 
-            let smoothing = self.period as TAFloat;
-            self.avg_gain = self.avg_gain.mul_add(smoothing - 1.0, curr_gain) / smoothing;
-            self.avg_loss = self.avg_loss.mul_add(smoothing - 1.0, curr_loss) / smoothing;
-            self.prev_price = input;
+            let smoothing = state.period as TAFloat;
+            state.avg_gain = state.avg_gain.mul_add(smoothing - 1.0, curr_gain) / smoothing;
+            state.avg_loss = state.avg_loss.mul_add(smoothing - 1.0, curr_loss) / smoothing;
+            state.prev_price = input;
 
-            if self.avg_loss == 0.0 {
+            if state.avg_loss == 0.0 {
                 Ok(100.0)
             } else {
-                let rs = self.avg_gain / self.avg_loss;
+                let rs = state.avg_gain / state.avg_loss;
                 Ok(100.0 - (100.0 / (1.0 + rs)))
             }
         }
     }
-
-    #[cfg(feature = "arrow")]
-    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-        use arrow::datatypes::{DataType, Field, Schema};
-        use std::sync::Arc;
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("__kand_period", DataType::UInt64, false),
-            Field::new("__kand_count", DataType::UInt64, false),
-            Field::new("__kand_avg_gain", DataType::Float64, false),
-            Field::new("__kand_avg_loss", DataType::Float64, false),
-            Field::new("__kand_prev_price", DataType::Float64, false),
-        ]));
-
-        let period_arr = UInt64Array::from(vec![self.period as u64]);
-        let count_arr = UInt64Array::from(vec![self.count as u64]);
-        let avg_gain_arr = Float64Array::from(vec![self.avg_gain]);
-        let avg_loss_arr = Float64Array::from(vec![self.avg_loss]);
-        let prev_price_arr = Float64Array::from(vec![self.prev_price]);
-
-        arrow::record_batch::RecordBatch::try_new(
-            schema,
-            vec![
-                Arc::new(period_arr),
-                Arc::new(count_arr),
-                Arc::new(avg_gain_arr),
-                Arc::new(avg_loss_arr),
-                Arc::new(prev_price_arr),
-            ],
-        )
-        .map_err(|_| KandError::InvalidData)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn restore_from_record_batch(
-        &mut self,
-        batch: &arrow::record_batch::RecordBatch,
-    ) -> Result<(), KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-
-        let period = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let count = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let avg_gain = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0);
-        let avg_loss = batch
-            .column(3)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0);
-        let prev_price = batch
-            .column(4)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0);
-
-        self.period = period;
-        self.count = count;
-        self.avg_gain = avg_gain;
-        self.avg_loss = avg_loss;
-        self.prev_price = prev_price;
-
-        Ok(())
-    }
-}
-
-/// Vectorized implementation of Relative Strength Index (RSI) for multiple independent streams.
-#[cfg(feature = "arrow")]
-pub struct BatchRSI {
-    period: usize,
-    num_streams: usize,
-    counts: Vec<usize>,
-    avg_gains: arrow_buffer::MutableBuffer,
-    avg_losses: arrow_buffer::MutableBuffer,
-    prev_prices: arrow_buffer::MutableBuffer,
-}
-
-#[cfg(feature = "arrow")]
-impl Clone for BatchRSI {
-    fn clone(&self) -> Self {
-        let mut new_avg_gains = arrow_buffer::MutableBuffer::new(self.avg_gains.len());
-        new_avg_gains.extend_from_slice(self.avg_gains.as_slice());
-        let mut new_avg_losses = arrow_buffer::MutableBuffer::new(self.avg_losses.len());
-        new_avg_losses.extend_from_slice(self.avg_losses.as_slice());
-        let mut new_prev_prices = arrow_buffer::MutableBuffer::new(self.prev_prices.len());
-        new_prev_prices.extend_from_slice(self.prev_prices.as_slice());
-
-        Self {
-            period: self.period,
-            num_streams: self.num_streams,
-            counts: self.counts.clone(),
-            avg_gains: new_avg_gains,
-            avg_losses: new_avg_losses,
-            prev_prices: new_prev_prices,
-        }
-    }
-}
-
-#[cfg(feature = "arrow")]
-impl BatchRSI {
-    /// Creates a new BatchRSI instance.
-    pub fn new(period: usize, num_streams: usize) -> Result<Self, KandError> {
-        use std::mem::size_of;
-        #[cfg(feature = "check")]
-        {
-            if period < 2 || num_streams == 0 {
-                return Err(KandError::InvalidParameter);
-            }
-        }
-
-        let mut avg_gains = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
-        avg_gains.resize(num_streams * size_of::<TAFloat>(), 0);
-
-        let mut avg_losses = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
-        avg_losses.resize(num_streams * size_of::<TAFloat>(), 0);
-
-        let mut prev_prices = arrow_buffer::MutableBuffer::new(num_streams * size_of::<TAFloat>());
-        prev_prices.resize(num_streams * size_of::<TAFloat>(), 0);
-
-        Ok(Self {
-            period,
-            num_streams,
-            counts: vec![0; num_streams],
-            avg_gains,
-            avg_losses,
-            prev_prices,
-        })
-    }
-}
-
-#[cfg(feature = "arrow")]
-impl crate::ta::traits::BatchIndicator for BatchRSI {
-    type Input = crate::ta::types::TAArrowArray;
-    type Output = crate::ta::types::TAArrowArray;
-
-    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        use std::mem::size_of;
-
-        if input.len() != self.num_streams {
-            return Err(KandError::LengthMismatch);
-        }
-
-        let input_values = input.values();
-        let avg_gains_slice = self.avg_gains.typed_data_mut::<TAFloat>();
-        let avg_losses_slice = self.avg_losses.typed_data_mut::<TAFloat>();
-        let prev_prices_slice = self.prev_prices.typed_data_mut::<TAFloat>();
-
-        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
-            self.num_streams * size_of::<TAFloat>(),
-        );
-        let output_slice =
-            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
-
-        let smoothing = self.period as TAFloat;
-
-        for s in 0..self.num_streams {
-            let val = input_values[s];
-            self.counts[s] += 1;
-
-            if self.counts[s] == 1 {
-                prev_prices_slice[s] = val;
-                output_slice[s] = TAFloat::NAN;
-            } else if self.counts[s] <= self.period {
-                let diff = val - prev_prices_slice[s];
-                if diff > 0.0 {
-                    avg_gains_slice[s] += diff;
-                } else {
-                    avg_losses_slice[s] += diff.abs();
-                }
-                prev_prices_slice[s] = val;
-
-                if self.counts[s] == self.period + 1 {
-                    avg_gains_slice[s] /= smoothing;
-                    avg_losses_slice[s] /= smoothing;
-
-                    if avg_losses_slice[s] == 0.0 {
-                        output_slice[s] = 100.0;
-                    } else {
-                        let rs = avg_gains_slice[s] / avg_losses_slice[s];
-                        output_slice[s] = 100.0 - (100.0 / (1.0 + rs));
-                    }
-                } else {
-                    output_slice[s] = TAFloat::NAN;
-                }
-            } else {
-                let diff = val - prev_prices_slice[s];
-                let (curr_gain, curr_loss) = if diff > 0.0 {
-                    (diff, 0.0)
-                } else {
-                    (0.0, diff.abs())
-                };
-
-                avg_gains_slice[s] =
-                    avg_gains_slice[s].mul_add(smoothing - 1.0, curr_gain) / smoothing;
-                avg_losses_slice[s] =
-                    avg_losses_slice[s].mul_add(smoothing - 1.0, curr_loss) / smoothing;
-                prev_prices_slice[s] = val;
-
-                if avg_losses_slice[s] == 0.0 {
-                    output_slice[s] = 100.0;
-                } else {
-                    let rs = avg_gains_slice[s] / avg_losses_slice[s];
-                    output_slice[s] = 100.0 - (100.0 / (1.0 + rs));
-                }
-            }
-        }
-
-        Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
-    }
-
-    #[cfg(feature = "arrow")]
-    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-        use arrow::datatypes::{DataType, Field, Schema};
-        use std::sync::Arc;
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("__kand_period", DataType::UInt64, false),
-            Field::new("__kand_count", DataType::UInt64, false),
-            Field::new("__kand_avg_gain", DataType::Float64, false),
-            Field::new("__kand_avg_loss", DataType::Float64, false),
-            Field::new("__kand_prev_price", DataType::Float64, false),
-        ]));
-
-        let period_arr = Arc::new(UInt64Array::from(vec![
-            self.period as u64;
-            self.num_streams
-        ])) as Arc<dyn arrow::array::Array>;
-        let counts_arr = Arc::new(UInt64Array::from(
-            self.counts.iter().map(|&c| c as u64).collect::<Vec<_>>(),
-        )) as Arc<dyn arrow::array::Array>;
-
-        let avg_gains_arr = Arc::new(Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(self.avg_gains.as_slice().into(), 0, self.num_streams),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-        let avg_losses_arr = Arc::new(Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(self.avg_losses.as_slice().into(), 0, self.num_streams),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-        let prev_prices_arr = Arc::new(Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(
-                self.prev_prices.as_slice().into(),
-                0,
-                self.num_streams,
-            ),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-
-        arrow::record_batch::RecordBatch::try_new(
-            schema,
-            vec![
-                period_arr,
-                counts_arr,
-                avg_gains_arr,
-                avg_losses_arr,
-                prev_prices_arr,
-            ],
-        )
-        .map_err(|_| KandError::InvalidData)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn restore_from_record_batch(
-        &mut self,
-        batch: &arrow::record_batch::RecordBatch,
-    ) -> Result<(), KandError> {
-        use arrow::array::{Float64Array, UInt64Array};
-
-        let num_streams = batch.num_rows();
-        if num_streams == 0 {
-            return Err(KandError::InvalidData);
-        }
-
-        let period = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let counts = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let avg_gains = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let avg_losses = batch
-            .column(3)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let prev_prices = batch
-            .column(4)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-
-        self.period = period;
-        self.num_streams = num_streams;
-        self.counts = counts.values().iter().map(|&c| c as usize).collect();
-
-        self.avg_gains = arrow_buffer::MutableBuffer::from_len_zeroed(
-            avg_gains.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.avg_gains
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(avg_gains.values());
-
-        self.avg_losses = arrow_buffer::MutableBuffer::from_len_zeroed(
-            avg_losses.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.avg_losses
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(avg_losses.values());
-
-        self.prev_prices = arrow_buffer::MutableBuffer::from_len_zeroed(
-            prev_prices.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.prev_prices
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(prev_prices.values());
-
-        Ok(())
-    }
-}
+);
 
 /// Calculates RSI without input validation for high performance.
 pub fn rsi_raw(
@@ -529,69 +141,6 @@ pub fn rsi_raw(
 }
 
 /// Calculates Relative Strength Index (RSI) for a price series.
-///
-/// RSI is a momentum oscillator that measures the speed and magnitude of recent price changes
-/// to evaluate overbought or oversold conditions. It oscillates between 0 and 100, with
-/// values above 70 generally indicating overbought conditions and values below 30 indicating
-/// oversold conditions.
-///
-/// # Mathematical Formula
-/// ```text
-/// RSI = 100 - (100 / (1 + RS))
-/// where:
-/// RS = Average Gain / Average Loss
-///
-/// Initial Average Gain = Sum of Gains over past n periods / n
-/// Initial Average Loss = Sum of Losses over past n periods / n
-///
-/// Subsequent values:
-/// Average Gain = ((Previous Average Gain) × (n-1) + Current Gain) / n
-/// Average Loss = ((Previous Average Loss) × (n-1) + Current Loss) / n
-/// ```
-///
-/// # Calculation Principle
-/// 1. Calculate price changes between consecutive periods
-/// 2. Separate gains (positive changes) from losses (negative changes)
-/// 3. Calculate initial average gain and loss over first n periods
-/// 4. Apply Wilder's smoothing formula for subsequent periods
-/// 5. Calculate RS ratio and convert to RSI value
-///
-/// # Arguments
-/// * `input_prices` - Array of price values (typically closing prices)
-/// * `opt_period` - The time period for RSI calculation (typical values: 14, 9, or 25)
-/// * `output_rsi` - Array to store calculated RSI values
-/// * `output_avg_gain` - Array to store average gain values for each period
-/// * `output_avg_loss` - Array to store average loss values for each period
-///
-/// # Returns
-/// * `Result<(), KandError>` - Ok(()) on successful calculation
-///
-/// # Errors
-/// * `KandError::InvalidData` - If input array is empty
-/// * `KandError::LengthMismatch` - If input and output arrays have different lengths
-/// * `KandError::InvalidParameter` - If `opt_period` is less than 2
-/// * `KandError::InsufficientData` - If input length is less than or equal to lookback period
-/// * `KandError::NaNDetected` - If any input value is NaN (when "`check-nan`" feature is enabled)
-///
-/// # Example
-/// ```
-/// use kand::ta::ohlcv::rsi;
-///
-/// let input_prices = vec![44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42];
-/// let opt_period = 5;
-/// let mut output_rsi = vec![0.0; input_prices.len()];
-/// let mut output_avg_gain = vec![0.0; input_prices.len()];
-/// let mut output_avg_loss = vec![0.0; input_prices.len()];
-///
-/// rsi::rsi(
-///     &input_prices,
-///     opt_period,
-///     &mut output_rsi,
-///     &mut output_avg_gain,
-///     &mut output_avg_loss,
-/// )
-/// .unwrap();
-/// ```
 pub fn rsi(
     input_prices: &[TAFloat],
     opt_period: usize,
@@ -676,46 +225,6 @@ pub fn rsi_inc_raw(
 }
 
 /// Calculates the latest RSI value incrementally using previous average gain and loss values.
-///
-/// This function optimizes RSI calculation for real-time data by using the previous period's
-/// average gain and loss values to calculate the current RSI value, without needing the entire
-/// price history.
-///
-/// # Mathematical Formula
-/// ```text
-/// Average Gain = ((Previous Average Gain) × (n-1) + Current Gain) / n
-/// Average Loss = ((Previous Average Loss) × (n-1) + Current Loss) / n
-/// RS = Average Gain / Average Loss
-/// RSI = 100 - (100 / (1 + RS))
-/// ```
-///
-/// # Arguments
-/// * `input_curr_price` - Current period's price value
-/// * `prev_price` - Previous period's price value
-/// * `prev_avg_gain` - Previous period's average gain
-/// * `prev_avg_loss` - Previous period's average loss
-/// * `opt_period` - The time period for RSI calculation
-///
-/// # Returns
-/// * `Result<(TAFloat, TAFloat, TAFloat), KandError>` - Tuple containing (RSI value, new average gain, new average loss)
-///
-/// # Errors
-/// * `KandError::InvalidParameter` - If `opt_period` is less than 2
-/// * `KandError::NaNDetected` - If any input value is NaN (when "`check-nan`" feature is enabled)
-///
-/// # Example
-/// ```
-/// use kand::ta::ohlcv::rsi;
-///
-/// let (rsi_value, avg_gain, avg_loss) = rsi::rsi_inc(
-///     45.42, // current price
-///     45.10, // previous price
-///     0.24,  // previous average gain
-///     0.14,  // previous average loss
-///     14,    // period
-/// )
-/// .unwrap();
-/// ```
 pub fn rsi_inc(
     input_curr_price: TAFloat,
     prev_price: TAFloat,
@@ -769,6 +278,7 @@ mod tests {
     use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     // Basic functionality tests
     #[test]
@@ -776,10 +286,10 @@ mod tests {
         let mut rsi_state = StatefulRSI::new(3).unwrap();
 
         // Need 1 (price) + 3 (lookback) = 4 values for first valid
-        assert!(rsi_state.next(10.0).unwrap().is_nan());
-        assert!(rsi_state.next(11.0).unwrap().is_nan());
-        assert!(rsi_state.next(12.0).unwrap().is_nan());
-        let val = rsi_state.next(13.0).unwrap();
+        assert!(rsi_state.next((10.0,)).unwrap().is_nan());
+        assert!(rsi_state.next((11.0,)).unwrap().is_nan());
+        assert!(rsi_state.next((12.0,)).unwrap().is_nan());
+        let val = rsi_state.next((13.0,)).unwrap();
         // Gains: 1, 1, 1 -> avg = 1.0
         // Losses: 0, 0, 0 -> avg = 0.0
         assert_relative_eq!(val, 100.0);
@@ -792,22 +302,22 @@ mod tests {
 
         // t0
         let input = TAArrowArray::from(vec![10.0, 20.0]);
-        let out = batch_rsi.next_batch(input).unwrap();
+        let out = batch_rsi.next_batch((input.clone(),)).unwrap();
         assert!(out.value(0).is_nan());
 
         // t1
         let input = TAArrowArray::from(vec![11.0, 21.0]);
-        let out = batch_rsi.next_batch(input).unwrap();
+        let out = batch_rsi.next_batch((input.clone(),)).unwrap();
         assert!(out.value(0).is_nan());
 
         // t2
         let input = TAArrowArray::from(vec![12.0, 22.0]);
-        let out = batch_rsi.next_batch(input).unwrap();
+        let out = batch_rsi.next_batch((input.clone(),)).unwrap();
         assert!(out.value(0).is_nan());
 
         // t3 - first valid
         let input = TAArrowArray::from(vec![13.0, 23.0]);
-        let out = batch_rsi.next_batch(input).unwrap();
+        let out = batch_rsi.next_batch((input.clone(),)).unwrap();
         assert_relative_eq!(out.value(0), 100.0);
         assert_relative_eq!(out.value(1), 100.0);
     }

@@ -71,7 +71,7 @@ impl BatchSMAWasm {
         let input_arrow = input_buffer.to_arrow_array::<Float64Type>();
         let result = self
             .inner
-            .next_batch(input_arrow)
+            .next_batch((input_arrow,))
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         let len = result.len();

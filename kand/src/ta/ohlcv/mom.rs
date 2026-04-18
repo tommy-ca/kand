@@ -85,230 +85,33 @@ crate::kand_arrow_wrapper!(
     lookback_params: { opt_period }
 );
 
-// Stateful via Universal Macro
+// Stateful & Batch via Universal Macro
 crate::kand_indicator!(
     MOM,
-    inputs: { price: TAFloat },
+    type: sliding_window,
+    inputs: { input: TAFloat },
     params: { period: usize },
-    state: { window: std::collections::VecDeque<TAFloat> },
+    state: { },
     init: |period| {
-        use std::collections::VecDeque;
-        VecDeque::with_capacity(period + 1)
+        ()
     },
-    next: |state, input| {
-        state.window.push_back(input);
-        if state.window.len() > state.period + 1 {
-            state.window.pop_front();
-        }
-        if state.window.len() == state.period + 1 {
-            Ok(input - state.window[0])
-        } else {
+    next: |state, (input)| {
+        let old_val = state.__kand_window[state.__kand_cursor].0;
+        state.__kand_window[state.__kand_cursor] = (input,);
+        state.__kand_cursor = (state.__kand_cursor + 1) % state.period;
+
+        if state.__kand_count <= state.period {
             Ok(TAFloat::NAN)
+        } else {
+            Ok(input - old_val)
         }
     }
 );
 
-/// Vectorized implementation of Momentum (MOM) for multiple independent streams.
-#[cfg(feature = "arrow")]
-pub struct BatchMOM {
-    period: usize,
-    num_streams: usize,
-    counts: Vec<usize>,
-    cursors: Vec<usize>,
-    windows: arrow_buffer::MutableBuffer,
-}
-
-#[cfg(feature = "arrow")]
-impl Clone for BatchMOM {
-    fn clone(&self) -> Self {
-        let mut new_windows = arrow_buffer::MutableBuffer::new(self.windows.len());
-        new_windows.extend_from_slice(self.windows.as_slice());
-        Self {
-            period: self.period,
-            num_streams: self.num_streams,
-            counts: self.counts.clone(),
-            cursors: self.cursors.clone(),
-            windows: new_windows,
-        }
-    }
-}
-
-#[cfg(feature = "arrow")]
-impl BatchMOM {
-    /// Creates a new BatchMOM instance.
-    pub fn new(period: usize, num_streams: usize) -> Result<Self, KandError> {
-        use std::mem::size_of;
-        #[cfg(feature = "check")]
-        {
-            if period < 1 || num_streams == 0 {
-                return Err(KandError::InvalidParameter);
-            }
-        }
-
-        let mut windows =
-            arrow_buffer::MutableBuffer::new(num_streams * period * size_of::<TAFloat>());
-        windows.resize(num_streams * period * size_of::<TAFloat>(), 0);
-
-        Ok(Self {
-            period,
-            num_streams,
-            counts: vec![0; num_streams],
-            cursors: vec![0; num_streams],
-            windows,
-        })
-    }
-}
-
-#[cfg(feature = "arrow")]
-impl crate::ta::traits::BatchIndicator for BatchMOM {
-    type Input = crate::ta::types::TAArrowArray;
-    type Output = crate::ta::types::TAArrowArray;
-
-    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
-        use std::mem::size_of;
-
-        if input.len() != self.num_streams {
-            return Err(KandError::LengthMismatch);
-        }
-
-        let input_values = input.values();
-        let windows_slice = self.windows.typed_data_mut::<TAFloat>();
-
-        let (ptr, out_buffer) = crate::helper::buffer_pool::create_pooled_buffer(
-            self.num_streams * size_of::<TAFloat>(),
-        );
-        let output_slice =
-            unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, self.num_streams) };
-
-        for s in 0..self.num_streams {
-            let val = input_values[s];
-            self.counts[s] += 1;
-
-            let window_offset = s * self.period + self.cursors[s];
-            let old_val = windows_slice[window_offset];
-            windows_slice[window_offset] = val;
-            self.cursors[s] = (self.cursors[s] + 1) % self.period;
-
-            if self.counts[s] <= self.period {
-                output_slice[s] = TAFloat::NAN;
-            } else {
-                output_slice[s] = val - old_val;
-            }
-        }
-
-        Ok(crate::ta::types::TAArrowArray::new(out_buffer.into(), None))
-    }
-
-    #[cfg(feature = "arrow")]
-    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
-        use arrow::datatypes::{DataType, Field, Schema};
-        use std::sync::Arc;
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("__kand_period", DataType::UInt64, false),
-            Field::new("__kand_count", DataType::UInt64, false),
-            Field::new("__kand_cursor", DataType::UInt64, false),
-            Field::new(
-                "__kand_window",
-                DataType::FixedSizeList(
-                    Arc::new(Field::new("item", DataType::Float64, true)),
-                    self.period as i32,
-                ),
-                false,
-            ),
-        ]));
-
-        let period_arr = Arc::new(UInt64Array::from(vec![self.period as u64; self.num_streams]))
-            as Arc<dyn arrow::array::Array>;
-        let counts_arr = Arc::new(UInt64Array::from(
-            self.counts.iter().map(|&c| c as u64).collect::<Vec<_>>(),
-        )) as Arc<dyn arrow::array::Array>;
-        let cursors_arr = Arc::new(UInt64Array::from(
-            self.cursors.iter().map(|&c| c as u64).collect::<Vec<_>>(),
-        )) as Arc<dyn arrow::array::Array>;
-
-        let windows_data = Float64Array::new(
-            arrow_buffer::ScalarBuffer::new(
-                self.windows.as_slice().into(),
-                0,
-                self.num_streams * self.period,
-            ),
-            None,
-        );
-        let windows_arr = Arc::new(FixedSizeListArray::new(
-            Arc::new(Field::new("item", DataType::Float64, true)),
-            self.period as i32,
-            Arc::new(windows_data),
-            None,
-        )) as Arc<dyn arrow::array::Array>;
-
-        arrow::record_batch::RecordBatch::try_new(
-            schema,
-            vec![period_arr, counts_arr, cursors_arr, windows_arr],
-        )
-        .map_err(|_| KandError::InvalidData)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn restore_from_record_batch(
-        &mut self,
-        batch: &arrow::record_batch::RecordBatch,
-    ) -> Result<(), KandError> {
-        use arrow::array::{FixedSizeListArray, Float64Array, UInt64Array};
-
-        let num_streams = batch.num_rows();
-        if num_streams == 0 {
-            return Err(KandError::InvalidData);
-        }
-
-        let period = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?
-            .value(0) as usize;
-        let counts = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let cursors = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<UInt64Array>()
-            .ok_or(KandError::InvalidData)?;
-        let windows_list = batch
-            .column(3)
-            .as_any()
-            .downcast_ref::<FixedSizeListArray>()
-            .ok_or(KandError::InvalidData)?;
-        let windows = windows_list
-            .values()
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .ok_or(KandError::InvalidData)?;
-
-        self.period = period;
-        self.num_streams = num_streams;
-        self.counts = counts.values().iter().map(|&c| c as usize).collect();
-        self.cursors = cursors.values().iter().map(|&c| c as usize).collect();
-
-        self.windows = arrow_buffer::MutableBuffer::from_len_zeroed(
-            windows.len() * std::mem::size_of::<TAFloat>(),
-        );
-        self.windows
-            .typed_data_mut::<TAFloat>()
-            .copy_from_slice(windows.values());
-
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ta::traits::Indicator;
+    use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
     use arrow::array::Array;
@@ -331,31 +134,30 @@ mod tests {
     #[test]
     fn test_stateful_mom() {
         let mut mom_state = StatefulMOM::new(2).unwrap();
-        assert!(mom_state.next(1.0).unwrap().is_nan());
-        assert!(mom_state.next(2.0).unwrap().is_nan());
-        assert_relative_eq!(mom_state.next(5.0).unwrap(), 4.0);
-        assert_relative_eq!(mom_state.next(4.0).unwrap(), 2.0);
+        assert!(mom_state.next((1.0,)).unwrap().is_nan());
+        assert!(mom_state.next((2.0,)).unwrap().is_nan());
+        assert_relative_eq!(mom_state.next((5.0,)).unwrap(), 4.0);
+        assert_relative_eq!(mom_state.next((4.0,)).unwrap(), 2.0);
     }
 
     #[test]
     #[cfg(feature = "arrow")]
     fn test_batch_mom() {
-        use crate::ta::traits::BatchIndicator;
         let mut batch_mom = BatchMOM::new(2, 2).unwrap();
+        let input = TAArrowArray::from(vec![1.0, 10.0]);
 
         // t0
-        let input = TAArrowArray::from(vec![1.0, 10.0]);
-        let out = batch_mom.next_batch(input).unwrap();
+        let out = batch_mom.next_batch((input.clone(),)).unwrap();
         assert!(out.value(0).is_nan());
 
         // t1
         let input = TAArrowArray::from(vec![2.0, 12.0]);
-        let out = batch_mom.next_batch(input).unwrap();
+        let out = batch_mom.next_batch((input.clone(),)).unwrap();
         assert!(out.value(0).is_nan());
 
         // t2
         let input = TAArrowArray::from(vec![5.0, 15.0]);
-        let out = batch_mom.next_batch(input).unwrap();
+        let out = batch_mom.next_batch((input.clone(),)).unwrap();
         assert_relative_eq!(out.value(0), 4.0);
         assert_relative_eq!(out.value(1), 5.0);
     }

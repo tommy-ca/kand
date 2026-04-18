@@ -108,7 +108,7 @@ impl BatchEmaPy {
     #[new]
     #[pyo3(signature = (period, num_streams, opt_k=None))]
     pub fn new(period: usize, num_streams: usize, opt_k: Option<f64>) -> PyResult<Self> {
-        let inner = kand::ta::ohlcv::ema::BatchEMA::new(period, num_streams, opt_k)
+        let inner = kand::ta::ohlcv::ema::BatchEMA::new_ext(period, num_streams, opt_k)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(Self { inner })
     }
@@ -135,7 +135,7 @@ impl BatchEmaPy {
             })?;
 
         let result = py
-            .detach(|| self.inner.next_batch(input_arrow.clone()))
+            .detach(|| self.inner.next_batch((input_arrow.clone(),)))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let field = Arc::new(arrow::datatypes::Field::new(
