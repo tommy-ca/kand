@@ -29,10 +29,10 @@ Before you start developing, you need to install several required tools:
    uv tool install maturin
    ```
 
-4. **Install pre-commit** (Git hooks framework):
+4. **Install prek** (Ultra-performant git hooks):
 
    ```bash
-   uv tool install pre-commit
+   uv tool install prek
    ```
 
 5. **Install make** (Build automation tool):
@@ -59,21 +59,21 @@ When making changes, please follow this general workflow:
 3. **Update bindings**: If you've added a new indicator or changed a function signature, update the corresponding bindings in the `kand-py/` and/or `kand-wasm/` directories.
 4. **Run all checks**: Use the provided `Makefile` to run a full suite of checks, including building, testing, linting, and formatting.
 
-### Using the Makefile and Pre-commit
+### Using the Makefile and Prek
 
-We use `pre-commit` to automate code quality checks. The hooks are configured to run:
+We use `prek` to automate code quality checks. It is a high-performance alternative to `pre-commit` that uses the same configuration format. The hooks are configured to run:
 - **Rust**: `cargo fmt`, `cargo clippy`.
 - **Python**: `ruff check`, `ruff format` (via `uv`).
 - **Generic**: Whitespace, end-of-file, and YAML validation.
 
 Install the hooks once:
 ```bash
-pre-commit install
+prek install
 ```
 
 The hooks will now run automatically on every `git commit`. You can also run them manually:
 ```bash
-pre-commit run --all-files
+prek run --all-files
 ```
 
 We also have a `Makefile` that simplifies common tasks:

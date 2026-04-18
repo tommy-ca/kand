@@ -1,7 +1,7 @@
 # Makefile for Rust project using Cargo
 
 .PHONY: all
-all: pre-commit
+all: prek
 
 # Build the project with all features enabled in release mode
 .PHONY: build
@@ -96,9 +96,9 @@ wasm-publish: wasm-build
 .PHONY: wasm
 wasm: wasm-publish
 
-# Run pre-commit hooks on all files
-.PHONY: pre-commit
-pre-commit:
+# Run prek hooks on all files
+.PHONY: prek
+prek:
 	$(MAKE) build
 	$(MAKE) test
 	$(MAKE) clippy
