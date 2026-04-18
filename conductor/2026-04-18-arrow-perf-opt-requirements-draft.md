@@ -28,13 +28,13 @@ While zero-copy benefits between languages (Python/WASM) outweigh this overhead 
 - Out of scope: Refactoring non-Arrow Python/WASM bindings.
 
 ## Key Decisions
-- **Buffer Reuse**: We will prioritize a `ThreadLocal` buffer cache to avoid global lock contention.
+- **Buffer Reuse**: We will implement a `ThreadLocal` buffer cache to avoid global lock contention. This behavior will be behind a feature gate (e.g., `arrow-pooled`).
 - **Pre-allocation Support**: The Arrow macros will be extended to optionally accept an existing buffer, allowing power users to manage memory manually.
 
 ## Outstanding Questions
 
 ### Resolve Before Planning
-- [User decision] Should buffer pooling be enabled by default, or behind a feature gate (e.g., `arrow-optimized`)?
+- [User decision] Should buffer pooling be enabled by default, or behind a feature gate? **Resolved: Feature Gated.**
 
 ### Deferred to Planning
 - [Technical] What is the impact of buffer reuse on memory fragmentation for varying dataset sizes?
