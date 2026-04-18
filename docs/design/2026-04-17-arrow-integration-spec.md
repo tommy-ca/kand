@@ -27,16 +27,23 @@ Every indicator must expose a three-tier implementation:
   - Releases the GIL during computation using `py.allow_threads`.
 
 #### 1.2.2 WebAssembly Bindings (`kand-wasm`)
-- **WasmBuffer Protocol:** A `WasmBuffer` struct manages pre-allocated, memory-growth-resilient memory. It supports generic types via `as_slice::<T>` and `as_mut_slice::<T>`.
-- **Protocol Contract:** JS requests pointer, writes data, calls Rust, and reads results from the shared view.
+- **WasmBuffer Protocol:** A `WasmBuffer` struct manages pre-allocated, memory-growth-resilient memory. It was refactored to support generic data types (`f64`, `i32`, `i64`) via `as_slice::<T>(len)` and `as_mut_slice::<T>(len)` methods, ensuring zero-copy interaction for both floating-point indicators and integer-based pattern signals.
+- **Protocol Contract:** JS requests pointer, writes data, calls Rust, and reads results from the shared view. Memory views are refreshed on the JS side after any call that may trigger WASM memory growth.
 - **Incremental Multi-Output:** Uses `Result` structs (e.g., `SupertrendResult`) for returning multiple values efficiently.
+
+### 1.3 Naming Conventions
+- **`_raw`**: Suffix for computational core (slice-based, no validation).
+- **`_inc_raw`**: Suffix for incremental computational core (single-point).
+- **`_arrow`**: Suffix for Arrow-native entry points in Rust, Python, and WASM.
+- **`_py` / `_inc_py`**: Suffix for standard Python bindings (NumPy-based).
 
 ## 2. Test-Driven Development (TDD) Standard
 Every Arrow-native implementation must be preceded or accompanied by a test case that:
 1.  **Validation Parity:** Proves that `_arrow` variants reject the same invalid parameters as the safe slice variants.
-2.  **Numerical Parity:** Proves that `_arrow` variants produce bit-identical results to safe slice variants (modulo `allow-nan` behavior).
+2.  **Numerical Parity:** Proves that `_arrow` variants produce bit-identical results to safe slice variants (modulo `allow-nan` behavior). Epsilon tolerances (typically `1e-5` to `1e-1`) are tuned for indicators sensitive to floating-point accumulation order (e.g., ADX).
 3.  **Offset Integrity:** Proves that the implementation correctly respects Arrow array offsets by testing with sliced input arrays.
 4.  **Alignment Check:** Proves that output buffers are 64-byte aligned (verified via `MutableBuffer` address).
+5.  **NaN Padding:** Verifies that initial `lookback` periods are correctly filled with `TAFloat::NAN`.
 
 ## 3. Macro Strategy
 To support 50+ indicators efficiently, three primary macros are utilized:
