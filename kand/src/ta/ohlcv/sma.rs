@@ -75,8 +75,8 @@ impl crate::ta::traits::Indicator for StatefulSMA {
 
         let schema = Arc::new(Schema::new(vec![
             Field::new("__kand_period", DataType::UInt64, false),
-            Field::new("sum", DataType::Float64, false),
-            Field::new("window", DataType::Float64, false),
+            Field::new("__kand_sum", DataType::Float64, false),
+            Field::new("__kand_window", DataType::Float64, false),
         ]));
 
         let period_arr = UInt64Array::from(vec![self.period as u64]);
@@ -237,9 +237,9 @@ impl crate::ta::traits::BatchIndicator for BatchSMA {
             Field::new("__kand_period", DataType::UInt64, false),
             Field::new("__kand_cursor", DataType::UInt64, false),
             Field::new("__kand_count", DataType::UInt64, false),
-            Field::new("sum", DataType::Float64, false),
+            Field::new("__kand_sum", DataType::Float64, false),
             Field::new(
-                "window",
+                "__kand_window",
                 DataType::FixedSizeList(
                     Arc::new(Field::new("item", DataType::Float64, true)),
                     self.period as i32,

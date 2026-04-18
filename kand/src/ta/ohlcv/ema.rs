@@ -102,8 +102,8 @@ impl crate::ta::traits::Indicator for StatefulEMA {
             Field::new("__kand_period", DataType::UInt64, false),
             Field::new("__kand_multiplier", DataType::Float64, false),
             Field::new("__kand_count", DataType::UInt64, false),
-            Field::new("prev_ema", DataType::Float64, false),
-            Field::new("sum", DataType::Float64, false),
+            Field::new("__kand_prev_ema", DataType::Float64, false),
+            Field::new("__kand_sum", DataType::Float64, false),
         ]));
 
         let period_arr = UInt64Array::from(vec![self.period as u64]);
@@ -286,8 +286,8 @@ impl crate::ta::traits::BatchIndicator for BatchEMA {
         let schema = Arc::new(Schema::new(vec![
             Field::new("__kand_period", DataType::UInt64, false),
             Field::new("__kand_multiplier", DataType::Float64, false),
-            Field::new("state", DataType::Float64, false),
-            Field::new("count", DataType::UInt64, false),
+            Field::new("__kand_state", DataType::Float64, false),
+            Field::new("__kand_count", DataType::UInt64, false),
         ]));
 
         let period_arr = Arc::new(UInt64Array::from(vec![
