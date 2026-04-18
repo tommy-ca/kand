@@ -30,12 +30,7 @@ Successfully mitigated the heap allocation bottleneck through:
 - **64-byte Alignment**: Guaranteed Arrow-compliant alignment within the WASM heap for improved SIMD compatibility.
 - **Direct Arrow Consumption**: Implemented `to_arrow_array` and `from_parts` to allow WASM to consume and produce Arrow-native buffers zero-copy.
 
-### 5. Ecosystem Upgrades
-- Migrated to **Arrow-rs v58.1.0** and **PyO3 v0.28.3**.
-- Adopted the modern `py.detach()` pattern for thread-safe GIL management.
-- Implemented a generic `WasmBuffer<T>` for cross-platform zero-copy efficiency.
-
-### 5. Phase 6: Production Readiness & Stateful Streaming
+### 5. Production Readiness & Stateful Streaming
 - **`Indicator` Traits**: Defined standard traits for single-stream and vectorized multi-stream stateful indicators.
 - **`BatchIndicator`**: Implemented `BatchSMA` as a proof-of-concept for high-density streaming, enabling parallel state updates for thousands of assets using vectorized Arrow operations.
 - **Persistence**: Added infrastructure for exporting/importing indicator states as Arrow `RecordBatch`.
@@ -44,7 +39,8 @@ Successfully mitigated the heap allocation bottleneck through:
 ### 6. Automated Quality & Modern Workflow
 - **Unified Quality Gates**: Established a comprehensive `prek` workflow (ultra-performant alternative to `pre-commit`) to enforce 100% warning-free builds.
 - **Rust Excellence**: Enforced strict `clippy` and `rustfmt` standards across all crates.
-- **Python Modernization**: Integrated `ruff` for extremely fast Python linting and formatting, managed exclusively via `uv` native toolchains.
+- **Python Modernization**: Integrated `ruff` for extremely fast Python linting and formatting, and **`ty`** for high-performance type checking.
+- **Toolchain**: Transitioned exclusively to **`uv` native commands** for Python management, ensuring a clean and isolated environment.
 - **Continuous Reliability**: Every commit is automatically verified for consistency across Rust, Python, and YAML artifacts.
 
 ## Conclusion
@@ -52,4 +48,4 @@ The `kand` library is now a state-of-the-art technical analysis engine. It provi
 
 ---
 *Date: 2026-04-18*
-*Release: v0.2.2-arrow-v3*
+*Release: v0.2.2-arrow-v4*
