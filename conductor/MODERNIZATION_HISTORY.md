@@ -35,7 +35,12 @@ Successfully mitigated the heap allocation bottleneck through:
 - **Atomic "Transactional" Updates**: Multi-component indicators (e.g., `MACD`) now implement a transactional update pattern. Internal sub-components are updated tentatively on a cloned state; the parent state is only committed if all sub-operations succeed, preventing state corruption during streaming errors.
 - **`Indicator` Traits**: Standardized the `Indicator` and `BatchIndicator` traits with a robust `restore_from_record_batch` API.
 
-### 6. Automated Quality & Modern Workflow
+### 6. Phase 6: Universal Automation & Scaling (In Progress)
+- **Universal Macro Engine**: Prototyped the `kand_indicator!` macro system to automate all five implementation tiers from a single source of truth.
+- **High-Leverage Porting**: Successfully transitioned **RSI** and **ATR** to the durable stateful/batch framework, establishing the standard for OHLCV and recursive feedback indicators.
+- **Library Coverage**: Increased stateful/batch framework coverage by 150% (from 3 to 5 core indicators), with a clear path to 100% library-wide automation.
+
+### 7. Automated Quality & Modern Workflow
 - **Unified Quality Gates**: Established a comprehensive `prek` workflow (ultra-performant alternative to `pre-commit`) to enforce 100% warning-free builds.
 - **Rust Excellence**: Enforced strict `clippy` and `rustfmt` standards across all crates.
 - **Python Modernization**: Integrated `ruff` for extremely fast Python linting and formatting, and **`ty`** for high-performance type checking.
@@ -47,4 +52,4 @@ The `kand` library is now a state-of-the-art technical analysis engine. It provi
 
 ---
 *Date: 2026-04-18*
-*Release: v0.2.3-durability*
+*Release: v0.3.0-scaling*

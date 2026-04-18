@@ -3,6 +3,7 @@ pub mod helper;
 pub mod ta;
 
 pub use error::KandError;
+pub use paste;
 pub use ta::ohlcv;
 pub use ta::other;
 pub use ta::stats;

@@ -1,57 +1,45 @@
-# Technical Specification: Arrow Zero-Copy Integration (Updated V5 Durability)
+# Technical Specification: Arrow Zero-Copy Integration (Updated Phase 6 Strategy)
 
 ## Overview
-This document specifies the technical architecture for integrating Apache Arrow as a first-class, zero-copy data format in the `kand` ecosystem, leveraging `arrow-rs` v58.1.0 and `pyo3-arrow` v0.17.0.
+This document specifies the technical architecture for integrating Apache Arrow as a first-class, zero-copy data format in the `kand` ecosystem.
 
 ## 1. Architecture
 
-### 1.1 Core `kand` Crate: Normalization Contract
-Every indicator exposes a three-tier implementation:
-1.  **`_raw`**: High-performance, slice-based, zero validation.
-2.  **Safe Wrapper**: Validation, NaN handling, slice-based.
-3.  **`_arrow`**: Zero-copy, Arrow-native API with pooling.
+### 1.1 Multi-Tier Indicator Contract
+Every indicator follows a consistent implementation hierarchy:
+- **`_raw`**: Unvalidated, high-performance computational core.
+- **Safe Wrapper**: Parameter and data validation, NaN handling.
+- **`_arrow`**: Zero-copy batch processing using Arrow arrays and `BlockPool`.
+- **`Stateful` (Indicator trait)**: Encapsulated single-stream state management.
+- **`Batch` (BatchIndicator trait)**: Vectorized multi-stream parallel processing.
 
-### 1.2 Performance Optimization (V3 Core, V4 WASM)
-The library utilizes a **Thread-Local Block Cache** to minimize heap allocations.
-- **`BlockPool`**: Manages 64-byte aligned memory regions.
-- **`PooledAllocation`**: Implements the Arrow `Allocation` trait to return memory to the pool upon buffer drop.
-- **WASM Integration (V4)**: `WasmBuffer` is integrated with the core `BlockPool`, providing 64-byte alignment and pooled reuse.
+## 2. Enterprise Durability (V5 Standard)
 
-### 1.3 Python & WASM Bindings
-- **Python**: Utilizes PyO3 0.28 `detach` and Arrow PyCapsule protocol for 500x data transfer speedup.
-- **WASM**: Generic `WasmBuffer<T>` with shared memory views for JavaScript.
+### 2.1 Columnar Persistence
+Internal state scalars are stored as **prefixed constant columns** (`__kand_`) in the state `RecordBatch`. This ensures persistence integrity across standard Arrow processing tools.
 
-## 2. Stateful Indicator Framework (Streaming V1)
+### 2.2 Transactional Integrity
+Multi-component indicators must implement the **Explicit Commit Pattern**:
+1. Clone current state.
+2. Attempt component updates on the clone.
+3. Commit the clone to `self` only if all sub-operations succeed.
 
-To support high-density streaming (thousands of assets) and standardized persistence, `kand` provides encapsulated stateful indicator traits.
+## 3. Phase 6 Scaling Strategy (The Universal Macro)
 
-### 2.1 `Indicator` and `BatchIndicator` Traits
-- **`Indicator`**: Standard interface for single-stream stateful indicators.
-- **`BatchIndicator`**: Optimized for vectorized multi-stream updates. Processes $N$ streams simultaneously using Arrow arrays.
+To scale stateful/batch support from ~4% to 100% of the library, a new **`kand_indicator!`** macro ecosystem is established.
 
-### 2.2 Enterprise Durability (V5 Standard)
+### 3.1 Macro Classification
+Indicators are classified into three types for automated generation:
+- **Sliding Window**: Requires a buffer of previous $N$ values (e.g., SMA, MOM, ROC).
+- **Recursive**: Depends on the previous single output value (e.g., EMA, RSI, ATR).
+- **Composite**: Composed of other stateful indicators (e.g., MACD, BBands).
 
-#### 2.2.1 Transactional Persistence
-To ensure 100% interoperability with external Arrow tools (Polars, DataFusion), all stateful scalars are stored as **prefixed constant columns** in the `RecordBatch`:
-- Prefix: `__kand_` (e.g., `__kand_period`, `__kand_count`).
-- Values are repeated for all rows in a `BatchIndicator` state to maintain schema consistency.
-- This prevents data loss when states are passed through joins, filters, or aggregations that strip metadata.
+### 3.2 Automation Goals
+- Automated generation of `Stateful` structs and `Batch` managers.
+- Automated `RecordBatch` serialization following V5 standards.
+- Automated `BlockPool` integration for zero-allocation streaming.
 
-#### 2.2.2 Atomic State Updates (Explicit Commit)
-Multi-component indicators (e.g., `MACD`) implement a **Transactional Commit** pattern:
-- Components are updated tentatively on state clones.
-- If any sub-component fails, the parent state remains unchanged.
-- Successful updates are committed atomically to ensure state integrity.
-
-## 3. Universal Macro Strategy
-A single `kand_indicator!` macro automates the generation of the full indicator suite:
-- Generates `_raw`, `safe`, `_arrow`, `Stateful`, and `Batch` variants.
-- Enforces V5 Durability standards (columnar persistence, atomic updates) by default.
-- Integrated with `BlockPool` for automatic memory management.
-
-## 4. Test-Driven Development (TDD) Standard
-1.  **Validation Parity**: Errors match legacy slice variants exactly.
-2.  **Numerical Parity**: Bit-identical results maintained across all variants.
-3.  **Persistence Integrity**: 0 data loss verified via columnar state storage (`__kand_` prefix).
-4.  **Transactional Updates**: Atomic state management verified via failure-injection tests.
-5.  **Quality Assurance**: 100% warning-free build and automated `prek` verification required.
+## 4. Quality & Verification
+- **TDD Parity**: Mandatory numerical parity between all variants.
+- **Prek Gate**: Automated verification of formatting, linting (Clippy/Ruff), and type safety (Ty).
+- **Performance**: Goal of <15% overhead for Arrow variants vs. raw loops.
