@@ -163,3 +163,12 @@ pub fn correl_inc_py(
     })
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+
+crate::kand_py_arrow_wrapper_multi!(
+    correl_arrow,
+    kand::ta::stats::correl::correl_arrow,
+    inputs: { input0, input1 },
+    params: { period: usize },
+    output_count: 6
+);
+

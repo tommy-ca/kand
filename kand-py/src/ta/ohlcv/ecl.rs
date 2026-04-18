@@ -137,11 +137,3 @@ pub fn ecl_inc_py(
     })
 }
 
-#[cfg(feature = "arrow")]
-crate::kand_py_arrow_wrapper_multi!(
-    ecl_arrow,
-    kand::ohlcv::ecl::ecl_arrow,
-    inputs: { high, low, close },
-    params: {},
-    output_count: 10
-);

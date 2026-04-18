@@ -127,7 +127,7 @@ pub fn rocr100(
     #[cfg(feature = "check-nan")]
     {
         for price in input_price {
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -183,7 +183,7 @@ pub fn rocr100_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
 pub fn rocr100_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input.is_nan() || prev.is_nan() {
+        if input.is_null() || prev.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -202,6 +202,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;

@@ -141,7 +141,7 @@ pub fn rma(
     {
         for price in input.iter().take(len) {
             // NaN check
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -207,7 +207,7 @@ pub fn rma_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_current.is_nan() || prev_rma.is_nan() {
+        if input_current.is_null() || prev_rma.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -226,6 +226,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -301,8 +303,8 @@ mod tests {
         let result = rma_arrow(&input_arrow, period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.value(0).is_nan());
-        assert!(result.value(1).is_nan());
+        assert!(result.is_null(0));
+        assert!(result.is_null(1));
         assert_relative_eq!(result.value(2), 2.0, epsilon = 0.0001);
     }
 }

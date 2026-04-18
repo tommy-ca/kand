@@ -283,13 +283,13 @@ pub fn adosc_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_nan()
-            || input_low.is_nan()
-            || input_close.is_nan()
-            || input_volume.is_nan()
-            || prev_ad.is_nan()
-            || prev_ad_fast_ema.is_nan()
-            || prev_ad_slow_ema.is_nan()
+        if input_high.is_null()
+            || input_low.is_null()
+            || input_close.is_null()
+            || input_volume.is_null()
+            || prev_ad.is_null()
+            || prev_ad_fast_ema.is_null()
+            || prev_ad_slow_ema.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -322,6 +322,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use crate::EPSILON;

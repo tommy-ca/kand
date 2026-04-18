@@ -265,7 +265,7 @@ pub fn tema_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input.is_nan() || prev_ema1.is_nan() || prev_ema2.is_nan() || prev_ema3.is_nan() {
+        if input.is_null() || prev_ema1.is_null() || prev_ema2.is_null() || prev_ema3.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -288,6 +288,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -398,7 +399,7 @@ mod tests {
         for i in 0..input.len() {
             if i < 6 {
                 #[cfg(feature = "allow-nan")]
-                assert!(tema_arrow.value(i).is_nan());
+                assert!(tema_arrow.is_null(i));
             } else {
                 assert_relative_eq!(tema_arrow.value(i), out_tema[i], epsilon = 0.0001);
             }

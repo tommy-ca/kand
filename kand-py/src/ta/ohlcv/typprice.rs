@@ -76,3 +76,11 @@ pub fn typprice_inc_py(high: TAFloat, low: TAFloat, close: TAFloat) -> PyResult<
     typprice::typprice_inc(high, low, close)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+
+crate::kand_py_arrow_wrapper!(
+    typprice_arrow,
+    kand::ta::ohlcv::typprice::typprice_arrow,
+    inputs: { high, low, close },
+    params: {}
+);
+

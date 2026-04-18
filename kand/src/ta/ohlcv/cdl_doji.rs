@@ -198,9 +198,9 @@ pub fn cdl_doji_inc_raw(
     let shadows_equal = shadow_diff_percent < opt_shadow_equal_percent;
 
     if is_doji_body && shadows_equal {
-        Signal::Pattern.into()
+        <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Pattern)
     } else {
-        Signal::Neutral.into()
+        <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Neutral)
     }
 }
 
@@ -255,7 +255,7 @@ pub fn cdl_doji_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_open.is_nan() || input_high.is_nan() || input_low.is_nan() || input_close.is_nan()
+        if input_open.is_null() || input_high.is_null() || input_low.is_null() || input_close.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -282,6 +282,7 @@ crate::kand_arrow_wrapper_int!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use super::*;
 
     #[test]
@@ -343,7 +344,7 @@ mod tests {
         for &idx in &doji_indices {
             assert_eq!(
                 output_signals[idx],
-                Signal::Pattern.into(),
+                <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Pattern),
                 "Expected doji signal at index {idx}"
             );
         }

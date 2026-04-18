@@ -197,7 +197,7 @@ pub fn roc_inc(current_price: TAFloat, prev_price: TAFloat) -> Result<TAFloat, K
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if current_price.is_nan() || prev_price.is_nan() {
+        if current_price.is_null() || prev_price.is_null() {
             return Err(KandError::NaNDetected);
         }
         // Division by zero check
@@ -220,6 +220,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -272,8 +274,8 @@ mod tests {
         let result = roc_arrow(&price_arrow, opt_period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.value(0).is_nan());
-        assert!(result.value(1).is_nan());
+        assert!(result.is_null(0));
+        assert!(result.is_null(1));
         assert_relative_eq!(result.value(2), 12.0, epsilon = 0.0001);
     }
 }

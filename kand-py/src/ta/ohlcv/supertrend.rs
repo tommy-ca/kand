@@ -143,7 +143,6 @@ pub fn supertrend_py(
     multiplier
 ))]
 pub fn supertrend_inc_py(
-    py: Python,
     high: TAFloat,
     low: TAFloat,
     close: TAFloat,
@@ -155,28 +154,10 @@ pub fn supertrend_inc_py(
     period: usize,
     multiplier: TAFloat,
 ) -> PyResult<(TAInt, TAFloat, TAFloat, TAFloat, TAFloat)> {
-    py.allow_threads(|| {
-        supertrend::supertrend_inc(
-            high,
-            low,
-            close,
-            prev_close,
-            prev_atr,
-            prev_trend,
-            prev_upper,
-            prev_lower,
-            period,
-            multiplier,
-        )
-    })
+    supertrend::supertrend_inc(
+        high, low, close, prev_close, prev_atr, prev_trend, prev_upper, prev_lower, period,
+        multiplier,
+    )
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
-#[cfg(feature = "arrow")]
-crate::kand_py_arrow_wrapper_multi!(
-    supertrend_arrow,
-    kand::ta::ohlcv::supertrend::supertrend_arrow,
-    inputs: { high, low, close },
-    params: { period: usize, multiplier: TAFloat },
-    output_count: 5
-);

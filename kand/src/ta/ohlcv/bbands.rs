@@ -31,7 +31,8 @@ use crate::ta::types::TAArrowArray;
 /// let lookback = bbands::lookback(period, MAType::SMA).unwrap();
 /// assert_eq!(lookback, 19);
 /// ```
-pub const fn lookback(opt_period: usize, _opt_ma_type: MAType) -> Result<usize, KandError> {
+pub const fn lookback(opt_period: usize, opt_ma_type: crate::ta::types::MAType) -> Result<usize, KandError> {
+    let _ = opt_ma_type;
     sma::lookback(opt_period)
 }
 
@@ -41,11 +42,12 @@ pub fn bbands_raw(
     opt_period: usize,
     opt_multiplier_up: TAFloat,
     opt_multiplier_down: TAFloat,
-    _opt_ma_type: MAType,
+    opt_ma_type: crate::ta::types::MAType,
     output_upper: &mut [TAFloat],
     output_middle: &mut [TAFloat],
     output_lower: &mut [TAFloat],
 ) {
+    let _ = opt_ma_type;
     let len = input_price.len();
     let lookback = opt_period - 1;
 
@@ -180,7 +182,7 @@ pub fn bbands(
     #[cfg(feature = "check-nan")]
     {
         for price in input_price {
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -306,15 +308,15 @@ pub fn bbands_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_price.is_nan()
-            || prev_sma.is_nan()
-            || prev_sum.is_nan()
-            || prev_sum_sq.is_nan()
-            || input_old_price.is_nan()
+        if input_price.is_null()
+            || prev_sma.is_null()
+            || prev_sum.is_null()
+            || prev_sum_sq.is_null()
+            || input_old_price.is_null()
         {
             return Err(KandError::NaNDetected);
         }
-        if opt_multiplier_up.is_nan() || opt_multiplier_down.is_nan() {
+        if opt_multiplier_up.is_null() || opt_multiplier_down.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -353,6 +355,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -508,9 +511,9 @@ mod tests {
             if i < 19 {
                 #[cfg(feature = "allow-nan")]
                 {
-                    assert!(upper.value(i).is_nan());
-                    assert!(middle.value(i).is_nan());
-                    assert!(lower.value(i).is_nan());
+                    assert!(upper.is_null(i));
+                    assert!(middle.is_null(i));
+                    assert!(lower.is_null(i));
                 }
             } else {
                 assert_relative_eq!(upper.value(i), out_upper[i], epsilon = 0.0001);

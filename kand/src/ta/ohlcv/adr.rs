@@ -204,11 +204,11 @@ pub fn adr_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_new_high.is_nan()
-            || input_new_low.is_nan()
-            || input_old_high.is_nan()
-            || input_old_low.is_nan()
-            || prev_adr.is_nan()
+        if input_new_high.is_null()
+            || input_new_low.is_null()
+            || input_old_high.is_null()
+            || input_old_low.is_null()
+            || prev_adr.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -235,6 +235,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -384,7 +386,7 @@ mod tests {
 
         for (i, &expected) in expected_values.iter().enumerate() {
             if expected.is_nan() {
-                assert!(result.is_nan(i));
+                assert!(result.is_null(i));
             } else {
                 assert_relative_eq!(result.value(i), expected, epsilon = EPSILON);
             }
@@ -425,7 +427,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 2 {
                 #[cfg(feature = "allow-nan")]
-                assert!(result.is_nan(i));
+                assert!(result.is_null(i));
             } else {
                 assert_relative_eq!(result.value(i), out_adr[i], epsilon = 1e-9);
             }

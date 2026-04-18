@@ -1,7 +1,6 @@
 use kand::{TAFloat, ohlcv::mom};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
-use crate::kand_py_arrow_wrapper;
 
 /// Computes the Momentum (MOM) over a NumPy array.
 ///
@@ -46,13 +45,6 @@ pub fn mom_py(
     Ok(output.into_pyarray(py).into())
 }
 
-kand_py_arrow_wrapper!(
-    mom_arrow,
-    mom::mom_arrow,
-    inputs: { data },
-    params: { period: usize }
-);
-
 /// Calculates the next Momentum (MOM) value incrementally.
 ///
 /// This function provides an optimized way to calculate the latest momentum value
@@ -80,3 +72,4 @@ pub fn mom_inc_py(py: Python, current_price: TAFloat, old_price: TAFloat) -> PyR
     py.allow_threads(|| mom::mom_inc(current_price, old_price))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+

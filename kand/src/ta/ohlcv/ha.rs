@@ -266,12 +266,12 @@ pub fn ha_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if curr_open.is_nan()
-            || curr_high.is_nan()
-            || curr_low.is_nan()
-            || curr_close.is_nan()
-            || prev_ha_open.is_nan()
-            || prev_ha_close.is_nan()
+        if curr_open.is_null()
+            || curr_high.is_null()
+            || curr_low.is_null()
+            || curr_close.is_null()
+            || prev_ha_open.is_null()
+            || prev_ha_close.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -310,6 +310,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;

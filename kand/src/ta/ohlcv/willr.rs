@@ -248,13 +248,13 @@ pub fn willr_inc(
 ) -> Result<(TAFloat, TAFloat, TAFloat), KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if prev_highest_high.is_nan()
-            || prev_lowest_low.is_nan()
-            || prev_high.is_nan()
-            || prev_low.is_nan()
-            || input_close.is_nan()
-            || input_high.is_nan()
-            || input_low.is_nan()
+        if prev_highest_high.is_null()
+            || prev_lowest_low.is_null()
+            || prev_high.is_null()
+            || prev_low.is_null()
+            || input_close.is_null()
+            || input_high.is_null()
+            || input_low.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -303,6 +303,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -439,7 +440,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 13 {
                 #[cfg(feature = "allow-nan")]
-                assert!(result_arrow.value(i).is_nan());
+                assert!(result_arrow.is_null(i));
             } else {
                 assert_relative_eq!(result_arrow.value(i), out[i], epsilon = 0.0001);
             }

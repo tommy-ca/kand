@@ -128,7 +128,7 @@ pub fn min(
     {
         // NaN check
         for price in input_prices {
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -211,7 +211,7 @@ pub fn min_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_price.is_nan() || prev_min.is_nan() || prev_price.is_nan() {
+        if input_price.is_null() || prev_min.is_null() || prev_price.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -237,6 +237,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -312,7 +313,7 @@ mod tests {
         for i in 0..input_close.len() {
             if i < 13 {
                 #[cfg(feature = "allow-nan")]
-                assert!(result.value(i).is_nan());
+                assert!(result.is_null(i));
             } else {
                 assert_relative_eq!(result.value(i), out[i], epsilon = 0.0001);
             }

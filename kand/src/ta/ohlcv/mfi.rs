@@ -249,6 +249,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -395,7 +396,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 14 {
                 #[cfg(feature = "allow-nan")]
-                assert!(mfi_arrow.value(i).is_nan());
+                assert!(mfi_arrow.is_null(i));
             } else {
                 assert_relative_eq!(mfi_arrow.value(i), out_mfi[i], epsilon = 0.0001);
             }

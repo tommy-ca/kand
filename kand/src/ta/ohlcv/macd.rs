@@ -190,7 +190,7 @@ pub fn macd(
     {
         for price in input_price {
             // NaN check
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -315,10 +315,10 @@ pub fn macd_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_price.is_nan()
-            || prev_fast_ema.is_nan()
-            || prev_slow_ema.is_nan()
-            || prev_signal.is_nan()
+        if input_price.is_null()
+            || prev_fast_ema.is_null()
+            || prev_slow_ema.is_null()
+            || prev_signal.is_null()
         {
             return Err(KandError::NaNDetected);
         }

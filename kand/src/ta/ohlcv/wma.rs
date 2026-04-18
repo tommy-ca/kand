@@ -218,6 +218,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -299,7 +300,7 @@ mod tests {
         for i in 0..input.len() {
             if i < 29 {
                 #[cfg(feature = "allow-nan")]
-                assert!(wma_arrow.value(i).is_nan());
+                assert!(wma_arrow.is_null(i));
             } else {
                 assert_relative_eq!(wma_arrow.value(i), out[i], epsilon = 0.0001);
             }

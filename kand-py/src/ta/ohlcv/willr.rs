@@ -122,3 +122,12 @@ pub fn willr_inc_py(
     )
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+
+crate::kand_py_arrow_wrapper_multi!(
+    willr_arrow,
+    kand::ta::ohlcv::willr::willr_arrow,
+    inputs: { high, low, close },
+    params: { period: usize },
+    output_count: 3
+);
+

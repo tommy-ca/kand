@@ -450,11 +450,11 @@ pub fn sar_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_nan()
-            || input_low.is_nan()
-            || prev_high.is_nan()
-            || prev_low.is_nan()
-            || prev_sar.is_nan()
+        if input_high.is_null()
+            || input_low.is_null()
+            || prev_high.is_null()
+            || prev_low.is_null()
+            || prev_sar.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -487,6 +487,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;

@@ -124,7 +124,7 @@ pub fn vegas(
     {
         for price in input_price {
             // NaN check
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -175,6 +175,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -251,10 +252,10 @@ mod tests {
         #[cfg(feature = "allow-nan")]
         {
             for i in 0..lookback {
-                assert!(upper.value(i).is_nan());
-                assert!(lower.value(i).is_nan());
-                assert!(b_upper.value(i).is_nan());
-                assert!(b_lower.value(i).is_nan());
+                assert!(upper.is_null(i));
+                assert!(lower.is_null(i));
+                assert!(b_upper.is_null(i));
+                assert!(b_lower.is_null(i));
             }
         }
 
@@ -314,11 +315,11 @@ pub fn vegas_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_price.is_nan()
-            || prev_channel_upper.is_nan()
-            || prev_channel_lower.is_nan()
-            || prev_boundary_upper.is_nan()
-            || prev_boundary_lower.is_nan()
+        if input_price.is_null()
+            || prev_channel_upper.is_null()
+            || prev_channel_lower.is_null()
+            || prev_boundary_upper.is_null()
+            || prev_boundary_lower.is_null()
         {
             return Err(KandError::NaNDetected);
         }

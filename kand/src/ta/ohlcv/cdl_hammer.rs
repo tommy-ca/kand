@@ -221,7 +221,7 @@ pub fn cdl_hammer(
 
     // Fill initial values
     for i in 0..lookback {
-        output_signals[i] = Signal::Neutral.into();
+        output_signals[i] = <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Neutral);
         output_body_avg[i] = TAFloat::NAN;
     }
 
@@ -251,9 +251,9 @@ pub fn cdl_hammer_inc_raw(
         TAFloat::min(input_open, input_close) > f64::midpoint(input_high, input_low);
 
     if is_small_body && has_long_lower_shadow && has_minimal_upper_shadow && body_in_upper_half {
-        Signal::Bullish.into()
+        <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)
     } else {
-        Signal::Neutral.into()
+        <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Neutral)
     }
 }
 
@@ -319,11 +319,11 @@ pub fn cdl_hammer_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_open.is_nan()
-            || input_high.is_nan()
-            || input_low.is_nan()
-            || input_close.is_nan()
-            || prev_body_avg.is_nan()
+        if input_open.is_null()
+            || input_high.is_null()
+            || input_low.is_null()
+            || input_close.is_null()
+            || prev_body_avg.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -358,6 +358,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -419,9 +420,9 @@ mod tests {
         .unwrap();
 
         // Test specific signals
-        assert_eq!(output_signals[16], Signal::Bullish.into()); // TV BTCUSDT.P 5m 2025-02-03 06:30
-        assert_eq!(output_signals[54], Signal::Bullish.into()); // TV BTCUSDT.P 5m 2025-02-03 16:00
-        assert_eq!(output_signals[59], Signal::Bullish.into()); // TV BTCUSDT.P 5m 2025-02-03 17:15
+        assert_eq!(output_signals[16], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-03 06:30
+        assert_eq!(output_signals[54], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-03 16:00
+        assert_eq!(output_signals[59], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)); // TV BTCUSDT.P 5m 2025-02-03 17:15
 
         // Test incremental calculation
         let mut prev_body_avg = output_body_avg[13];

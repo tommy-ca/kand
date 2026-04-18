@@ -1,7 +1,6 @@
 use kand::{TAFloat, ohlcv::rma};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
-use crate::kand_py_arrow_wrapper;
 
 /// Computes the Running Moving Average (RMA) over a NumPy array.
 ///
@@ -48,13 +47,6 @@ pub fn rma_py(
     Ok(output.into_pyarray(py).into())
 }
 
-kand_py_arrow_wrapper!(
-    rma_arrow,
-    rma::rma_arrow,
-    inputs: { data },
-    params: { period: usize }
-);
-
 /// Calculates the next RMA value incrementally.
 ///
 /// This function provides an optimized way to calculate the latest RMA value
@@ -75,12 +67,8 @@ kand_py_arrow_wrapper!(
 ///   ```
 #[pyfunction]
 #[pyo3(name = "rma_inc", signature = (current_price, prev_rma, period))]
-pub fn rma_inc_py(
-    py: Python,
-    current_price: TAFloat,
-    prev_rma: TAFloat,
-    period: usize,
-) -> PyResult<TAFloat> {
-    py.allow_threads(|| rma::rma_inc(current_price, prev_rma, period))
+pub fn rma_inc_py(current_price: TAFloat, prev_rma: TAFloat, period: usize) -> PyResult<TAFloat> {
+    rma::rma_inc(current_price, prev_rma, period)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+

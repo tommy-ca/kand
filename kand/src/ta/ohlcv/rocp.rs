@@ -191,7 +191,7 @@ pub fn rocp_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
 pub fn rocp_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input.is_nan() || prev.is_nan() {
+        if input.is_null() || prev.is_null() {
             return Err(KandError::NaNDetected);
         }
         if prev == 0.0 {
@@ -213,6 +213,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -269,8 +271,8 @@ mod tests {
         let result = rocp_arrow(&price_arrow, opt_period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.value(0).is_nan());
-        assert!(result.value(1).is_nan());
+        assert!(result.is_null(0));
+        assert!(result.is_null(1));
         assert_relative_eq!(result.value(2), 0.12, epsilon = 0.0001);
     }
 }

@@ -75,3 +75,11 @@ pub fn sum_inc_py(
     py.allow_threads(|| sum::sum_inc(new_price, old_price, prev_sum))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+
+crate::kand_py_arrow_wrapper!(
+    sum_arrow,
+    kand::ta::stats::sum::sum_arrow,
+    inputs: { prices },
+    params: { period: usize }
+);
+

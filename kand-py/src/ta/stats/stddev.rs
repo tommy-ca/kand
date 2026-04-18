@@ -101,3 +101,12 @@ pub fn stddev_inc_py(
     py.allow_threads(|| stddev::stddev_inc(price, prev_sum, prev_sum_sq, old_price, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+
+crate::kand_py_arrow_wrapper_multi!(
+    stddev_arrow,
+    kand::ta::stats::stddev::stddev_arrow,
+    inputs: { input },
+    params: { period: usize },
+    output_count: 3
+);
+

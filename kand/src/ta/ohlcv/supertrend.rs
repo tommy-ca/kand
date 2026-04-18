@@ -376,14 +376,14 @@ pub fn supertrend_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_nan()
-            || input_low.is_nan()
-            || input_close.is_nan()
-            || prev_close.is_nan()
-            || prev_atr.is_nan()
-            || prev_upper.is_nan()
-            || prev_lower.is_nan()
-            || opt_multiplier.is_nan()
+        if input_high.is_null()
+            || input_low.is_null()
+            || input_close.is_null()
+            || prev_close.is_null()
+            || prev_atr.is_null()
+            || prev_upper.is_null()
+            || prev_lower.is_null()
+            || opt_multiplier.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -416,6 +416,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;

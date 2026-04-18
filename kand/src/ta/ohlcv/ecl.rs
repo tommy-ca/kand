@@ -344,7 +344,7 @@ pub fn ecl_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if prev_high.is_nan() || prev_low.is_nan() || prev_close.is_nan() {
+        if prev_high.is_null() || prev_low.is_null() || prev_close.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -387,6 +387,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -478,34 +479,34 @@ mod tests {
             ecl_arrow(&high_arrow, &low_arrow, &close_arrow).unwrap();
 
         assert_eq!(h5.len(), 5);
-        assert!(h5.value(0).is_nan());
+        assert!(h5.is_null(0));
         assert!(h5.value(1).is_finite());
 
         assert_eq!(h4.len(), 5);
-        assert!(h4.value(0).is_nan());
+        assert!(h4.is_null(0));
 
         assert_eq!(h3.len(), 5);
-        assert!(h3.value(0).is_nan());
+        assert!(h3.is_null(0));
 
         assert_eq!(h2.len(), 5);
-        assert!(h2.value(0).is_nan());
+        assert!(h2.is_null(0));
 
         assert_eq!(h1.len(), 5);
-        assert!(h1.value(0).is_nan());
+        assert!(h1.is_null(0));
 
         assert_eq!(l1.len(), 5);
-        assert!(l1.value(0).is_nan());
+        assert!(l1.is_null(0));
 
         assert_eq!(l2.len(), 5);
-        assert!(l2.value(0).is_nan());
+        assert!(l2.is_null(0));
 
         assert_eq!(l3.len(), 5);
-        assert!(l3.value(0).is_nan());
+        assert!(l3.is_null(0));
 
         assert_eq!(l4.len(), 5);
-        assert!(l4.value(0).is_nan());
+        assert!(l4.is_null(0));
 
         assert_eq!(l5.len(), 5);
-        assert!(l5.value(0).is_nan());
+        assert!(l5.is_null(0));
     }
 }

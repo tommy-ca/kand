@@ -164,7 +164,7 @@ pub fn var(
     {
         // NaN check
         for price in input_prices {
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -257,10 +257,10 @@ pub fn var_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_price.is_nan()
-            || prev_sum.is_nan()
-            || prev_sum_sq.is_nan()
-            || input_old_price.is_nan()
+        if input_price.is_null()
+            || prev_sum.is_null()
+            || prev_sum_sq.is_null()
+            || input_old_price.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -292,6 +292,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -350,7 +351,7 @@ mod tests {
 
         // Test each incremental step
         for i in 14..19 {
-            let (var, new_sum, new_sum_sq) = var_inc(
+            let (var_res, new_sum, new_sum_sq) = var_inc(
                 input_close[i],
                 prev_sum,
                 prev_sum_sq,
@@ -358,7 +359,7 @@ mod tests {
                 opt_period,
             )
             .unwrap();
-            assert_relative_eq!(var, output_var[i], epsilon = 0.0001);
+            assert_relative_eq!(var_res, output_var[i], epsilon = 0.0001);
             assert_relative_eq!(new_sum, output_sum[i], epsilon = 0.0001);
             assert_relative_eq!(new_sum_sq, output_sum_sq[i], epsilon = 0.0001);
             prev_sum = new_sum;
@@ -380,9 +381,9 @@ mod tests {
         let input_arrow = TAArrowArray::from(input_close.clone());
         let opt_period = 14;
 
-        let (var, _, _) = var_arrow(&input_arrow, opt_period).unwrap();
+        let (var_res, _, _) = var_arrow(&input_arrow, opt_period).unwrap();
 
-        assert_eq!(var.len(), input_close.len());
+        assert_eq!(var_res.len(), input_close.len());
 
         let mut out_var = vec![0.0; input_close.len()];
         let mut out_sum = vec![0.0; input_close.len()];
@@ -400,9 +401,9 @@ mod tests {
         for i in 0..input_close.len() {
             if i < 13 {
                 #[cfg(feature = "allow-nan")]
-                assert!(var.value(i).is_nan());
+                assert!(var_res.is_null(i));
             } else {
-                assert_relative_eq!(var.value(i), out_var[i], epsilon = 0.0001);
+                assert_relative_eq!(var_res.value(i), out_var[i], epsilon = 0.0001);
             }
         }
     }

@@ -433,13 +433,13 @@ pub fn t3_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_price.is_nan()
-            || prev_ema1.is_nan()
-            || prev_ema2.is_nan()
-            || prev_ema3.is_nan()
-            || prev_ema4.is_nan()
-            || prev_ema5.is_nan()
-            || prev_ema6.is_nan()
+        if input_price.is_null()
+            || prev_ema1.is_null()
+            || prev_ema2.is_null()
+            || prev_ema3.is_null()
+            || prev_ema4.is_null()
+            || prev_ema5.is_null()
+            || prev_ema6.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -487,6 +487,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -634,7 +635,7 @@ mod tests {
         for i in 0..input.len() {
             if i < 24 {
                 #[cfg(feature = "allow-nan")]
-                assert!(t3_arrow.value(i).is_nan());
+                assert!(t3_arrow.is_null(i));
             } else {
                 assert_relative_eq!(t3_arrow.value(i), out[i], epsilon = 0.0001);
             }

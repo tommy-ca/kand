@@ -239,11 +239,11 @@ pub fn natr_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_high.is_nan()
-            || input_low.is_nan()
-            || input_close.is_nan()
-            || prev_close.is_nan()
-            || prev_atr.is_nan()
+        if input_high.is_null()
+            || input_low.is_null()
+            || input_close.is_null()
+            || prev_close.is_null()
+            || prev_atr.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -270,6 +270,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -365,8 +367,8 @@ mod tests {
         let result = natr_arrow(&high_arrow, &low_arrow, &close_arrow, period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.value(0).is_nan());
-        assert!(result.value(1).is_nan());
+        assert!(result.is_null(0));
+        assert!(result.is_null(1));
         assert!(result.value(2).is_finite());
     }
 }

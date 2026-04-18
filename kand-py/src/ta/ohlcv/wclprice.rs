@@ -65,22 +65,8 @@ pub fn wclprice_py(
 ///   ```
 #[pyfunction]
 #[pyo3(name = "wclprice_inc", signature = (high, low, close))]
-pub fn wclprice_inc_py(
-    py: Python,
-    high: TAFloat,
-    low: TAFloat,
-    close: TAFloat,
-) -> PyResult<TAFloat> {
-    py.allow_threads(|| {
-        wclprice::wclprice_inc(high, low, close)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
-    })
+pub fn wclprice_inc_py(high: TAFloat, low: TAFloat, close: TAFloat) -> PyResult<TAFloat> {
+    wclprice::wclprice_inc(high, low, close)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
-#[cfg(feature = "arrow")]
-crate::kand_py_arrow_wrapper!(
-    wclprice_arrow,
-    kand::ohlcv::wclprice::wclprice_arrow,
-    inputs: { high, low, close },
-    params: {}
-);

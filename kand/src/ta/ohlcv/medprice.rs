@@ -153,7 +153,7 @@ pub fn medprice_inc_raw(input_high: TAFloat, input_low: TAFloat) -> TAFloat {
 pub fn medprice_inc(input_high: TAFloat, input_low: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_nan() || input_low.is_nan() {
+        if input_high.is_null() || input_low.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -172,6 +172,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;

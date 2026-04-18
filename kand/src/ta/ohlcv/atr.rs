@@ -237,7 +237,7 @@ pub fn atr_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_high.is_nan() || input_low.is_nan() || prev_close.is_nan() || prev_atr.is_nan() {
+        if input_high.is_null() || input_low.is_null() || prev_close.is_null() || prev_atr.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -262,6 +262,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;

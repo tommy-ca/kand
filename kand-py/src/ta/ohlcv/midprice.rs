@@ -1,7 +1,6 @@
 use kand::{TAFloat, ohlcv::midprice};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
-use crate::kand_py_arrow_wrapper_multi;
 
 /// Calculates Midpoint Price values for a NumPy array.
 ///
@@ -67,14 +66,6 @@ pub fn midprice_py(
     ))
 }
 
-kand_py_arrow_wrapper_multi!(
-    midprice_arrow,
-    midprice::midprice_arrow,
-    inputs: { high, low },
-    params: { period: usize },
-    output_count: 3
-);
-
 /// Calculates the next Midpoint Price value incrementally.
 ///
 /// Provides an optimized way to calculate the next Midpoint Price value when new data arrives,
@@ -118,3 +109,4 @@ pub fn midprice_inc_py(
     py.allow_threads(|| midprice::midprice_inc(high, low, prev_highest, prev_lowest, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+

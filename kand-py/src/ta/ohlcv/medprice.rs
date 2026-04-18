@@ -66,10 +66,3 @@ pub fn medprice_inc_py(py: Python, high: TAFloat, low: TAFloat) -> PyResult<TAFl
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
-#[cfg(feature = "arrow")]
-crate::kand_py_arrow_wrapper!(
-    medprice_arrow,
-    kand::ohlcv::medprice::medprice_arrow,
-    inputs: { high, low },
-    params: {}
-);

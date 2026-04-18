@@ -185,10 +185,10 @@ pub fn obv_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_curr_close.is_nan()
-            || prev_close.is_nan()
-            || input_volume.is_nan()
-            || prev_obv.is_nan()
+        if input_curr_close.is_null()
+            || prev_close.is_null()
+            || input_volume.is_null()
+            || prev_obv.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -213,6 +213,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;

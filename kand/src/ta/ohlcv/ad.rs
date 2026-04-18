@@ -243,11 +243,11 @@ pub fn ad_inc(
 ) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_nan()
-            || input_low.is_nan()
-            || input_close.is_nan()
-            || input_volume.is_nan()
-            || prev_ad.is_nan()
+        if input_high.is_null()
+            || input_low.is_null()
+            || input_close.is_null()
+            || input_volume.is_null()
+            || prev_ad.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -273,6 +273,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;

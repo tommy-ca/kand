@@ -82,6 +82,9 @@
 //! - Optional validation checks that can be disabled for maximum performance
 #![allow(clippy::similar_names, clippy::too_many_lines)]
 
+#[cfg(feature = "arrow")]
+extern crate arrow;
+
 pub mod ta;
 pub use ta::*;
 

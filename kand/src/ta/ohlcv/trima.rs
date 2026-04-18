@@ -274,11 +274,11 @@ pub fn trima_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if prev_sma1.is_nan()
-            || prev_sma2.is_nan()
-            || input_new_price.is_nan()
-            || input_old_price.is_nan()
-            || input_old_sma1.is_nan()
+        if prev_sma1.is_null()
+            || prev_sma2.is_null()
+            || input_new_price.is_null()
+            || input_old_price.is_null()
+            || input_old_sma1.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -307,6 +307,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -479,7 +480,7 @@ mod tests {
         for i in 0..input.len() {
             if i < 29 {
                 #[cfg(feature = "allow-nan")]
-                assert!(trima_arrow.value(i).is_nan());
+                assert!(trima_arrow.is_null(i));
             } else {
                 assert_relative_eq!(trima_arrow.value(i), out_sma2[i], epsilon = 0.0001);
             }

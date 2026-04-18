@@ -179,9 +179,9 @@ pub fn cdl_dragonfly_doji_inc_raw(
         && body <= range * opt_body_percent / 100.0
         && up_shadow <= range * opt_shadow_percent / 100.0
     {
-        Signal::Bullish.into()
+        <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish)
     } else {
-        Signal::Neutral.into()
+        <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Neutral)
     }
 }
 
@@ -222,7 +222,7 @@ pub fn cdl_dragonfly_doji_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_open.is_nan() || input_high.is_nan() || input_low.is_nan() || input_close.is_nan()
+        if input_open.is_null() || input_high.is_null() || input_low.is_null() || input_close.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -249,6 +249,7 @@ crate::kand_arrow_wrapper_int!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use super::*;
 
     #[test]
@@ -310,7 +311,7 @@ mod tests {
         for &idx in &dragonfly_indices {
             assert_eq!(
                 output_signals[idx],
-                Signal::Bullish.into(),
+                <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bullish),
                 "Expected dragonfly doji signal at index {idx}"
             );
         }

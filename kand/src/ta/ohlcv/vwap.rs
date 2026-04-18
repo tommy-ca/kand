@@ -250,12 +250,12 @@ pub fn vwap_inc(
 ) -> Result<(TAFloat, TAFloat, TAFloat), KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if high.is_nan()
-            || low.is_nan()
-            || close.is_nan()
-            || volume.is_nan()
-            || prev_cum_pv.is_nan()
-            || prev_cum_vol.is_nan()
+        if high.is_null()
+            || low.is_null()
+            || close.is_null()
+            || volume.is_null()
+            || prev_cum_pv.is_null()
+            || prev_cum_vol.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -293,6 +293,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;

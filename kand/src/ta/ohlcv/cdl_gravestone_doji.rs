@@ -170,9 +170,9 @@ pub fn cdl_gravestone_doji_inc_raw(
     let has_minimal_lower_shadow = dn_shadow <= body;
 
     if is_doji_body && has_minimal_lower_shadow {
-        Signal::Bearish.into()
+        <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bearish)
     } else {
-        Signal::Neutral.into()
+        <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Neutral)
     }
 }
 
@@ -222,7 +222,7 @@ pub fn cdl_gravestone_doji_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_open.is_nan() || input_high.is_nan() || input_low.is_nan() || input_close.is_nan()
+        if input_open.is_null() || input_high.is_null() || input_low.is_null() || input_close.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -248,6 +248,7 @@ crate::kand_arrow_wrapper_int!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use super::*;
 
     #[test]
@@ -287,7 +288,7 @@ mod tests {
         .unwrap();
 
         // Test specific signals
-        assert_eq!(output_signals[15], Signal::Bearish.into()); // TV BTCUSDT.P 5m 2025-01-29 03:45
+        assert_eq!(output_signals[15], <crate::ta::types::Signal as Into<crate::TAInt>>::into(crate::ta::types::Signal::Bearish)); // TV BTCUSDT.P 5m 2025-01-29 03:45
 
         // Test incremental calculation matches regular calculation
         for i in 0..18 {

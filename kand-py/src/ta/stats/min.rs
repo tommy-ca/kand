@@ -72,3 +72,11 @@ pub fn min_inc_py(
     py.allow_threads(|| min::min_inc(price, prev_min, prev_price, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+
+crate::kand_py_arrow_wrapper!(
+    min_arrow,
+    kand::ta::stats::min::min_arrow,
+    inputs: { prices },
+    params: { period: usize }
+);
+

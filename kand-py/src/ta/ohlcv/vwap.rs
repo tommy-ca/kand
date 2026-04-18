@@ -90,7 +90,6 @@ pub fn vwap_py(
 #[pyfunction]
 #[pyo3(name = "vwap_inc", signature = (high, low, close, volume, prev_cum_pv, prev_cum_vol))]
 pub fn vwap_inc_py(
-    py: Python,
     high: TAFloat,
     low: TAFloat,
     close: TAFloat,
@@ -98,17 +97,7 @@ pub fn vwap_inc_py(
     prev_cum_pv: TAFloat,
     prev_cum_vol: TAFloat,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat)> {
-    py.allow_threads(|| {
-        vwap::vwap_inc(high, low, close, volume, prev_cum_pv, prev_cum_vol)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
-    })
+    vwap::vwap_inc(high, low, close, volume, prev_cum_pv, prev_cum_vol)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
-#[cfg(feature = "arrow")]
-crate::kand_py_arrow_wrapper_multi!(
-    vwap_arrow,
-    kand::ohlcv::vwap::vwap_arrow,
-    inputs: { high, low, close, volume },
-    params: {},
-    output_count: 3
-);

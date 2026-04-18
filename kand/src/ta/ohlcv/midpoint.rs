@@ -176,7 +176,7 @@ pub fn midpoint(
     #[cfg(feature = "check-nan")]
     {
         for &price in input_price.iter().take(len) {
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -266,7 +266,7 @@ pub fn midpoint_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_price.is_nan() || prev_highest.is_nan() || prev_lowest.is_nan() {
+        if input_price.is_null() || prev_highest.is_null() || prev_lowest.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -295,6 +295,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -362,8 +363,8 @@ mod tests {
         let (midpoint, highest, lowest) = midpoint_arrow(&price_arrow, opt_period).unwrap();
 
         assert_eq!(midpoint.len(), 5);
-        assert!(midpoint.value(0).is_nan());
-        assert!(midpoint.value(1).is_nan());
+        assert!(midpoint.is_null(0));
+        assert!(midpoint.is_null(1));
         assert_relative_eq!(midpoint.value(2), 12.5, epsilon = 0.0001);
     }
 }

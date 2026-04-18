@@ -147,7 +147,7 @@ pub fn ema(
     {
         for price in input_prices {
             // NaN check
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -230,7 +230,7 @@ pub fn ema_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_price.is_nan() || prev_ema.is_nan() {
+        if input_price.is_null() || prev_ema.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -253,6 +253,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;

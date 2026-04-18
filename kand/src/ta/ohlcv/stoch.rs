@@ -316,6 +316,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -450,8 +451,8 @@ mod tests {
 
         for i in 0..input_high.len() {
             if i < 17 {
-                assert!(k.value(i).is_nan());
-                assert!(d.value(i).is_nan());
+                assert!(k.is_null(i));
+                assert!(d.is_null(i));
             } else {
                 assert_relative_eq!(k.value(i), output_k[i], epsilon = 0.0001);
                 assert_relative_eq!(d.value(i), output_d[i], epsilon = 0.0001);

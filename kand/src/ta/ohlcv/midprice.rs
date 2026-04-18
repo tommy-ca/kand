@@ -248,10 +248,10 @@ pub fn midprice_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_nan()
-            || input_low.is_nan()
-            || prev_highest_high.is_nan()
-            || prev_lowest_low.is_nan()
+        if input_high.is_null()
+            || input_low.is_null()
+            || prev_highest_high.is_null()
+            || prev_lowest_low.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -286,6 +286,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -368,8 +369,8 @@ mod tests {
             midprice_arrow(&high_arrow, &low_arrow, opt_period).unwrap();
 
         assert_eq!(midprice.len(), 5);
-        assert!(midprice.value(0).is_nan());
-        assert!(midprice.value(1).is_nan());
+        assert!(midprice.is_null(0));
+        assert!(midprice.is_null(1));
         assert_relative_eq!(midprice.value(2), 11.5, epsilon = 0.0001);
     }
 }

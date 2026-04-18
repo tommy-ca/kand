@@ -138,7 +138,7 @@ pub fn mom(
     {
         // NaN check
         for price in input_prices {
-            if price.is_nan() {
+            if price.is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -187,7 +187,7 @@ pub fn mom_inc(
 ) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input_current_price.is_nan() || input_old_price.is_nan() {
+        if input_current_price.is_null() || input_old_price.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -206,6 +206,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -255,8 +257,8 @@ mod tests {
         let result = mom_arrow(&prices_arrow, period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.value(0).is_nan());
-        assert!(result.value(1).is_nan());
+        assert!(result.is_null(0));
+        assert!(result.is_null(1));
         assert_relative_eq!(result.value(2), 4.0, epsilon = 0.0001);
     }
 }

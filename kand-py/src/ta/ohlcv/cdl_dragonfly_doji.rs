@@ -1,10 +1,87 @@
-use kand::ohlcv::cdl_dragonfly_doji;
+use kand::{TAFloat, TAInt, ohlcv::cdl_dragonfly_doji};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 
 /// Detects Dragonfly Doji candlestick patterns in price data.
-...
-///   >>> signal = kand.cdl_dragonfly_doji_inc(10.0, 10.1, 8.5, 10.05, 5.0, 10.0)
+///
+/// Args:
+///   open: Opening prices as a 1-D NumPy array of type `TAFloat`.
+///   high: High prices as a 1-D NumPy array of type `TAFloat`.
+///   low: Low prices as a 1-D NumPy array of type `TAFloat`.
+///   close: Close prices as a 1-D NumPy array of type `TAFloat`.
+///   body_percent: Maximum body size as percentage of total range (typically 5.0).
+///   shadow_percent: Minimum shadow size as percentage of total range.
+///
+/// Returns:
+///   A 1-D NumPy array containing pattern signals:
+///   - 100: Bullish Dragonfly Doji pattern detected
+///   - 0: No pattern detected
+///
+/// Examples:
+///   ```python
+///   >>> import numpy as np
+///   >>> import kand
+///   >>> open = np.array([100.0, 101.0, 102.0])
+///   >>> high = np.array([102.0, 103.0, 104.0])
+///   >>> low = np.array([98.0, 99.0, 100.0])
+///   >>> close = np.array([101.0, 102.0, 103.0])
+///   >>> signals = kand.cdl_dragonfly_doji(open, high, low, close, 5.0, 10.0)
+///   ```
+#[pyfunction]
+#[pyo3(name = "cdl_dragonfly_doji", signature = (open, high, low, close, body_percent, shadow_percent))]
+pub fn cdl_dragonfly_doji_py(
+    py: Python,
+    open: PyReadonlyArray1<TAFloat>,
+    high: PyReadonlyArray1<TAFloat>,
+    low: PyReadonlyArray1<TAFloat>,
+    close: PyReadonlyArray1<TAFloat>,
+    body_percent: TAFloat,
+    shadow_percent: TAFloat,
+) -> PyResult<Py<PyArray1<TAInt>>> {
+    let input_open = open.as_slice()?;
+    let input_high = high.as_slice()?;
+    let input_low = low.as_slice()?;
+    let input_close = close.as_slice()?;
+    let len = input_open.len();
+
+    let mut output_signals = vec![0; len];
+
+    py.allow_threads(|| {
+        cdl_dragonfly_doji::cdl_dragonfly_doji(
+            input_open,
+            input_high,
+            input_low,
+            input_close,
+            body_percent,
+            shadow_percent,
+            &mut output_signals,
+        )
+    })
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+
+    Ok(output_signals.into_pyarray(py).into())
+}
+
+/// Detects a Dragonfly Doji pattern in a single candlestick.
+///
+/// Args:
+///
+///   open: Opening price.
+///   high: High price.
+///   low: Low price.
+///   close: Close price.
+///   body_percent: Maximum body size as percentage of total range.
+///   shadow_percent: Minimum shadow size as percentage of total range.
+///
+/// Returns:
+///   Signal value:
+///   - 100: Bullish Dragonfly Doji pattern detected
+///   - 0: No pattern detected
+///
+/// Examples:
+///   ```python
+///   >>> import kand
+///   >>> signal = kand.cdl_dragonfly_doji_inc(100.0, 102.0, 98.0, 100.1, 5.0, 10.0)
 ///   ```
 #[pyfunction]
 #[pyo3(name = "cdl_dragonfly_doji_inc", signature = (open, high, low, close, body_percent, shadow_percent))]
@@ -18,14 +95,7 @@ pub fn cdl_dragonfly_doji_inc_py(
     shadow_percent: TAFloat,
 ) -> PyResult<TAInt> {
     py.allow_threads(|| {
-        cdl_dragonfly_doji::cdl_dragonfly_doji_inc(
-            open,
-            high,
-            low,
-            close,
-            body_percent,
-            shadow_percent,
-        )
+        cdl_dragonfly_doji::cdl_dragonfly_doji_inc(open, high, low, close, body_percent, shadow_percent)
     })
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }

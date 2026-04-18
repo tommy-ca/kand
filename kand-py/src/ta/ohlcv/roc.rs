@@ -1,7 +1,6 @@
 use kand::{TAFloat, ohlcv::roc};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
-use crate::kand_py_arrow_wrapper;
 
 /// Computes the Rate of Change (ROC) over a NumPy array.
 ///
@@ -47,13 +46,6 @@ pub fn roc_py(
     Ok(output.into_pyarray(py).into())
 }
 
-kand_py_arrow_wrapper!(
-    roc_arrow,
-    roc::roc_arrow,
-    inputs: { data },
-    params: { period: usize }
-);
-
 /// Calculates a single ROC value incrementally.
 ///
 /// This function provides an optimized way to calculate the latest ROC value
@@ -75,11 +67,8 @@ kand_py_arrow_wrapper!(
 ///   ```
 #[pyfunction]
 #[pyo3(name = "roc_inc", signature = (current_price, prev_price))]
-pub fn roc_inc_py(
-    py: Python,
-    current_price: TAFloat,
-    prev_price: TAFloat,
-) -> PyResult<TAFloat> {
-    py.allow_threads(|| roc::roc_inc(current_price, prev_price))
+pub fn roc_inc_py(current_price: TAFloat, prev_price: TAFloat) -> PyResult<TAFloat> {
+    roc::roc_inc(current_price, prev_price)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+

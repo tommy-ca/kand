@@ -70,3 +70,11 @@ pub fn max_inc_py(
     py.allow_threads(|| max::max_inc(price, prev_max, old_price, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
+
+crate::kand_py_arrow_wrapper!(
+    max_arrow,
+    kand::ta::stats::max::max_arrow,
+    inputs: { prices },
+    params: { period: usize }
+);
+

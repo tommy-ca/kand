@@ -309,13 +309,13 @@ pub fn cci_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if prev_sma_tp.is_nan()
-            || input_new_high.is_nan()
-            || input_new_low.is_nan()
-            || input_new_close.is_nan()
-            || input_old_high.is_nan()
-            || input_old_low.is_nan()
-            || input_old_close.is_nan()
+        if prev_sma_tp.is_null()
+            || input_new_high.is_null()
+            || input_new_low.is_null()
+            || input_new_close.is_null()
+            || input_old_high.is_null()
+            || input_old_low.is_null()
+            || input_old_close.is_null()
         {
             return Err(KandError::NaNDetected);
         }
@@ -345,6 +345,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -482,7 +483,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 13 {
                 #[cfg(feature = "allow-nan")]
-                assert!(cci_arrow.value(i).is_nan());
+                assert!(cci_arrow.is_null(i));
             } else {
                 assert_relative_eq!(cci_arrow.value(i), out_cci[i], epsilon = 0.0001);
             }

@@ -78,7 +78,7 @@ pub fn sma(
     #[cfg(feature = "check-nan")]
     {
         for i in 0..len {
-            if input[i].is_nan() {
+            if input[i].is_null() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -131,7 +131,7 @@ pub fn sma_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input.is_nan() || prev_input.is_nan() || prev_sma.is_nan() {
+        if input.is_null() || prev_input.is_null() || prev_sma.is_null() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -150,6 +150,8 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -164,8 +166,8 @@ mod tests {
         let result = sma_arrow(&input_arrow, period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.is_nan(0));
-        assert!(result.is_nan(1));
+        assert!(result.is_null(0));
+        assert!(result.is_null(1));
         assert_relative_eq!(result.value(2), 2.0);
         assert_relative_eq!(result.value(3), 3.0);
         assert_relative_eq!(result.value(4), 4.0);
@@ -181,8 +183,8 @@ mod tests {
         let result = sma_arrow(&input_arrow, PERIOD).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.is_nan(0));
-        assert!(result.is_nan(1));
+        assert!(result.is_null(0));
+        assert!(result.is_null(1));
         assert_relative_eq!(result.value(2), 2.0);
         assert_relative_eq!(result.value(3), 3.0);
         assert_relative_eq!(result.value(4), 4.0);
