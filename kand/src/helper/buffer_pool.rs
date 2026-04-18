@@ -1,7 +1,6 @@
 use std::alloc::{alloc, dealloc, Layout};
 use std::ptr::NonNull;
 use std::sync::Arc;
-use arrow_buffer::alloc::Allocation;
 use arrow_buffer::Buffer;
 
 /// Standard alignment for Arrow buffers.
@@ -61,7 +60,7 @@ fn acquire_block(capacity: usize) -> Block {
     BLOCK_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(pos) = cache.iter().position(|b| b.layout.size() >= capacity) {
-            cache.remove(pos)
+            cache.swap_remove(pos)
         } else {
             Block::new(capacity)
         }

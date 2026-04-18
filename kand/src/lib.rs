@@ -1,5 +1,3 @@
-use num_enum::{IntoPrimitive, TryFromPrimitive};
-
 pub mod error;
 pub mod helper;
 pub mod ta;
