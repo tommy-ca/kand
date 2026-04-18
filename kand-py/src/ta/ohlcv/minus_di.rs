@@ -56,7 +56,7 @@ pub fn minus_di_py(
     let mut output_smoothed_tr = vec![0.0; len];
 
     // Perform the -DI calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| {
+    py.detach(|| {
         minus_di::minus_di(
             input_high,
             input_low,
@@ -127,7 +127,7 @@ pub fn minus_di_inc_py(
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat)> {
     // Perform the incremental -DI calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         minus_di::minus_di_inc(
             high,
             low,

@@ -35,7 +35,7 @@ pub fn min_py(
     let mut output_min = vec![0.0; len];
 
     // Perform MIN calculation while releasing the GIL
-    py.allow_threads(|| min::min(input_prices, period, &mut output_min))
+    py.detach(|| min::min(input_prices, period, &mut output_min))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert output array to Python object
@@ -69,7 +69,7 @@ pub fn min_inc_py(
     period: usize,
 ) -> PyResult<TAFloat> {
     // Perform incremental MIN calculation while releasing the GIL
-    py.allow_threads(|| min::min_inc(price, prev_min, prev_price, period))
+    py.detach(|| min::min_inc(price, prev_min, prev_price, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

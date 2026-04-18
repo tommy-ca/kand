@@ -30,7 +30,7 @@ macro_rules! kand_py_arrow_wrapper {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let result = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let result = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok(pyo3_arrow::PyArray::new(Arc::new(result), field))
@@ -70,7 +70,7 @@ macro_rules! kand_py_arrow_wrapper_int {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let result = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let result = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok(pyo3_arrow::PyArray::new(Arc::new(result), field))
@@ -111,7 +111,7 @@ macro_rules! kand_py_arrow_wrapper_multi {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let (r1, r2) = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let (r1, r2) = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok((
@@ -151,7 +151,7 @@ macro_rules! kand_py_arrow_wrapper_multi {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let (r1, r2, r3) = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let (r1, r2, r3) = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok((
@@ -192,7 +192,7 @@ macro_rules! kand_py_arrow_wrapper_multi {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let (r1, r2, r3, r4) = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let (r1, r2, r3, r4) = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok((
@@ -234,7 +234,7 @@ macro_rules! kand_py_arrow_wrapper_multi {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let (r1, r2, r3, r4, r5) = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let (r1, r2, r3, r4, r5) = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok((
@@ -277,7 +277,7 @@ macro_rules! kand_py_arrow_wrapper_multi {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let (r1, r2, r3, r4, r5, r6) = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let (r1, r2, r3, r4, r5, r6) = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok((
@@ -322,7 +322,7 @@ macro_rules! kand_py_arrow_wrapper_multi {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let (r1, r2) = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let (r1, r2) = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok((
@@ -362,7 +362,7 @@ macro_rules! kand_py_arrow_wrapper_multi {
             let first_input_field = first_input.data_type().clone();
             let field = Arc::new(arrow::datatypes::Field::new("", first_input_field, true));
 
-            let (r1, r2, r3, r4, r5, r6, r7) = py.allow_threads(|| $arrow_fn($($input_name,)+ $($param_name),*))
+            let (r1, r2, r3, r4, r5, r6, r7) = py.detach(|| $arrow_fn($($input_name,)+ $($param_name),*))
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
             Ok((

@@ -62,7 +62,7 @@ pub fn supertrend_py(
     let mut output_lower = vec![0.0; len];
 
     // Perform the Supertrend calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         supertrend::supertrend(
             input_high,
             input_low,

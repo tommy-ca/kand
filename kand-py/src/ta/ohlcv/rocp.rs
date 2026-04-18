@@ -39,7 +39,7 @@ pub fn rocp_py(
     let mut output = vec![0.0; len];
 
     // Perform the ROCP calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| rocp::rocp(input, period, output.as_mut_slice()))
+    py.detach(|| rocp::rocp(input, period, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object

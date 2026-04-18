@@ -39,7 +39,7 @@ pub fn rocr_py(
     let mut output = vec![0.0; len];
 
     // Perform the ROCR calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| rocr::rocr(input, period, output.as_mut_slice()))
+    py.detach(|| rocr::rocr(input, period, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object

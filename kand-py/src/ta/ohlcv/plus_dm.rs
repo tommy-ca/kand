@@ -41,7 +41,7 @@ pub fn plus_dm_py(
     let mut output = vec![0.0; len];
 
     // Perform the Plus DM calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| plus_dm::plus_dm(input_high, input_low, period, output.as_mut_slice()))
+    py.detach(|| plus_dm::plus_dm(input_high, input_low, period, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object

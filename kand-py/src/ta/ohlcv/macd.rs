@@ -53,7 +53,7 @@ pub fn macd_py(
     let mut histogram = vec![0.0; len];
 
     // Perform MACD calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         macd::macd(
             input,
             fast_period,
@@ -121,7 +121,7 @@ pub fn macd_inc_py(
     signal_period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat)> {
     // Perform incremental MACD calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         macd::macd_inc(
             price,
             prev_fast_ema,

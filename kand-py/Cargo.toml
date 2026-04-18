@@ -20,8 +20,8 @@ crate-type = ["cdylib"]
 numpy = {workspace = true}
 pyo3 = {workspace = true, features = ["extension-module"]}
 kand = { workspace = true}
-pyo3-arrow = { version = "0.11.0", optional = true }
-arrow = "56.2.0"
+pyo3-arrow = { version = "0.17.0", optional = true }
+arrow = "58.1.0"
 
 [features]
 default = ["f64", "i64", "check"]         # Default: extended precision with basic checks

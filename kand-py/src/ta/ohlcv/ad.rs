@@ -48,7 +48,7 @@ pub fn ad_py(
     let mut output = vec![0.0; len];
 
     // Perform the A/D calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| {
+    py.detach(|| {
         ad::ad(
             high_input,
             low_input,
@@ -101,7 +101,7 @@ pub fn ad_inc_py(
     prev_ad: TAFloat,
 ) -> PyResult<TAFloat> {
     // Perform the incremental A/D calculation while releasing the GIL
-    py.allow_threads(|| ad::ad_inc(high, low, close, volume, prev_ad))
+    py.detach(|| ad::ad_inc(high, low, close, volume, prev_ad))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

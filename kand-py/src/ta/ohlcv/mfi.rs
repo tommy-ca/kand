@@ -60,7 +60,7 @@ pub fn mfi_py(
     let mut pos_flows = vec![0.0; len];
     let mut neg_flows = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         mfi::mfi(
             high_slice,
             low_slice,

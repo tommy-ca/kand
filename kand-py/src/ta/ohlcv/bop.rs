@@ -43,7 +43,7 @@ pub fn bop_py(
     let len = open_slice.len();
     let mut output = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         bop::bop(
             open_slice,
             high_slice,
@@ -82,7 +82,7 @@ pub fn bop_inc_py(
     low: TAFloat,
     close: TAFloat,
 ) -> PyResult<TAFloat> {
-    py.allow_threads(|| bop::bop_inc(open, high, low, close))
+    py.detach(|| bop::bop_inc(open, high, low, close))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

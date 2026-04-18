@@ -36,7 +36,7 @@ pub fn sum_py(
     let mut output_sum = vec![0.0; len];
 
     // Perform sum calculation while releasing the GIL
-    py.allow_threads(|| sum::sum(input_data, period, &mut output_sum))
+    py.detach(|| sum::sum(input_data, period, &mut output_sum))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert output array to Python object
@@ -72,7 +72,7 @@ pub fn sum_inc_py(
     prev_sum: TAFloat,
 ) -> PyResult<TAFloat> {
     // Perform incremental sum calculation while releasing the GIL
-    py.allow_threads(|| sum::sum_inc(new_price, old_price, prev_sum))
+    py.detach(|| sum::sum_inc(new_price, old_price, prev_sum))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

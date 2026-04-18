@@ -46,7 +46,7 @@ pub fn vegas_py(
     let mut output_boundary_lower = vec![0.0; len];
 
     // Perform the VEGAS calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         vegas::vegas(
             input_prices,
             output_channel_upper.as_mut_slice(),

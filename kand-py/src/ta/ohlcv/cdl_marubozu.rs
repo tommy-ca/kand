@@ -50,7 +50,7 @@ pub fn cdl_marubozu_py(
     let mut output_signals = vec![0; len];
     let mut output_body_avg = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         cdl_marubozu::cdl_marubozu(
             input_open,
             input_high,
@@ -107,7 +107,7 @@ pub fn cdl_marubozu_inc_py(
     period: usize,
     shadow_percent: TAFloat,
 ) -> PyResult<(TAInt, TAFloat)> {
-    py.allow_threads(|| {
+    py.detach(|| {
         cdl_marubozu::cdl_marubozu_inc(
             open,
             high,

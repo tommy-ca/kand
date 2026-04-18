@@ -57,7 +57,7 @@ pub fn adx_py(
     let mut output_smoothed_tr = vec![0.0; len];
 
     // Perform ADX calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         adx::adx(
             input_high,
             input_low,
@@ -134,7 +134,7 @@ pub fn adx_inc_py(
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat)> {
     // Perform incremental ADX calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         adx::adx_inc(
             high,
             low,

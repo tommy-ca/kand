@@ -48,7 +48,7 @@ pub fn ha_py(
     let mut output_low = vec![0.0; len];
     let mut output_close = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         ha::ha(
             input_open,
             input_high,
@@ -99,7 +99,7 @@ pub fn ha_inc_py(
     prev_ha_open: TAFloat,
     prev_ha_close: TAFloat,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat)> {
-    py.allow_threads(|| ha::ha_inc(curr_open, curr_high, curr_low, curr_close, prev_ha_open, prev_ha_close))
+    py.detach(|| ha::ha_inc(curr_open, curr_high, curr_low, curr_close, prev_ha_open, prev_ha_close))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

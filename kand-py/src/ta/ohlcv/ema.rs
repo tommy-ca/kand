@@ -43,7 +43,7 @@ pub fn ema_py(
     let mut output = vec![0.0; len];
 
     // Perform the EMA calculation while releasing the GIL to allow other Python threads to run.
-    py.allow_threads(|| ema::ema(input, period, k, output.as_mut_slice()))
+    py.detach(|| ema::ema(input, period, k, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object
@@ -82,7 +82,7 @@ pub fn ema_inc_py(
     period: usize,
     k: Option<TAFloat>,
 ) -> PyResult<TAFloat> {
-    py.allow_threads(|| {
+    py.detach(|| {
         ema::ema_inc(price, prev_ema, period, k)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     })

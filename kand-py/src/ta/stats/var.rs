@@ -42,7 +42,7 @@ pub fn var_py(
     let mut output_sum = vec![0.0; len];
     let mut output_sum_sq = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         var::var(
             input_prices,
             period,
@@ -97,7 +97,7 @@ pub fn var_inc_py(
     old_price: TAFloat,
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat)> {
-    py.allow_threads(|| var::var_inc(price, prev_sum, prev_sum_sq, old_price, period))
+    py.detach(|| var::var_inc(price, prev_sum, prev_sum_sq, old_price, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

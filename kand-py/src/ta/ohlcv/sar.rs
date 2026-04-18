@@ -49,7 +49,7 @@ pub fn sar_py(
     let mut output_af = vec![0.0; len];
     let mut output_ep = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         sar::sar(
             input_high,
             input_low,

@@ -24,7 +24,7 @@ fn bench_sma_comparison(c: &mut Criterion) {
 
             // Arrow Benchmark (Includes buffer allocation + NaN filling)
             #[cfg(feature = "arrow")]
-            group.bench_with_input(BenchmarkId::new("Arrow_Wrapper", format!("{}/{}", size, period)), &period, |b, &p| {
+            group.bench_with_input(BenchmarkId::new("Arrow_Pooled", format!("{}/{}", size, period)), &period, |b, &p| {
                 b.iter(|| {
                     let _ = sma::sma_arrow(&input_arrow, p).unwrap();
                 });

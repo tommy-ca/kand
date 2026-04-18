@@ -46,7 +46,7 @@ pub fn rsi_py(
     let mut output_avg_loss = vec![0.0; len];
 
     // Perform the RSI calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| {
+    py.detach(|| {
         rsi::rsi(
             input_prices,
             period,

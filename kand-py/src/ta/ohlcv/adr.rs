@@ -41,7 +41,7 @@ pub fn adr_py(
     let mut output = vec![0.0; len];
 
     // Perform the ADR calculation while releasing the GIL
-    py.allow_threads(|| adr::adr(high_input, low_input, period, output.as_mut_slice()))
+    py.detach(|| adr::adr(high_input, low_input, period, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object
@@ -87,7 +87,7 @@ pub fn adr_inc_py(
     period: usize,
 ) -> PyResult<TAFloat> {
     // Perform the incremental ADR calculation while releasing the GIL
-    py.allow_threads(|| adr::adr_inc(prev_adr, new_high, new_low, old_high, old_low, period))
+    py.detach(|| adr::adr_inc(prev_adr, new_high, new_low, old_high, old_low, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

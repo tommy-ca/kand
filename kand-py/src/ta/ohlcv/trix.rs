@@ -46,7 +46,7 @@ pub fn trix_py(
     let mut ema2 = vec![0.0; len];
     let mut ema3 = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         trix::trix(
             prices_slice,
             period,

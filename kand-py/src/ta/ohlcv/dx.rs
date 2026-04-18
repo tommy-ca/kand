@@ -56,7 +56,7 @@ pub fn dx_py(
     let mut output_smoothed_tr = vec![0.0; len];
 
     // Perform the DX calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| {
+    py.detach(|| {
         dx::dx(
             high_input,
             low_input,
@@ -141,7 +141,7 @@ pub fn dx_inc_py(
     opt_period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat)> {
     // Perform the incremental DX calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         dx::dx_inc(
             input_high,
             input_low,

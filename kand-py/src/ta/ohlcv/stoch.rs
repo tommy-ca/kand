@@ -56,7 +56,7 @@ pub fn stoch_py(
     let mut output_k = vec![0.0; len];
     let mut output_d = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         stoch::stoch(
             high_slice,
             low_slice,

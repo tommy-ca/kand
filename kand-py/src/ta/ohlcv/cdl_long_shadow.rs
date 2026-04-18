@@ -50,7 +50,7 @@ pub fn cdl_long_shadow_py(
     let mut output_signals = vec![0; len];
     let mut output_body_avg = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         cdl_long_shadow::cdl_long_shadow(
             input_open,
             input_high,
@@ -107,7 +107,7 @@ pub fn cdl_long_shadow_inc_py(
     period: usize,
     shadow_factor: TAFloat,
 ) -> PyResult<(TAInt, TAFloat)> {
-    py.allow_threads(|| {
+    py.detach(|| {
         cdl_long_shadow::cdl_long_shadow_inc(
             open,
             high,

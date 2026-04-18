@@ -14,7 +14,6 @@ macro_rules! kand_arrow_wrapper {
             $($param_name: $param_type),*
         ) -> Result<$crate::ta::types::TAArrowArray, $crate::KandError> {
             use arrow::array::Array;
-            use arrow::buffer::MutableBuffer;
             use std::mem::size_of;
 
             // Get first input length
@@ -42,15 +41,15 @@ macro_rules! kand_arrow_wrapper {
                 let $input_name = &$input_name.values()[$input_name.offset()..];
             )+
 
-            // Aligned allocation
-            let mut buffer = MutableBuffer::new(len * size_of::<$crate::TAFloat>());
-            buffer.resize(len * size_of::<$crate::TAFloat>(), 0);
-            let output_slice = buffer.typed_data_mut::<$crate::TAFloat>();
+            // Use pooled buffer for high performance
+            let len_bytes = len * size_of::<$crate::TAFloat>();
+            let (ptr, buffer) = $crate::helper::buffer_pool::create_pooled_buffer(len_bytes);
+            let output_slice = unsafe {
+                std::slice::from_raw_parts_mut(ptr as *mut $crate::TAFloat, len)
+            };
             
-            // Initialize with NAN
-            for value in output_slice.iter_mut() {
-                *value = $crate::TAFloat::NAN;
-            }
+            // Initialize with NAN efficiently
+            output_slice.fill($crate::TAFloat::NAN);
 
             // Computation
             $raw_fn($($input_name,)+ $($param_name,)* output_slice);
@@ -78,7 +77,6 @@ macro_rules! kand_arrow_wrapper_multi {
             $($param_name: $param_type),*
         ) -> Result<($( $ret_type ),+), $crate::KandError> {
             use arrow::array::Array;
-            use arrow::buffer::MutableBuffer;
             use std::mem::size_of;
 
             // Get first input length
@@ -106,17 +104,20 @@ macro_rules! kand_arrow_wrapper_multi {
                 let $input_name = &$input_name.values()[$input_name.offset()..];
             )+
 
-            // Aligned allocation for each output
+            // Allocate outputs using pooled buffers
             $(
-                let mut $output_name = MutableBuffer::new(len * size_of::<$output_type>());
-                $output_name.resize(len * size_of::<$output_type>(), 0);
+                let len_bytes = len * size_of::<$output_type>();
+                let (ptr, $output_name) = $crate::helper::buffer_pool::create_pooled_buffer(len_bytes);
+                let $output_name = ($output_name, unsafe {
+                    std::slice::from_raw_parts_mut(ptr as *mut $output_type, len)
+                });
                 
                 // Initialize with NAN if TAFloat
                 if std::any::TypeId::of::<$output_type>() == std::any::TypeId::of::<$crate::TAFloat>() {
-                    let slice = $output_name.typed_data_mut::<$crate::TAFloat>();
-                    for value in slice.iter_mut() {
-                        *value = $crate::TAFloat::NAN;
-                    }
+                    let slice = unsafe {
+                        std::slice::from_raw_parts_mut(ptr as *mut $crate::TAFloat, len)
+                    };
+                    slice.fill($crate::TAFloat::NAN);
                 }
             )+
 
@@ -124,10 +125,10 @@ macro_rules! kand_arrow_wrapper_multi {
             $raw_fn(
                 $($input_name,)+ 
                 $($param_name,)* 
-                $( $output_name.typed_data_mut::<$output_type>() ),+
+                $( $output_name.1 ),+
             );
 
-            Ok(($( <$ret_type>::new($output_name.into(), None) ),+))
+            Ok(($( <$ret_type>::new($output_name.0.into(), None) ),+))
         }
     };
 }
@@ -148,7 +149,6 @@ macro_rules! kand_arrow_wrapper_int {
             $($param_name: $param_type),*
         ) -> Result<$crate::ta::types::TAArrowIntArray, $crate::KandError> {
             use arrow::array::Array;
-            use arrow::buffer::MutableBuffer;
             use std::mem::size_of;
 
             // Get first input length
@@ -176,10 +176,12 @@ macro_rules! kand_arrow_wrapper_int {
                 let $input_name = &$input_name.values()[$input_name.offset()..];
             )+
 
-            // Aligned allocation
-            let mut buffer = MutableBuffer::new(len * size_of::<$crate::TAInt>());
-            buffer.resize(len * size_of::<$crate::TAInt>(), 0);
-            let output_slice = buffer.typed_data_mut::<$crate::TAInt>();
+            // Use pooled buffer
+            let len_bytes = len * size_of::<$crate::TAInt>();
+            let (ptr, buffer) = $crate::helper::buffer_pool::create_pooled_buffer(len_bytes);
+            let output_slice = unsafe {
+                std::slice::from_raw_parts_mut(ptr as *mut $crate::TAInt, len)
+            };
 
             // Computation
             $raw_fn($($input_name,)+ $($param_name,)* output_slice);

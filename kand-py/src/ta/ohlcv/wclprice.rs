@@ -40,7 +40,7 @@ pub fn wclprice_py(
 
     let mut output = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         wclprice::wclprice(high_slice, low_slice, close_slice, output.as_mut_slice())
     })
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;

@@ -54,7 +54,7 @@ pub fn plus_di_py(
     let mut output_smoothed_tr = vec![0.0; len];
 
     // Perform the +DI calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| {
+    py.detach(|| {
         plus_di::plus_di(
             input_high,
             input_low,

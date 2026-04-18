@@ -33,7 +33,7 @@ pub fn max_py(
     let mut output_max = vec![0.0; len];
 
     // Perform MAX calculation while releasing the GIL
-    py.allow_threads(|| max::max(input_prices, period, &mut output_max))
+    py.detach(|| max::max(input_prices, period, &mut output_max))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert output array to Python object
@@ -67,7 +67,7 @@ pub fn max_inc_py(
     period: usize,
 ) -> PyResult<TAFloat> {
     // Perform incremental MAX calculation while releasing the GIL
-    py.allow_threads(|| max::max_inc(price, prev_max, old_price, period))
+    py.detach(|| max::max_inc(price, prev_max, old_price, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

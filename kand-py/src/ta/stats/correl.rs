@@ -65,7 +65,7 @@ pub fn correl_py(
     let mut output_sum_1_sq = vec![0.0; len];
     let mut output_sum_01 = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         correl::correl(
             input0_array,
             input1_array,
@@ -147,7 +147,7 @@ pub fn correl_inc_py(
     prev_sum01: TAFloat,
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat, TAFloat, TAFloat)> {
-    py.allow_threads(|| {
+    py.detach(|| {
         correl::correl_inc(
             new0,
             new1,

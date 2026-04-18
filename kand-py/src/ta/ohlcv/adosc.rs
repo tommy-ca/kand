@@ -55,7 +55,7 @@ pub fn adosc_py(
         .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
 
     // Perform ADOSC calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         let _ = adosc::adosc(
             input_high,
             input_low,
@@ -128,7 +128,7 @@ pub fn adosc_inc_py(
         .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
 
     // Perform the incremental ADOSC calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         adosc::adosc_inc(
             high,
             low,
@@ -180,7 +180,7 @@ pub fn adosc_arrow(
         .downcast_ref::<TAArrowArray>()
         .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for volume"))?;
 
-    let result = py.allow_threads(|| kand::ta::ohlcv::adosc::adosc_arrow(high_array, low, close, volume, fast_period, slow_period, ma_type))
+    let result = py.detach(|| kand::ta::ohlcv::adosc::adosc_arrow(high_array, low, close, volume, fast_period, slow_period, ma_type))
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
     
     let field = Arc::new(arrow::datatypes::Field::new("", high_array.data_type().clone(), true));

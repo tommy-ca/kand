@@ -38,7 +38,7 @@ pub fn trima_py(
     let mut output_sma1 = vec![0.0; len];
     let mut output_sma2 = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         trima::trima(
             prices_slice,
             period,

@@ -46,7 +46,7 @@ pub fn tema_py(
     let mut output_ema2 = vec![0.0; len];
     let mut output_ema3 = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         tema::tema(
             prices_slice,
             period,

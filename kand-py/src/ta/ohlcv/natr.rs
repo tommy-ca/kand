@@ -45,7 +45,7 @@ pub fn natr_py(
     let mut output = vec![0.0; len];
 
     // Perform the NATR calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| {
+    py.detach(|| {
         natr::natr(
             input_high,
             input_low,
@@ -101,7 +101,7 @@ pub fn natr_inc_py(
     period: usize,
 ) -> PyResult<TAFloat> {
     // Perform the incremental NATR calculation while releasing the GIL
-    py.allow_threads(|| natr::natr_inc(high, low, close, prev_close, prev_atr, period))
+    py.detach(|| natr::natr_inc(high, low, close, prev_close, prev_atr, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

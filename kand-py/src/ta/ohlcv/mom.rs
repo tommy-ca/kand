@@ -38,7 +38,7 @@ pub fn mom_py(
     let mut output = vec![0.0; len];
 
     // Perform the momentum calculation while releasing the GIL to allow other Python threads to run.
-    py.allow_threads(|| mom::mom(input, period, output.as_mut_slice()))
+    py.detach(|| mom::mom(input, period, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object
@@ -69,7 +69,7 @@ pub fn mom_py(
 #[pyo3(name = "mom_inc", signature = (current_price, old_price))]
 pub fn mom_inc_py(py: Python, current_price: TAFloat, old_price: TAFloat) -> PyResult<TAFloat> {
     // Perform the incremental momentum calculation while releasing the GIL
-    py.allow_threads(|| mom::mom_inc(current_price, old_price))
+    py.detach(|| mom::mom_inc(current_price, old_price))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

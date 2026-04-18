@@ -45,7 +45,7 @@ pub fn trange_py(
     let mut output = vec![0.0; len];
 
     // Perform the TR calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| trange::trange(input_high, input_low, input_close, output.as_mut_slice()))
+    py.detach(|| trange::trange(input_high, input_low, input_close, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object

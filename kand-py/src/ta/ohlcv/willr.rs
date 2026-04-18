@@ -52,7 +52,7 @@ pub fn willr_py(
     let mut output_highest = vec![0.0; len];
     let mut output_lowest = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         willr::willr(
             high_slice,
             low_slice,

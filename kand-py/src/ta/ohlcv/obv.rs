@@ -41,7 +41,7 @@ pub fn obv_py(
     let mut output = vec![0.0; len];
 
     // Perform the OBV calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| obv::obv(input_close, input_volume, output.as_mut_slice()))
+    py.detach(|| obv::obv(input_close, input_volume, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object

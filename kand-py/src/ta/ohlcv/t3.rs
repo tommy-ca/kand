@@ -57,7 +57,7 @@ pub fn t3_py(
     let mut ema5 = vec![0.0; len];
     let mut ema6 = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         t3::t3(
             input,
             period,

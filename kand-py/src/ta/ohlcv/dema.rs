@@ -40,7 +40,7 @@ pub fn dema_py(
     let mut output_ema1 = vec![0.0; len];
     let mut output_ema2 = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         dema::dema(
             input,
             period,
@@ -84,7 +84,7 @@ pub fn dema_inc_py(
     prev_ema2: TAFloat,
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat)> {
-    py.allow_threads(|| dema::dema_inc(price, prev_ema1, prev_ema2, period))
+    py.detach(|| dema::dema_inc(price, prev_ema1, prev_ema2, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

@@ -35,7 +35,7 @@ pub fn wma_py(
     let len = input.len();
     let mut output = vec![0.0; len];
 
-    py.allow_threads(|| wma::wma(input, period, output.as_mut_slice()))
+    py.detach(|| wma::wma(input, period, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     Ok(output.into_pyarray(py).into())

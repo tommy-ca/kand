@@ -56,7 +56,7 @@ pub fn aroon_py(
     let mut output_days_since_high = vec![0_i64; len];
     let mut output_days_since_low = vec![0_i64; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         aroon::aroon(
             high_slice,
             low_slice,
@@ -135,7 +135,7 @@ pub fn aroon_inc_py(
     days_since_low: i64,
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat, i64, i64)> {
-    py.allow_threads(|| {
+    py.detach(|| {
         let res = aroon::aroon_inc(
             high,
             low,

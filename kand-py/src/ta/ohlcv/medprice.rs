@@ -36,7 +36,7 @@ pub fn medprice_py(
     let len = high_slice.len();
     let mut output = vec![0.0; len];
 
-    py.allow_threads(|| medprice::medprice(high_slice, low_slice, output.as_mut_slice()))
+    py.detach(|| medprice::medprice(high_slice, low_slice, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     Ok(output.into_pyarray(py).into())
@@ -62,7 +62,7 @@ pub fn medprice_py(
 #[pyfunction]
 #[pyo3(name = "medprice_inc")]
 pub fn medprice_inc_py(py: Python, high: TAFloat, low: TAFloat) -> PyResult<TAFloat> {
-    py.allow_threads(|| medprice::medprice_inc(high, low))
+    py.detach(|| medprice::medprice_inc(high, low))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

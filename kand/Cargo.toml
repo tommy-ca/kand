@@ -14,7 +14,9 @@ categories = ["finance", "algorithms", "data-structures", "science", "mathematic
 [dependencies]
 num_enum = { workspace = true }
 thiserror = { workspace = true }
-arrow = { version = "56.0", optional = true }
+arrow = { version = "58.1.0", optional = true }
+arrow-buffer = { version = "58.1.0", optional = true }
+arrow-array = { version = "58.1.0", optional = true }
 
 [dev-dependencies]
 approx = { workspace = true }
@@ -41,4 +43,5 @@ i64 = []                              # 64-bit integer
 check = []                            # Basic validation checks
 check-nan = []                        # Check for NaN values in input data
 allow-nan = []                        # Allow NaN values in output data
-arrow = ["dep:arrow"]                 # Enable Apache Arrow support
+arrow = ["dep:arrow", "dep:arrow-buffer", "dep:arrow-array"] # Enable Apache Arrow support
+arrow-pooled = ["arrow"]              # Enable thread-local buffer pooling for Arrow wrappers

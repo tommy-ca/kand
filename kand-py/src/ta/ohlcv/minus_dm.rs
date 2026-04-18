@@ -41,7 +41,7 @@ pub fn minus_dm_py(
     let mut output = vec![0.0; len];
 
     // Perform the -DM calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| minus_dm::minus_dm(input_high, input_low, period, output.as_mut_slice()))
+    py.detach(|| minus_dm::minus_dm(input_high, input_low, period, output.as_mut_slice()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
     // Convert the output array to a Python object
@@ -89,7 +89,7 @@ pub fn minus_dm_inc_py(
     period: usize,
 ) -> PyResult<TAFloat> {
     // Perform the incremental -DM calculation while releasing the GIL
-    py.allow_threads(|| {
+    py.detach(|| {
         minus_dm::minus_dm_inc(high, prev_high, low, prev_low, prev_minus_dm, period)
     })
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))

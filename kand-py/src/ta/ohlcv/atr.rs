@@ -45,7 +45,7 @@ pub fn atr_py(
     let mut output = vec![0.0; len];
 
     // Perform the ATR calculation while releasing the GIL to allow other Python threads to run
-    py.allow_threads(|| {
+    py.detach(|| {
         atr::atr(
             input_high,
             input_low,
@@ -96,7 +96,7 @@ pub fn atr_inc_py(
     prev_atr: TAFloat,
     period: usize,
 ) -> PyResult<TAFloat> {
-    py.allow_threads(|| atr::atr_inc(high, low, prev_close, prev_atr, period))
+    py.detach(|| atr::atr_inc(high, low, prev_close, prev_atr, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

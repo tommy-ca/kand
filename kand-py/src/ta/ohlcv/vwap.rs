@@ -49,7 +49,7 @@ pub fn vwap_py(
     let mut output_cum_pv = vec![0.0; len];
     let mut output_cum_vol = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         vwap::vwap(
             high_slice,
             low_slice,

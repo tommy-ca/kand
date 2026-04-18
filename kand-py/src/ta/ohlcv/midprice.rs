@@ -47,7 +47,7 @@ pub fn midprice_py(
     let mut output_highest = vec![0.0; len];
     let mut output_lowest = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         midprice::midprice(
             input_high,
             input_low,
@@ -106,7 +106,7 @@ pub fn midprice_inc_py(
     prev_lowest: TAFloat,
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat)> {
-    py.allow_threads(|| midprice::midprice_inc(high, low, prev_highest, prev_lowest, period))
+    py.detach(|| midprice::midprice_inc(high, low, prev_highest, prev_lowest, period))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 

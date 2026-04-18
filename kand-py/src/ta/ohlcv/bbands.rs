@@ -22,7 +22,7 @@ pub fn bbands_py(
     let mut output_middle = vec![0.0; len];
     let mut output_lower = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         let _ = bbands::bbands(
             input_price,
             period,
@@ -60,7 +60,7 @@ pub fn bbands_inc_py(
     let ma_type = MAType::try_from(ma_type as i64)
         .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
 
-    py.allow_threads(|| {
+    py.detach(|| {
         bbands::bbands_inc(
             price,
             prev_sma,
@@ -98,7 +98,7 @@ pub fn bbands_arrow(
         .downcast_ref::<TAArrowArray>()
         .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for price"))?;
 
-    let (r1, r2, r3) = py.allow_threads(|| kand::ta::ohlcv::bbands::bbands_arrow(price_array, period, multiplier_up, multiplier_down, ma_type))
+    let (r1, r2, r3) = py.detach(|| kand::ta::ohlcv::bbands::bbands_arrow(price_array, period, multiplier_up, multiplier_down, ma_type))
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
     let field = Arc::new(arrow::datatypes::Field::new("", price_array.data_type().clone(), true));

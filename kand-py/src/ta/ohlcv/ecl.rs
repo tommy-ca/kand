@@ -60,7 +60,7 @@ pub fn ecl_py(
     let mut output_l4 = vec![0.0; len];
     let mut output_l5 = vec![0.0; len];
 
-    py.allow_threads(|| {
+    py.detach(|| {
         ecl::ecl(
             input_high,
             input_low,
@@ -131,7 +131,7 @@ pub fn ecl_inc_py(
     TAFloat,
     TAFloat,
 )> {
-    py.allow_threads(|| {
+    py.detach(|| {
         ecl::ecl_inc(prev_high, prev_low, prev_close)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     })
