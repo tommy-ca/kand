@@ -1,6 +1,7 @@
 use kand::{ta::types::MAType, ohlcv::adosc, TAFloat};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
+use arrow::array::Array;
 
 /// Calculate Accumulation/Distribution Oscillator (A/D Oscillator or ADOSC)
 ///
@@ -26,7 +27,7 @@ use pyo3::prelude::*;
 ///   >>> low = np.array([8.0, 9.0, 10.0, 9.5, 8.5])
 ///   >>> close = np.array([9.0, 10.0, 11.0, 10.0, 9.0])
 ///   >>> volume = np.array([100.0, 150.0, 200.0, 150.0, 100.0])
-///   >>> adosc = kand.adosc(high, low, close, volume, 3, 5)
+///   >>> adosc = kand.adosc(high, low, close, volume, 3, 5, 0)
 ///   ```
 #[pyfunction]
 #[pyo3(name = "adosc", signature = (high, low, close, volume, fast_period, slow_period, ma_type))]
@@ -49,12 +50,13 @@ pub fn adosc_py(
 
     // Create output arrays
     let mut output_adosc = vec![0.0; len];
+    
+    let ma_type = MAType::try_from(ma_type as i64)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
 
     // Perform ADOSC calculation while releasing the GIL
     py.allow_threads(|| {
-        let ma_type = MAType::try_from(ma_type as i64)
-            .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
-        adosc::adosc(
+        let _ = adosc::adosc(
             input_high,
             input_low,
             input_close,
@@ -64,7 +66,7 @@ pub fn adosc_py(
             ma_type,
             &mut output_adosc,
         );
-        Ok(())
+        Ok::<(), PyErr>(())
     })?;
 
     // Convert output arrays to Python objects
@@ -122,10 +124,11 @@ pub fn adosc_inc_py(
     slow_period: usize,
     ma_type: u32,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat)> {
+    let ma_type = MAType::try_from(ma_type as i64)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
+
     // Perform the incremental ADOSC calculation while releasing the GIL
     py.allow_threads(|| {
-        let ma_type = MAType::try_from(ma_type as i64)
-            .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
         adosc::adosc_inc(
             high,
             low,
@@ -137,14 +140,49 @@ pub fn adosc_inc_py(
             fast_period,
             slow_period,
             ma_type,
-        )
+        ).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     })
 }
 
 // Arrow wrapper
-crate::kand_py_arrow_wrapper!(
-    adosc_arrow,
-    kand::ta::ohlcv::adosc::adosc_arrow,
-    inputs: { high, low, close, volume },
-    params: { fast_period: usize, slow_period: usize, ma_type: u32 }
-);
+#[cfg(feature = "arrow")]
+#[pyo3::prelude::pyfunction]
+#[pyo3(signature = (high, low, close, volume, fast_period, slow_period, ma_type))]
+pub fn adosc_arrow(
+    py: pyo3::prelude::Python,
+    high: pyo3_arrow::PyArray,
+    low: pyo3_arrow::PyArray,
+    close: pyo3_arrow::PyArray,
+    volume: pyo3_arrow::PyArray,
+    fast_period: usize,
+    slow_period: usize,
+    ma_type: i64,
+) -> pyo3::prelude::PyResult<pyo3_arrow::PyArray> {
+    use std::sync::Arc;
+    use kand::ta::types::{TAArrowArray, MAType};
+    let ma_type = MAType::try_from(ma_type)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
+
+    let high_array = high.as_ref()
+        .as_any()
+        .downcast_ref::<TAArrowArray>()
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for high"))?;
+    let low = low.as_ref()
+        .as_any()
+        .downcast_ref::<TAArrowArray>()
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for low"))?;
+    let close = close.as_ref()
+        .as_any()
+        .downcast_ref::<TAArrowArray>()
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for close"))?;
+    let volume = volume.as_ref()
+        .as_any()
+        .downcast_ref::<TAArrowArray>()
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for volume"))?;
+
+    let result = py.allow_threads(|| kand::ta::ohlcv::adosc::adosc_arrow(high_array, low, close, volume, fast_period, slow_period, ma_type))
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    
+    let field = Arc::new(arrow::datatypes::Field::new("", high_array.data_type().clone(), true));
+    Ok(pyo3_arrow::PyArray::new(Arc::new(result), field))
+}

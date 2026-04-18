@@ -363,8 +363,8 @@ mod tests {
         let (midpoint, highest, lowest) = midpoint_arrow(&price_arrow, opt_period).unwrap();
 
         assert_eq!(midpoint.len(), 5);
-        assert!(midpoint.is_null(0));
-        assert!(midpoint.is_null(1));
+        assert!(midpoint.value(0).is_nan());
+        assert!(midpoint.value(1).is_nan());
         assert_relative_eq!(midpoint.value(2), 12.5, epsilon = 0.0001);
     }
 }

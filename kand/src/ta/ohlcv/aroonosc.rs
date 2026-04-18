@@ -54,6 +54,15 @@ pub fn aroonosc_raw(
     let opt_period_t = opt_period as TAFloat;
     let hundred_t = 100.0;
 
+    // Initialize output buffers
+    for i in 0..len {
+        output_aroonosc[i] = TAFloat::NAN;
+        output_prev_high[i] = TAFloat::NAN;
+        output_prev_low[i] = TAFloat::NAN;
+        output_days_since_high[i] = 0;
+        output_days_since_low[i] = 0;
+    }
+
     for i in opt_period..len {
         let days_since_high = highest_bars(input_high, i, opt_period + 1).unwrap();
         let days_since_low = lowest_bars(input_low, i, opt_period + 1).unwrap();

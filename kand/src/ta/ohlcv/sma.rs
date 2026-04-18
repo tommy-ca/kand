@@ -78,7 +78,7 @@ pub fn sma(
     #[cfg(feature = "check-nan")]
     {
         for i in 0..len {
-            if input[i].is_null() {
+            if input[i].is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -131,7 +131,7 @@ pub fn sma_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input.is_null() || prev_input.is_null() || prev_sma.is_null() {
+        if input.is_nan() || prev_input.is_nan() || prev_sma.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -166,8 +166,9 @@ mod tests {
         let result = sma_arrow(&input_arrow, period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.is_null(0));
-        assert!(result.is_null(1));
+        for i in 0..period - 1 {
+            assert!(result.value(i).is_nan());
+        }
         assert_relative_eq!(result.value(2), 2.0);
         assert_relative_eq!(result.value(3), 3.0);
         assert_relative_eq!(result.value(4), 4.0);
@@ -183,8 +184,9 @@ mod tests {
         let result = sma_arrow(&input_arrow, PERIOD).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.is_null(0));
-        assert!(result.is_null(1));
+        for i in 0..PERIOD - 1 {
+            assert!(result.value(i).is_nan());
+        }
         assert_relative_eq!(result.value(2), 2.0);
         assert_relative_eq!(result.value(3), 3.0);
         assert_relative_eq!(result.value(4), 4.0);

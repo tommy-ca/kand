@@ -369,8 +369,8 @@ mod tests {
             midprice_arrow(&high_arrow, &low_arrow, opt_period).unwrap();
 
         assert_eq!(midprice.len(), 5);
-        assert!(midprice.is_null(0));
-        assert!(midprice.is_null(1));
+        assert!(midprice.value(0).is_nan());
+        assert!(midprice.value(1).is_nan());
         assert_relative_eq!(midprice.value(2), 11.5, epsilon = 0.0001);
     }
 }

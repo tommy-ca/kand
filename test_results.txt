@@ -1,0 +1,699 @@
+warning: variable does not need to be mutable
+  --> kand/src/ta/ohlcv/adosc.rs:61:9
+   |
+61 |     let mut output_ad_fast_ema = vec![TAFloat::NAN; len];
+   |         ----^^^^^^^^^^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> kand/src/ta/ohlcv/adosc.rs:62:9
+   |
+62 |     let mut output_ad_slow_ema = vec![TAFloat::NAN; len];
+   |         ----^^^^^^^^^^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+
+warning: unused variable: `output_ad_fast_ema`
+  --> kand/src/ta/ohlcv/adosc.rs:61:9
+   |
+61 |     let mut output_ad_fast_ema = vec![TAFloat::NAN; len];
+   |         ^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_output_ad_fast_ema`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `output_ad_slow_ema`
+  --> kand/src/ta/ohlcv/adosc.rs:62:9
+   |
+62 |     let mut output_ad_slow_ema = vec![TAFloat::NAN; len];
+   |         ^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_output_ad_slow_ema`
+
+warning: unused import: `crate::EPSILON`
+   --> kand/src/ta/ohlcv/adosc.rs:346:9
+    |
+346 |     use crate::EPSILON;
+    |         ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/ad.rs:276:9
+    |
+276 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/adosc.rs:343:9
+    |
+343 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/adr.rs:238:9
+    |
+238 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/adx.rs:376:9
+    |
+376 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/adxr.rs:331:9
+    |
+331 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/aroon.rs:379:9
+    |
+379 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/aroonosc.rs:377:9
+    |
+377 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/atr.rs:265:9
+    |
+265 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/bbands.rs:358:9
+    |
+358 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/bop.rs:224:9
+    |
+224 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/cci.rs:348:9
+    |
+348 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/cdl_doji.rs:284:9
+    |
+284 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/cdl_dragonfly_doji.rs:251:9
+    |
+251 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/cdl_gravestone_doji.rs:250:9
+    |
+250 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/cdl_hammer.rs:360:9
+    |
+360 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/cdl_inverted_hammer.rs:349:9
+    |
+349 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/cdl_long_shadow.rs:361:9
+    |
+361 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/cdl_marubozu.rs:378:9
+    |
+378 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/dema.rs:279:9
+    |
+279 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/dx.rs:382:9
+    |
+382 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/ecl.rs:390:9
+    |
+390 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/ema.rs:256:9
+    |
+256 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/ha.rs:313:9
+    |
+313 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/medprice.rs:175:9
+    |
+175 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/mfi.rs:252:9
+    |
+252 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/midpoint.rs:298:9
+    |
+298 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/midprice.rs:289:9
+    |
+289 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/minus_di.rs:414:9
+    |
+414 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/minus_dm.rs:307:9
+    |
+307 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/mom.rs:209:9
+    |
+209 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/natr.rs:273:9
+    |
+273 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/obv.rs:216:9
+    |
+216 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/plus_di.rs:405:9
+    |
+405 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/plus_dm.rs:293:9
+    |
+293 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/rma.rs:229:9
+    |
+229 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/roc.rs:223:9
+    |
+223 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/rocp.rs:216:9
+    |
+216 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/rocr.rs:199:9
+    |
+199 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/rocr100.rs:205:9
+    |
+205 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/rsi.rs:347:9
+    |
+347 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/sar.rs:490:9
+    |
+490 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/sma.rs:153:9
+    |
+153 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/stoch.rs:319:9
+    |
+319 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/supertrend.rs:419:9
+    |
+419 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/t3.rs:490:9
+    |
+490 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/tema.rs:291:9
+    |
+291 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/trange.rs:209:9
+    |
+209 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/trima.rs:310:9
+    |
+310 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/trix.rs:291:9
+    |
+291 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/typprice.rs:172:9
+    |
+172 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/vegas.rs:178:9
+    |
+178 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/vwap.rs:296:9
+    |
+296 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/wclprice.rs:171:9
+    |
+171 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/willr.rs:306:9
+    |
+306 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/ohlcv/wma.rs:221:9
+    |
+221 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/stats/correl.rs:470:9
+    |
+470 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/stats/max.rs:231:9
+    |
+231 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/stats/min.rs:240:9
+    |
+240 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/stats/stddev.rs:261:9
+    |
+261 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/stats/sum.rs:211:9
+    |
+211 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `arrow::array::Array`
+   --> kand/src/ta/stats/var.rs:295:9
+    |
+295 |     use arrow::array::Array;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `output_high`
+   --> kand/src/ta/ohlcv/ha.rs:386:27
+    |
+386 |         let (output_open, output_high, output_low, output_close) =
+    |                           ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_output_high`
+
+warning: unused variable: `output_low`
+   --> kand/src/ta/ohlcv/ha.rs:386:40
+    |
+386 |         let (output_open, output_high, output_low, output_close) =
+    |                                        ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_output_low`
+
+warning: unused variable: `highest`
+   --> kand/src/ta/ohlcv/midpoint.rs:363:24
+    |
+363 |         let (midpoint, highest, lowest) = midpoint_arrow(&price_arrow, opt_period).unwrap();
+    |                        ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_highest`
+
+warning: unused variable: `lowest`
+   --> kand/src/ta/ohlcv/midpoint.rs:363:33
+    |
+363 |         let (midpoint, highest, lowest) = midpoint_arrow(&price_arrow, opt_period).unwrap();
+    |                                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_lowest`
+
+warning: unused variable: `highest`
+   --> kand/src/ta/ohlcv/midprice.rs:368:24
+    |
+368 |         let (midprice, highest, lowest) =
+    |                        ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_highest`
+
+warning: unused variable: `lowest`
+   --> kand/src/ta/ohlcv/midprice.rs:368:33
+    |
+368 |         let (midprice, highest, lowest) =
+    |                                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_lowest`
+
+warning: unused variable: `lower`
+   --> kand/src/ta/ohlcv/vegas.rs:247:21
+    |
+247 |         let (upper, lower, b_upper, b_lower) = vegas_arrow(&input_arrow).unwrap();
+    |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_lower`
+
+warning: unused variable: `b_upper`
+   --> kand/src/ta/ohlcv/vegas.rs:247:28
+    |
+247 |         let (upper, lower, b_upper, b_lower) = vegas_arrow(&input_arrow).unwrap();
+    |                            ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_b_upper`
+
+warning: unused variable: `b_lower`
+   --> kand/src/ta/ohlcv/vegas.rs:247:37
+    |
+247 |         let (upper, lower, b_upper, b_lower) = vegas_arrow(&input_arrow).unwrap();
+    |                                     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_b_lower`
+
+warning: unused variable: `cum_pv`
+   --> kand/src/ta/ohlcv/vwap.rs:405:20
+    |
+405 |         let (vwap, cum_pv, cum_vol) =
+    |                    ^^^^^^ help: if this is intentional, prefix it with an underscore: `_cum_pv`
+
+warning: unused variable: `cum_vol`
+   --> kand/src/ta/ohlcv/vwap.rs:405:28
+    |
+405 |         let (vwap, cum_pv, cum_vol) =
+    |                            ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cum_vol`
+
+warning: unused variable: `expected_values`
+   --> kand/src/ta/stats/sum.rs:235:13
+    |
+235 |         let expected_values = [
+    |             ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_expected_values`
+
+warning: `kand` (lib) generated 4 warnings (run `cargo fix --lib -p kand` to apply 4 suggestions)
+warning: `kand` (lib test) generated 78 warnings (4 duplicates) (run `cargo fix --lib -p kand --tests` to apply 13 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.79s
+     Running unittests src/lib.rs (target/debug/deps/kand-9b4153ef0da8135e)
+
+running 126 tests
+test ta::ohlcv::ad::tests::test_ad_without_nan ... ok
+test ta::ohlcv::ad::tests::test_ad_arrow ... ok
+test ta::ohlcv::adosc::tests::test_adosc_arrow ... FAILED
+test ta::ohlcv::adr::tests::test_adr_arrow ... ok
+test ta::ohlcv::adosc::tests::test_adosc_calculation ... FAILED
+test ta::ohlcv::adr::tests::test_adr_calculation ... ok
+test ta::ohlcv::adx::tests::test_adx_arrow ... ok
+test ta::ohlcv::adx::tests::test_adx_calculation ... FAILED
+test ta::ohlcv::adxr::tests::test_adxr_calculation ... FAILED
+test ta::ohlcv::aroon::tests::test_aroon_arrow ... ok
+test ta::ohlcv::adxr::tests::test_adxr_arrow ... ok
+test ta::ohlcv::aroon::tests::test_aroon_calculation ... ok
+test ta::ohlcv::aroonosc::tests::test_aroonosc_arrow ... ok
+test ta::ohlcv::atr::tests::test_atr_calculation ... ok
+test ta::ohlcv::aroonosc::tests::test_aroonosc_calculation ... FAILED
+test ta::ohlcv::bbands::tests::test_bbands_arrow ... ok
+test ta::ohlcv::bbands::tests::test_bbands_calculation ... ok
+test ta::ohlcv::bop::tests::test_bop_arrow ... ok
+test ta::ohlcv::bop::tests::test_bop_calculation ... ok
+test ta::ohlcv::cci::tests::test_cci_arrow ... ok
+test ta::ohlcv::cci::tests::test_cci_calculation ... ok
+test ta::ohlcv::cdl_doji::tests::test_cdl_doji ... ok
+test ta::ohlcv::cdl_doji::tests::test_cdl_doji_arrow ... ok
+test ta::ohlcv::cdl_dragonfly_doji::tests::test_cdl_dragonfly_doji ... ok
+test ta::ohlcv::cdl_dragonfly_doji::tests::test_cdl_dragonfly_doji_arrow ... ok
+test ta::ohlcv::cdl_gravestone_doji::tests::test_cdl_gravestone_doji ... ok
+test ta::ohlcv::cdl_gravestone_doji::tests::test_cdl_gravestone_doji_arrow ... ok
+test ta::ohlcv::cdl_hammer::tests::test_cdl_hammer ... ok
+test ta::ohlcv::cdl_hammer::tests::test_cdl_hammer_arrow ... ok
+test ta::ohlcv::cdl_inverted_hammer::tests::test_cdl_inverted_hammer ... ok
+test ta::ohlcv::cdl_long_shadow::tests::test_cdl_long_shadow ... ok
+test ta::ohlcv::cdl_inverted_hammer::tests::test_cdl_inverted_hammer_arrow ... ok
+test ta::ohlcv::cdl_long_shadow::tests::test_cdl_long_shadow_arrow ... ok
+test ta::ohlcv::cdl_marubozu::tests::test_cdl_marubozu ... ok
+test ta::ohlcv::cdl_marubozu::tests::test_cdl_marubozu_arrow ... ok
+test ta::ohlcv::dema::tests::test_dema_arrow ... ok
+test ta::ohlcv::dema::tests::test_dema_calculation ... ok
+test ta::ohlcv::dx::tests::test_dx_arrow ... ok
+test ta::ohlcv::dx::tests::test_dx_calculation ... FAILED
+test ta::ohlcv::ecl::tests::test_ecl_arrow ... ok
+test ta::ohlcv::ecl::tests::test_ecl_calculation ... ok
+test ta::ohlcv::ema::tests::test_ema_arrow ... ok
+test ta::ohlcv::ema::tests::test_ema_calculation ... ok
+test ta::ohlcv::ha::tests::test_ha_calculation ... ok
+test ta::ohlcv::ha::tests::test_ha_arrow ... ok
+test ta::ohlcv::medprice::tests::test_medprice_arrow ... ok
+test ta::ohlcv::medprice::tests::test_medprice_calculation ... ok
+test ta::ohlcv::mfi::tests::test_mfi_arrow ... ok
+test ta::ohlcv::mfi::tests::test_mfi_calculation ... ok
+test ta::ohlcv::midpoint::tests::test_midpoint_arrow ... ok
+test ta::ohlcv::midpoint::tests::test_midpoint_calculation ... ok
+test ta::ohlcv::midprice::tests::test_midprice_arrow ... ok
+test ta::ohlcv::midprice::tests::test_midprice_calculation ... ok
+test ta::ohlcv::minus_di::tests::test_minus_di_arrow ... ok
+test ta::ohlcv::minus_di::tests::test_minus_di_calculation ... ok
+test ta::ohlcv::minus_dm::tests::test_minus_dm_arrow ... ok
+test ta::ohlcv::minus_dm::tests::test_minus_dm_calculation ... ok
+test ta::ohlcv::mom::tests::test_mom_arrow ... ok
+test ta::ohlcv::mom::tests::test_mom_calculation ... ok
+test ta::ohlcv::natr::tests::test_natr_arrow ... ok
+test ta::ohlcv::natr::tests::test_natr_calculation ... ok
+test ta::ohlcv::obv::tests::test_obv_arrow ... ok
+test ta::ohlcv::obv::tests::test_obv_calculation ... ok
+test ta::ohlcv::plus_di::tests::test_plus_di_arrow ... ok
+test ta::ohlcv::plus_di::tests::test_plus_di_calculation ... ok
+test ta::ohlcv::plus_dm::tests::test_plus_dm_arrow ... ok
+test ta::ohlcv::plus_dm::tests::test_plus_dm_calculation ... ok
+test ta::ohlcv::rma::tests::test_rma_arrow ... ok
+test ta::ohlcv::rma::tests::test_rma_calculation ... ok
+test ta::ohlcv::rma::tests::test_rma_incremental ... ok
+test ta::ohlcv::roc::tests::test_roc_arrow ... ok
+test ta::ohlcv::roc::tests::test_roc_calculation ... ok
+test ta::ohlcv::rocp::tests::test_rocp_arrow ... ok
+test ta::ohlcv::rocp::tests::test_rocp_calculation ... ok
+test ta::ohlcv::rocr100::tests::test_rocr100_arrow ... ok
+test ta::ohlcv::rocr100::tests::test_rocr100_calculation ... ok
+test ta::ohlcv::rocr::tests::test_rocr_arrow ... ok
+test ta::ohlcv::rocr::tests::test_rocr_calculation ... ok
+test ta::ohlcv::rsi::tests::test_rsi_arrow ... ok
+test ta::ohlcv::rsi::tests::test_rsi_calculation ... ok
+test ta::ohlcv::sar::tests::test_sar_arrow ... ok
+test ta::ohlcv::sar::tests::test_sar_calculation ... ok
+test ta::ohlcv::sma::tests::test_sma ... FAILED
+test ta::ohlcv::sma::tests::test_sma_arrow ... FAILED
+test ta::ohlcv::stoch::tests::test_stoch_arrow ... FAILED
+test ta::ohlcv::stoch::tests::test_stoch_calculation ... ok
+test ta::ohlcv::supertrend::tests::test_supertrend_calculation ... ok
+test ta::ohlcv::supertrend::tests::test_supertrend_arrow ... ok
+test ta::ohlcv::t3::tests::test_t3_arrow ... ok
+test ta::ohlcv::t3::tests::test_t3_calculation ... ok
+test ta::ohlcv::tema::tests::test_tema_arrow ... ok
+test ta::ohlcv::tema::tests::test_tema_calculation ... ok
+test ta::ohlcv::trange::tests::test_trange_arrow ... ok
+test ta::ohlcv::trange::tests::test_trange_calculation ... ok
+test ta::ohlcv::trima::tests::test_trima_calculation ... ok
+test ta::ohlcv::trima::tests::test_trima_arrow ... ok
+test ta::ohlcv::trix::tests::test_trix_arrow ... ok
+test ta::ohlcv::trix::tests::test_trix_calculation ... ok
+test ta::ohlcv::typprice::tests::test_typprice_arrow ... ok
+test ta::ohlcv::typprice::tests::test_typprice_calculation ... ok
+test ta::ohlcv::vegas::tests::test_vegas_arrow ... ok
+test ta::ohlcv::vegas::tests::test_vegas_calculation ... ok
+test ta::ohlcv::vegas::tests::test_vegas_inc ... ok
+test ta::ohlcv::vwap::tests::test_vwap_arrow ... ok
+test ta::ohlcv::vwap::tests::test_vwap_calculation ... ok
+test ta::ohlcv::wclprice::tests::test_wclprice_arrow ... ok
+test ta::ohlcv::wclprice::tests::test_wclprice_calculation ... ok
+test ta::ohlcv::willr::tests::test_willr_arrow ... ok
+test ta::ohlcv::willr::tests::test_willr_calculation ... ok
+test ta::ohlcv::wma::tests::test_wma_arrow ... ok
+test ta::ohlcv::wma::tests::test_wma_calculation ... ok
+test ta::stats::correl::tests::test_correl_arrow ... ok
+test ta::stats::correl::tests::test_correl_no_variance ... ok
+test ta::stats::correl::tests::test_correl_perfect_negative ... ok
+test ta::stats::correl::tests::test_correl_perfect_positive ... ok
+test ta::stats::correl::tests::test_talib_compatibility ... ok
+test ta::stats::max::tests::test_max_arrow ... ok
+test ta::stats::max::tests::test_max_calculation ... ok
+test ta::stats::min::tests::test_min_arrow ... ok
+test ta::stats::min::tests::test_min_calculation ... ok
+test ta::stats::stddev::tests::test_stddev_arrow ... ok
+test ta::stats::stddev::tests::test_stddev_calculation ... ok
+test ta::stats::sum::tests::test_sum_arrow ... ok
+test ta::stats::sum::tests::test_sum_calculation ... ok
+test ta::stats::var::tests::test_var_arrow ... ok
+test ta::stats::var::tests::test_var_calculation ... ok
+
+failures:
+
+---- ta::ohlcv::adosc::tests::test_adosc_arrow stdout ----
+
+thread 'ta::ohlcv::adosc::tests::test_adosc_arrow' (1388257) panicked at kand/src/ta/ohlcv/adosc.rs:526:13:
+assert_relative_eq!(adosc_arrow.value(i + 9), expected, epsilon = 0.001)
+
+    left  = -141.8617863989657
+    right = -113.00659643024687
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- ta::ohlcv::adosc::tests::test_adosc_calculation stdout ----
+
+thread 'ta::ohlcv::adosc::tests::test_adosc_calculation' (1388258) panicked at kand/src/ta/ohlcv/adosc.rs:417:13:
+assert_relative_eq!(output_adosc[i + 9], expected, epsilon = 0.001)
+
+    left  = -141.8617863989657
+    right = -113.00659643024687
+
+
+
+---- ta::ohlcv::adx::tests::test_adx_calculation stdout ----
+
+thread 'ta::ohlcv::adx::tests::test_adx_calculation' (1388262) panicked at kand/src/ta/ohlcv/adx.rs:485:13:
+assert_relative_eq!(result, output_adx[i], epsilon = 0.01)
+
+    left  = 22.260906854729768
+    right = 22.136715365358945
+
+
+
+---- ta::ohlcv::adxr::tests::test_adxr_calculation stdout ----
+
+thread 'ta::ohlcv::adxr::tests::test_adxr_calculation' (1388264) panicked at kand/src/ta/ohlcv/adxr.rs:443:13:
+assert_relative_eq!(result.0, output_adxr[i], epsilon = 0.01)
+
+    left  = 19.728390199114845
+    right = 19.68856081325559
+
+
+
+---- ta::ohlcv::aroonosc::tests::test_aroonosc_calculation stdout ----
+
+thread 'ta::ohlcv::aroonosc::tests::test_aroonosc_calculation' (1388268) panicked at kand/src/ta/ohlcv/aroonosc.rs:416:13:
+assertion failed: output_aroonosc[i].is_nan()
+
+---- ta::ohlcv::dx::tests::test_dx_calculation stdout ----
+
+thread 'ta::ohlcv::dx::tests::test_dx_calculation' (1388293) panicked at kand/src/ta/ohlcv/dx.rs:457:13:
+assert_relative_eq!(result, output_dx[i], epsilon = 0.01)
+
+    left  = 29.902672104269687
+    right = 32.15723575657665
+
+
+
+---- ta::ohlcv::sma::tests::test_sma stdout ----
+
+thread 'ta::ohlcv::sma::tests::test_sma' (1388337) panicked at kand/src/ta/ohlcv/sma.rs:170:13:
+assertion failed: result.value(i).is_nan()
+
+---- ta::ohlcv::sma::tests::test_sma_arrow stdout ----
+
+thread 'ta::ohlcv::sma::tests::test_sma_arrow' (1388339) panicked at kand/src/ta/ohlcv/sma.rs:188:13:
+assertion failed: result.value(i).is_nan()
+
+---- ta::ohlcv::stoch::tests::test_stoch_arrow stdout ----
+
+thread 'ta::ohlcv::stoch::tests::test_stoch_arrow' (1388340) panicked at kand/src/ta/ohlcv/stoch.rs:454:17:
+assertion failed: k.value(i).is_nan()
+
+
+failures:
+    ta::ohlcv::adosc::tests::test_adosc_arrow
+    ta::ohlcv::adosc::tests::test_adosc_calculation
+    ta::ohlcv::adx::tests::test_adx_calculation
+    ta::ohlcv::adxr::tests::test_adxr_calculation
+    ta::ohlcv::aroonosc::tests::test_aroonosc_calculation
+    ta::ohlcv::dx::tests::test_dx_calculation
+    ta::ohlcv::sma::tests::test_sma
+    ta::ohlcv::sma::tests::test_sma_arrow
+    ta::ohlcv::stoch::tests::test_stoch_arrow
+
+test result: FAILED. 117 passed; 9 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p kand --lib`

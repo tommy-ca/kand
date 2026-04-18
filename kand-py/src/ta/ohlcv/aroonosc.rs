@@ -130,18 +130,20 @@ pub fn aroonosc_inc_py(
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, i64, i64)> {
     py.allow_threads(|| {
-        let (osc, h, l, dsh, dsl) = aroonosc::aroonosc_inc(
+        let res = aroonosc::aroonosc_inc(
             high,
             low,
             prev_high,
             prev_low,
-            days_since_high.try_into().unwrap(),
-            days_since_low.try_into().unwrap(),
+            days_since_high,
+            days_since_low,
             period,
         );
-        Ok((osc, h, l, dsh as i64, dsl as i64))
+        match res {
+            Ok((osc, h, l, dsh, dsl)) => Ok((osc, h, l, dsh, dsl)),
+            Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e.to_string())),
+        }
     })
-    .map_err(|e: KandError| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?
 }
 
 // Arrow wrapper

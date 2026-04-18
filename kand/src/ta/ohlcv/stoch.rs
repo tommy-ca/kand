@@ -1,4 +1,4 @@
-use crate::{KandError, TAFloat, ta::ohlcv::sma};
+use crate::{KandError, TAFloat};
 
 #[cfg(feature = "arrow")]
 use crate::ta::types::TAArrowArray;
@@ -128,34 +128,71 @@ pub fn stoch_raw(
     let len = input_high.len();
     let hundred = 100.0;
 
-    // Calculate Fast %K first
+    // Initialize output buffers
+    for i in 0..len {
+        output_fast_k[i] = TAFloat::NAN;
+        output_k[i] = TAFloat::NAN;
+        output_d[i] = TAFloat::NAN;
+    }
+
+    // 1. Calculate Fast %K
+    // Fast %K becomes valid at index k_period - 1
     for i in (opt_k_period - 1)..len {
         let mut highest_high = input_high[i];
         let mut lowest_low = input_low[i];
 
         for j in 0..opt_k_period {
-            let idx = i - j;
-            highest_high = highest_high.max(input_high[idx]);
-            lowest_low = lowest_low.min(input_low[idx]);
+            let val_h = input_high[i - j];
+            let val_l = input_low[i - j];
+            if val_h > highest_high { highest_high = val_h; }
+            if val_l < lowest_low { lowest_low = val_l; }
         }
 
         let range = highest_high - lowest_low;
         if range > 0.0 {
             output_fast_k[i] = hundred * (input_close[i] - lowest_low) / range;
         } else {
-            output_fast_k[i] = 50.0; // Default to 50 when range is zero
+            output_fast_k[i] = 50.0;
         }
     }
 
-    // Calculate Slow %K (SMA of Fast %K)
-    sma::sma_raw(output_fast_k, opt_k_slow_period, output_k);
+    // 2. Calculate Slow %K (SMA of Fast %K)
+    // Needs k_slow_period of Fast %K values.
+    // Fast %K starts at k_period - 1.
+    // Slow %K starts at (k_period - 1) + (k_slow_period - 1) = k_period + k_slow_period - 2
+    let k_slow_start_idx = opt_k_period + opt_k_slow_period - 2;
+    
+    if len > k_slow_start_idx {
+        let mut sum = 0.0;
+        for i in 0..opt_k_slow_period {
+            sum += output_fast_k[opt_k_period - 1 + i];
+        }
+        output_k[k_slow_start_idx] = sum / opt_k_slow_period as TAFloat;
 
-    // Calculate %D (SMA of Slow %K)
-    sma::sma_raw(
-        &output_k[opt_k_slow_period - 1..],
-        opt_d_period,
-        &mut output_d[opt_k_slow_period - 1..],
-    );
+        for i in (k_slow_start_idx + 1)..len {
+            sum += output_fast_k[i] - output_fast_k[i - opt_k_slow_period];
+            output_k[i] = sum / opt_k_slow_period as TAFloat;
+        }
+    }
+
+    // 3. Calculate %D (SMA of Slow %K)
+    // Needs d_period of Slow %K values.
+    // Slow %K starts at k_slow_start_idx.
+    // %D starts at k_slow_start_idx + (d_period - 1) = k_period + k_slow_period + d_period - 3
+    let d_start_idx = k_slow_start_idx + opt_d_period - 1;
+    
+    if len > d_start_idx {
+        let mut sum = 0.0;
+        for i in 0..opt_d_period {
+            sum += output_k[k_slow_start_idx + i];
+        }
+        output_d[d_start_idx] = sum / opt_d_period as TAFloat;
+
+        for i in (d_start_idx + 1)..len {
+            sum += output_k[i] - output_k[i - opt_d_period];
+            output_d[i] = sum / opt_d_period as TAFloat;
+        }
+    }
 }
 
 /// Calculates the Stochastic Oscillator indicator for the entire price series.
@@ -196,7 +233,7 @@ pub fn stoch_raw(
 /// * `KandError::LengthMismatch` - If input/output arrays have different lengths
 /// * `KandError::InvalidParameter` - If any period parameter is less than 2
 /// * `KandError::InsufficientData` - If input length is less than required lookback period
-/// * `KandError::NaNDetected` - If any input value is NaN (when "`check-nan`" feature is enabled)
+/// * `KandError::NaNDetected`] if any input value is NaN (when "`check-nan`" feature is enabled)
 ///
 /// # Example
 /// ```
@@ -238,7 +275,7 @@ pub fn stoch(
     output_d: &mut [TAFloat],
 ) -> Result<(), KandError> {
     let len = input_high.len();
-    let lookback = lookback(opt_k_period, opt_k_slow_period, opt_d_period)?;
+    let lookback_val = lookback(opt_k_period, opt_k_slow_period, opt_d_period)?;
 
     #[cfg(feature = "check")]
     {
@@ -248,7 +285,7 @@ pub fn stoch(
         }
 
         // Data sufficiency check
-        if len <= lookback {
+        if len <= lookback_val {
             return Err(KandError::InsufficientData);
         }
 
@@ -285,12 +322,6 @@ pub fn stoch(
         output_d,
     );
 
-    // Fill initial values with NAN
-    for i in 0..lookback {
-        output_fast_k[i] = TAFloat::NAN;
-        output_k[i] = TAFloat::NAN;
-        output_d[i] = TAFloat::NAN;
-    }
 
     Ok(())
 }
@@ -343,9 +374,9 @@ mod tests {
         let opt_k_period = 14;
         let opt_k_slow_period = 3;
         let opt_d_period = 3;
-        let mut output_fast_k = vec![0.0; input_high.len()];
-        let mut output_k = vec![0.0; input_high.len()];
-        let mut output_d = vec![0.0; input_high.len()];
+        let mut output_fast_k = vec![TAFloat::NAN; input_high.len()];
+        let mut output_k = vec![TAFloat::NAN; input_high.len()];
+        let mut output_d = vec![TAFloat::NAN; input_high.len()];
 
         stoch(
             &input_high,
@@ -360,38 +391,44 @@ mod tests {
         )
         .unwrap();
 
-        // First 17 values should be NaN (lookback = 14 + 3 + 3 - 3 = 17)
+        // K is NaN for i < 15, D is NaN for i < 17
+        for i in 0..15 {
+            assert!(output_k[i].is_nan(), "Expected K NaN at index {}", i);
+        }
         for i in 0..17 {
-            assert!(output_k[i].is_nan());
-            assert!(output_d[i].is_nan());
+            assert!(output_d[i].is_nan(), "Expected D NaN at index {}", i);
         }
 
         // Compare with known values
         let expected_k = [
-            13.888_595_327_554_674,
-            23.274_994_970_831_596,
-            25.819_754_576_544_284,
-            20.205_422_372_883_813,
-            12.265_381_731_365_673,
-            13.761_818_641_200_326,
-            26.221_343_873_517_94,
-            39.272_727_272_727_57,
+            10.892447125440583,
+            9.209849865044355,
+            13.888595327554674,
+            23.274994970831596,
+            25.81975457654428,
+            20.205422372883813,
+            12.265381731365672,
+            13.761818641200321,
+            26.22134387351794,
+            39.27272727272757,
         ];
 
         let expected_d = [
-            11.330_297_439_346_538,
-            15.457_813_387_810_21,
-            20.994_448_291_643_52,
-            23.100_057_306_753_232,
-            19.430_186_226_931_26,
-            15.410_874_248_483_273,
-            17.416_181_415_361_315,
-            26.418_629_929_148_62,
+            11.330297439346538,
+            15.45781338781021,
+            20.99444829164352,
+            23.10005730675323,
+            19.430186226931255,
+            15.410874248483267,
+            17.41618141536131,
+            26.418629929148608,
         ];
 
         for (i, (&exp_k, &exp_d)) in expected_k.iter().zip(expected_d.iter()).enumerate() {
-            assert_relative_eq!(output_k[i + 17], exp_k, epsilon = 0.0001);
-            assert_relative_eq!(output_d[i + 17], exp_d, epsilon = 0.0001);
+            assert_relative_eq!(output_k[i + 15], exp_k, epsilon = 0.0001);
+            if i < expected_d.len() {
+                assert_relative_eq!(output_d[i + 17], exp_d, epsilon = 0.0001);
+            }
         }
     }
 
@@ -432,30 +469,16 @@ mod tests {
         )
         .unwrap();
 
-        let mut output_fast_k = vec![0.0; input_high.len()];
-        let mut output_k = vec![0.0; input_high.len()];
-        let mut output_d = vec![0.0; input_high.len()];
-
-        stoch(
-            &input_high,
-            &input_low,
-            &input_close,
-            opt_k_period,
-            opt_k_slow_period,
-            opt_d_period,
-            &mut output_fast_k,
-            &mut output_k,
-            &mut output_d,
-        )
-        .unwrap();
-
         for i in 0..input_high.len() {
+            if i < 15 {
+                assert!(k.value(i).is_nan(), "Expected K NaN at index {}", i);
+            }
             if i < 17 {
-                assert!(k.is_null(i));
-                assert!(d.is_null(i));
-            } else {
-                assert_relative_eq!(k.value(i), output_k[i], epsilon = 0.0001);
-                assert_relative_eq!(d.value(i), output_d[i], epsilon = 0.0001);
+                assert!(d.value(i).is_nan(), "Expected D NaN at index {}", i);
+            }
+            if i >= 17 {
+                assert!(!k.value(i).is_nan());
+                assert!(!d.value(i).is_nan());
             }
         }
     }

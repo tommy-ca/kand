@@ -136,18 +136,20 @@ pub fn aroon_inc_py(
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat, i64, i64)> {
     py.allow_threads(|| {
-        let (up, down, h, l, dsh, dsl) = aroon::aroon_inc(
+        let res = aroon::aroon_inc(
             high,
             low,
             prev_high,
             prev_low,
-            days_since_high.try_into().unwrap(),
-            days_since_low.try_into().unwrap(),
+            days_since_high,
+            days_since_low,
             period,
         );
-        Ok((up, down, h, l, dsh as i64, dsl as i64))
+        match res {
+            Ok((up, down, h, l, dsh, dsl)) => Ok((up, down, h, l, dsh, dsl)),
+            Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e.to_string())),
+        }
     })
-    .map_err(|e: KandError| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?
 }
 
 // Arrow wrapper

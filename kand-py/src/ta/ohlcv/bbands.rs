@@ -1,36 +1,10 @@
-use kand::{ta::types::MAType, ohlcv::bbands, TAFloat};
+use kand::{ohlcv::bbands, TAFloat};
+use kand::ta::types::MAType;
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 
-/// Calculate Bollinger Bands for a NumPy array.
-///
-/// Bollinger Bands consist of:
-/// - A middle band (N-period simple moving average)
-/// - A lower band (K standard deviations below middle band)
-/// - An upper band (K standard deviations above middle band)
-///
-/// Args:
-///   price: Input price values as a 1-D NumPy array of type `TAFloat`.
-///   period: The time period for calculations (must be >= 2).
-///   dev_up: Number of standard deviations for upper band.
-///   dev_down: Number of standard deviations for lower band.
-///
-/// Returns:
-///   A tuple of 3 1-D NumPy arrays containing:
-///   - Upper band values
-///   - Middle band values
-///   - Lower band values
-///   The first (period-1) elements of each array contain NaN values.
-///
-/// Examples:
-///   ```python
-///   >>> import numpy as np
-///   >>> import kand
-///   >>> price = np.array([10.0, 11.0, 12.0, 13.0, 14.0])
-///   >>> upper, middle, lower = kand.bbands(price, 3, 2.0, 2.0)
-///   ```
 #[pyfunction]
-#[pyo3(name = "bbands", signature = (price, period, dev_up, dev_down, ma_type))]
+#[pyo3(signature = (price, period, dev_up, dev_down, ma_type))]
 pub fn bbands_py(
     py: Python,
     price: PyReadonlyArray1<TAFloat>,
@@ -38,32 +12,28 @@ pub fn bbands_py(
     dev_up: TAFloat,
     dev_down: TAFloat,
     ma_type: u32,
-) -> PyResult<(
-    Py<PyArray1<TAFloat>>,
-    Py<PyArray1<TAFloat>>,
-    Py<PyArray1<TAFloat>>,
-)> {
-    let price_slice = price.as_slice()?;
-    let len = price_slice.len();
+) -> PyResult<(Py<PyArray1<TAFloat>>, Py<PyArray1<TAFloat>>, Py<PyArray1<TAFloat>>)> {
+    let input_price = price.as_slice()?;
+    let len = input_price.len();
+    let ma_type = MAType::try_from(ma_type as i64)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
 
     let mut output_upper = vec![0.0; len];
     let mut output_middle = vec![0.0; len];
     let mut output_lower = vec![0.0; len];
 
     py.allow_threads(|| {
-        let ma_type = MAType::try_from(ma_type as i64)
-            .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
-        bbands::bbands(
-            price_slice,
+        let _ = bbands::bbands(
+            input_price,
             period,
             dev_up,
             dev_down,
             ma_type,
-            output_upper.as_mut_slice(),
-            output_middle.as_mut_slice(),
-            output_lower.as_mut_slice(),
+            &mut output_upper,
+            &mut output_middle,
+            &mut output_lower,
         );
-        Ok(())
+        Ok::<(), PyErr>(())
     })?;
 
     Ok((
@@ -74,17 +44,7 @@ pub fn bbands_py(
 }
 
 #[pyfunction]
-#[pyo3(name = "bbands_inc", signature = (
-    price,
-    prev_sma,
-    prev_sum,
-    prev_sum_sq,
-    old_price,
-    period,
-    dev_up,
-    dev_down,
-    ma_type
-))]
+#[pyo3(signature = (price, prev_sma, prev_sum, prev_sum_sq, old_price, period, dev_up, dev_down, ma_type))]
 pub fn bbands_inc_py(
     py: Python,
     price: TAFloat,
@@ -97,36 +57,54 @@ pub fn bbands_inc_py(
     dev_down: TAFloat,
     ma_type: u32,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat, TAFloat, TAFloat)> {
+    let ma_type = MAType::try_from(ma_type as i64)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
+
     py.allow_threads(|| {
-        let ma_type = MAType::try_from(ma_type as i64).map_err(|_| {
-            pyo3::exceptions::PyValueError::new_err("Invalid MAType")
-        py.allow_threads(|| {
-            let ma_type = MAType::try_from(ma_type as i64)
-                .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
-            bbands::bbands_inc(
-                price,
-                prev_sma,
-                prev_sum,
-                prev_sum_sq,
-                old_price,
-                period,
-                dev_up,
-                dev_down,
-                ma_type,
-            )
-        })
-        }
+        bbands::bbands_inc(
+            price,
+            prev_sma,
+            prev_sum,
+            prev_sum_sq,
+            old_price,
+            period,
+            dev_up,
+            dev_down,
+            ma_type,
+        ).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    })
+}
 
 // Arrow wrapper
-crate::kand_py_arrow_wrapper_multi!(
-    bbands_arrow,
-    kand::ta::ohlcv::bbands::bbands_arrow,
-    inputs: { price },
-    params: {
-        period: usize,
-        dev_up: TAFloat,
-        dev_down: TAFloat,
-        ma_type: u32
-    },
-    output_count: 3
-);
+#[cfg(feature = "arrow")]
+#[pyo3::prelude::pyfunction]
+#[pyo3(signature = (price, period, multiplier_up, multiplier_down, ma_type))]
+pub fn bbands_arrow(
+    py: pyo3::prelude::Python,
+    price: pyo3_arrow::PyArray,
+    period: usize,
+    multiplier_up: TAFloat,
+    multiplier_down: TAFloat,
+    ma_type: i64,
+) -> pyo3::prelude::PyResult<(pyo3_arrow::PyArray, pyo3_arrow::PyArray, pyo3_arrow::PyArray)> {
+    use std::sync::Arc;
+    use arrow::array::Array;
+    use kand::ta::types::{TAArrowArray, MAType};
+    let ma_type = MAType::try_from(ma_type)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid MAType"))?;
+
+    let price_array = price.as_ref()
+        .as_any()
+        .downcast_ref::<TAArrowArray>()
+        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Expected compatible Arrow floating-point array for price"))?;
+
+    let (r1, r2, r3) = py.allow_threads(|| kand::ta::ohlcv::bbands::bbands_arrow(price_array, period, multiplier_up, multiplier_down, ma_type))
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+
+    let field = Arc::new(arrow::datatypes::Field::new("", price_array.data_type().clone(), true));
+    Ok((
+        pyo3_arrow::PyArray::new(Arc::new(r1), field.clone()),
+        pyo3_arrow::PyArray::new(Arc::new(r2), field.clone()),
+        pyo3_arrow::PyArray::new(Arc::new(r3), field.clone())
+    ))
+}

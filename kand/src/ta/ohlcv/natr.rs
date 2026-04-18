@@ -367,8 +367,8 @@ mod tests {
         let result = natr_arrow(&high_arrow, &low_arrow, &close_arrow, period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.is_null(0));
-        assert!(result.is_null(1));
+        assert!(result.value(0).is_nan());
+        assert!(result.value(1).is_nan());
         assert!(result.value(2).is_finite());
     }
 }

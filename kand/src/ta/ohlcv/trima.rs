@@ -41,7 +41,6 @@ pub fn trima_raw(
     output_sma2: &mut [TAFloat],
 ) {
     let len = input.len();
-    let _lookback = opt_period - 1;
 
     let (n, m) = if opt_period % 2 == 1 {
         let n = opt_period.div_ceil(2);
@@ -66,12 +65,12 @@ pub fn trima_raw(
 
     // Second SMA calculation
     sum = 0.0;
-    for value in output_sma1.iter().take(m) {
+    for value in output_sma1.iter().skip(n - 1).take(m) {
         sum += *value;
     }
-    output_sma2[m - 1] = sum / (m as TAFloat);
+    output_sma2[n + m - 2] = sum / (m as TAFloat);
 
-    for i in m..len {
+    for i in (n + m - 1)..len {
         sum = sum + output_sma1[i] - output_sma1[i - m];
         output_sma2[i] = sum / (m as TAFloat);
     }
@@ -168,12 +167,9 @@ pub fn trima(
     trima_raw(input, opt_period, output_sma1, output_sma2);
 
     // Fill initial values with NAN
-    #[cfg(feature = "allow-nan")]
-    {
-        for i in 0..lookback {
-            output_sma1[i] = TAFloat::NAN;
-            output_sma2[i] = TAFloat::NAN;
-        }
+    for i in 0..lookback {
+        output_sma1[i] = TAFloat::NAN;
+        output_sma2[i] = TAFloat::NAN;
     }
 
     Ok(())
@@ -479,8 +475,7 @@ mod tests {
 
         for i in 0..input.len() {
             if i < 29 {
-                #[cfg(feature = "allow-nan")]
-                assert!(trima_arrow.is_null(i));
+                assert!(trima_arrow.value(i).is_nan());
             } else {
                 assert_relative_eq!(trima_arrow.value(i), out_sma2[i], epsilon = 0.0001);
             }

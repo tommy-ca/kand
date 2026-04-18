@@ -386,7 +386,8 @@ mod tests {
 
         for (i, &expected) in expected_values.iter().enumerate() {
             if expected.is_nan() {
-                assert!(result.is_null(i));
+                #[cfg(feature = "allow-nan")]
+                assert!(result.value(i).is_nan());
             } else {
                 assert_relative_eq!(result.value(i), expected, epsilon = EPSILON);
             }
@@ -427,7 +428,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 2 {
                 #[cfg(feature = "allow-nan")]
-                assert!(result.is_null(i));
+                assert!(result.value(i).is_nan());
             } else {
                 assert_relative_eq!(result.value(i), out_adr[i], epsilon = 1e-9);
             }

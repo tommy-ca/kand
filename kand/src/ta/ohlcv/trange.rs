@@ -250,7 +250,7 @@ mod tests {
         let result = trange_arrow(&high_arrow, &low_arrow, &close_arrow).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.is_null(0));
+        assert!(result.value(0).is_nan());
         assert_relative_eq!(result.value(1), 41.0, epsilon = 0.00001);
         assert_relative_eq!(result.value(2), 55.7, epsilon = 0.00001);
         assert_relative_eq!(result.value(3), 60.1, epsilon = 0.00001);

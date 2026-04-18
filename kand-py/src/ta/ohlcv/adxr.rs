@@ -52,10 +52,10 @@ pub fn adxr_py(
     let len = high_slice.len();
 
     let mut output_adxr = vec![0.0; len];
-    let mut output_adx = vec![0.0; len];
-    let mut output_plus_dm = vec![0.0; len];
-    let mut output_minus_dm = vec![0.0; len];
-    let mut output_tr = vec![0.0; len];
+    let output_adx = vec![0.0; len];
+    let output_plus_dm = vec![0.0; len];
+    let output_minus_dm = vec![0.0; len];
+    let output_tr = vec![0.0; len];
 
     py.allow_threads(|| {
         adxr::adxr(

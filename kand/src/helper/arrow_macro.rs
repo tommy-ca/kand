@@ -46,17 +46,14 @@ macro_rules! kand_arrow_wrapper {
             let mut buffer = MutableBuffer::new(len * size_of::<$crate::TAFloat>());
             buffer.resize(len * size_of::<$crate::TAFloat>(), 0);
             let output_slice = buffer.typed_data_mut::<$crate::TAFloat>();
+            
+            // Initialize with NAN
+            for value in output_slice.iter_mut() {
+                *value = $crate::TAFloat::NAN;
+            }
 
             // Computation
             $raw_fn($($input_name,)+ $($param_name,)* output_slice);
-
-            // Fill NaNs
-            #[cfg(feature = "allow-nan")]
-            {
-                for value in output_slice.iter_mut().take(lookback) {
-                    *value = $crate::TAFloat::NAN;
-                }
-            }
 
             Ok($crate::ta::types::TAArrowArray::new(buffer.into(), None))
         }
@@ -113,6 +110,14 @@ macro_rules! kand_arrow_wrapper_multi {
             $(
                 let mut $output_name = MutableBuffer::new(len * size_of::<$output_type>());
                 $output_name.resize(len * size_of::<$output_type>(), 0);
+                
+                // Initialize with NAN if TAFloat
+                if std::any::TypeId::of::<$output_type>() == std::any::TypeId::of::<$crate::TAFloat>() {
+                    let slice = $output_name.typed_data_mut::<$crate::TAFloat>();
+                    for value in slice.iter_mut() {
+                        *value = $crate::TAFloat::NAN;
+                    }
+                }
             )+
 
             // Computation
@@ -121,19 +126,6 @@ macro_rules! kand_arrow_wrapper_multi {
                 $($param_name,)* 
                 $( $output_name.typed_data_mut::<$output_type>() ),+
             );
-
-            // Fill NaNs
-            #[cfg(feature = "allow-nan")]
-            {
-                $(
-                    // Only fill NaNs if output type is TAFloat
-                    if std::any::TypeId::of::<$output_type>() == std::any::TypeId::of::<$crate::TAFloat>() {
-                        for value in $output_name.typed_data_mut::<$crate::TAFloat>().iter_mut().take(lookback) {
-                            *value = $crate::TAFloat::NAN;
-                        }
-                    }
-                )+
-            }
 
             Ok(($( <$ret_type>::new($output_name.into(), None) ),+))
         }

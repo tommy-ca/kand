@@ -271,8 +271,8 @@ mod tests {
         let result = rocp_arrow(&price_arrow, opt_period).unwrap();
 
         assert_eq!(result.len(), 5);
-        assert!(result.is_null(0));
-        assert!(result.is_null(1));
+        assert!(result.value(0).is_nan());
+        assert!(result.value(1).is_nan());
         assert_relative_eq!(result.value(2), 0.12, epsilon = 0.0001);
     }
 }

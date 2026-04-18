@@ -28,6 +28,10 @@ rayon = { workspace = true }
 name = "bench_main"
 harness = false
 
+[[bench]]
+name = "bench_arrow"
+harness = false
+
 [features]
 default = ["f64", "i64", "check"]     # Default: extended precision with basic checks
 f32 = []                              # 32-bit floating point

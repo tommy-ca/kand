@@ -1,7 +1,6 @@
 use crate::{
     KandError, TAFloat, TAInt,
     helper::{lower_shadow_length, period_to_k, real_body_length, upper_shadow_length},
-    ta::types::Signal,
 };
 
 #[cfg(feature = "arrow")]
