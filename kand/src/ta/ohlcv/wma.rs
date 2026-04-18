@@ -205,6 +205,7 @@ pub fn wma_inc(input_window: &[TAFloat], opt_period: usize) -> Result<TAFloat, K
     Ok(wma_inc_raw(input_window, opt_period))
 }
 
+// Arrow wrapper
 #[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
     wma_arrow,
@@ -214,11 +215,81 @@ crate::kand_arrow_wrapper!(
     lookback_params: { opt_period }
 );
 
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    WMA,
+    type: sliding_window,
+    inputs: { price: TAFloat },
+    params: { period: usize },
+    state: { sum: TAFloat, weighted_sum: TAFloat },
+    init: |period| {
+        (0.0, 0.0)
+    },
+    next: |state, (price)| {
+        let old_val = state.__kand_window[state.__kand_cursor].0;
+        state.__kand_window[state.__kand_cursor] = (price,);
+        state.__kand_cursor = (state.__kand_cursor + 1) % state.period;
+
+        if state.__kand_count <= state.period {
+            state.sum += price;
+            state.weighted_sum += price * (state.__kand_count as TAFloat);
+            
+            if state.__kand_count == state.period {
+                let denominator = (state.period * (state.period + 1)) as TAFloat / 2.0;
+                Ok(state.weighted_sum / denominator)
+            } else {
+                Ok(TAFloat::NAN)
+            }
+        } else {
+            state.weighted_sum = state.weighted_sum + price * (state.period as TAFloat) - state.sum;
+            state.sum = state.sum + price - old_val;
+            let denominator = (state.period * (state.period + 1)) as TAFloat / 2.0;
+            Ok(state.weighted_sum / denominator)
+        }
+    }
+);
+
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_wma() {
+        let mut wma_state = StatefulWMA::new(3).unwrap();
+        assert!(wma_state.next((10.0,)).unwrap().is_nan());
+        assert!(wma_state.next((10.5,)).unwrap().is_nan());
+        // wma = (10.0*1 + 10.5*2 + 11.2*3) / 6 = (10.0 + 21.0 + 33.6) / 6 = 64.6 / 6 = 10.7666...
+        assert_relative_eq!(wma_state.next((11.2,)).unwrap(), 10.766666666666667, epsilon = 0.0001);
+        // wma = (10.5*1 + 11.2*2 + 10.8*3) / 6 = (10.5 + 22.4 + 32.4) / 6 = 65.3 / 6 = 10.88333...
+        assert_relative_eq!(wma_state.next((10.8,)).unwrap(), 10.883333333333333, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_wma() {
+        let mut batch_wma = BatchWMA::new(3, 2).unwrap();
+        let input = TAArrowArray::from(vec![10.0, 20.0]);
+
+        // t0
+        let out = batch_wma.next_batch((input.clone(),)).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t1
+        let input = TAArrowArray::from(vec![10.5, 21.0]);
+        let out = batch_wma.next_batch((input.clone(),)).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t2
+        let input = TAArrowArray::from(vec![11.2, 22.4]);
+        let out = batch_wma.next_batch((input.clone(),)).unwrap();
+        assert_relative_eq!(out.value(0), 10.766666666666667, epsilon = 0.0001);
+        assert_relative_eq!(out.value(1), 21.533333333333333, epsilon = 0.0001); // (20*1 + 21*2 + 22.4*3)/6 = (20 + 42 + 67.2)/6 = 129.2/6 = 21.533...
+    }
 
     #[test]
     fn test_wma_calculation() {

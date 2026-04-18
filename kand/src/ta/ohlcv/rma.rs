@@ -212,6 +212,7 @@ pub fn rma_inc(
     Ok(rma_inc_raw(input_current, prev_rma, opt_period))
 }
 
+// Arrow wrapper
 #[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
     rma_arrow,
@@ -221,12 +222,79 @@ crate::kand_arrow_wrapper!(
     lookback_params: { opt_period }
 );
 
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    RMA,
+    type: recursive,
+    inputs: { price: TAFloat },
+    params: { period: usize },
+    state: { prev_rma: TAFloat, sum: TAFloat },
+    init: |period| {
+        (0.0, 0.0)
+    },
+    next: |state, (price)| {
+        if state.__kand_count < state.period {
+            state.sum += price;
+            Ok(TAFloat::NAN)
+        } else if state.__kand_count == state.period {
+            state.sum += price;
+            state.prev_rma = state.sum / state.period as TAFloat;
+            Ok(state.prev_rma)
+        } else {
+            let alpha = 1.0 / state.period as TAFloat;
+            state.prev_rma = price.mul_add(alpha, state.prev_rma * (1.0 - alpha));
+            Ok(state.prev_rma)
+        }
+    }
+);
+
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_rma() {
+        let mut rma_state = StatefulRMA::new(3).unwrap();
+        assert!(rma_state.next((10.0,)).unwrap().is_nan());
+        assert!(rma_state.next((11.0,)).unwrap().is_nan());
+        assert_relative_eq!(rma_state.next((12.0,)).unwrap(), 11.0, epsilon = 0.0001); // (10+11+12)/3 = 11
+        // rma = 13*(1/3) + 11*(2/3) = 4.333 + 7.333 = 11.666
+        assert_relative_eq!(rma_state.next((13.0,)).unwrap(), 11.666666666666666, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_rma() {
+        let mut batch_rma = BatchRMA::new(3, 2).unwrap();
+        let input = TAArrowArray::from(vec![10.0, 20.0]);
+
+        // t0
+        let out = batch_rma.next_batch((input.clone(),)).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t1
+        let input = TAArrowArray::from(vec![11.0, 21.0]);
+        let out = batch_rma.next_batch((input.clone(),)).unwrap();
+        assert!(out.value(0).is_nan());
+
+        // t2
+        let input = TAArrowArray::from(vec![12.0, 22.0]);
+        let out = batch_rma.next_batch((input.clone(),)).unwrap();
+        assert_relative_eq!(out.value(0), 11.0, epsilon = 0.0001);
+        assert_relative_eq!(out.value(1), 21.0, epsilon = 0.0001);
+
+        // t3
+        let input = TAArrowArray::from(vec![13.0, 23.0]);
+        let out = batch_rma.next_batch((input.clone(),)).unwrap();
+        assert_relative_eq!(out.value(0), 11.666666666666666, epsilon = 0.0001);
+        assert_relative_eq!(out.value(1), 21.666666666666668, epsilon = 0.0001);
+    }
+
 
     #[test]
     fn test_rma_calculation() {
