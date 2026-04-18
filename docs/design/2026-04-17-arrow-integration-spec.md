@@ -50,8 +50,8 @@ A single `kand_indicator!` macro automates the generation of the full indicator 
 - Integrated with `BlockPool` for automatic memory management.
 
 ## 4. Test-Driven Development (TDD) Standard
-1.  **Validation Parity**: Errors match legacy slice variants.
-2.  **Numerical Parity**: Bit-identical results.
-3.  **Persistence Integrity**: 0 data loss across save/load cycles in Polars.
-4.  **Atomicity**: Verified rollback on partial update failures.
-5.  **Quality Gates**: Automated `prek` hooks (clippy, ruff, ty) must pass 100%.
+1.  **Validation Parity**: Errors match legacy slice variants exactly.
+2.  **Numerical Parity**: Bit-identical results maintained across all variants.
+3.  **Persistence Integrity**: 0 data loss verified via columnar state storage (`__kand_` prefix).
+4.  **Transactional Updates**: Atomic state management verified via failure-injection tests.
+5.  **Quality Assurance**: 100% warning-free build and automated `prek` verification required.

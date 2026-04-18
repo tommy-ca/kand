@@ -1,4 +1,4 @@
-use arrow::array::{Array, Float64Array};
+use arrow::array::Float64Array;
 use kand::ta::ohlcv::sma;
 
 fn main() {

@@ -1,7 +1,7 @@
-use arrow::array::{Float64Array, Int32Array};
+use arrow::array::Float64Array;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use kand::{
-    TAFloat, TAInt,
+    TAFloat,
     ta::ohlcv::{cdl_hammer, macd, sma},
 };
 
