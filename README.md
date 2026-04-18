@@ -97,9 +97,9 @@ new_ema = ema_inc(new_price, prev_ema, period=3)
 
 **Key Features:**
 
-- **Zero-Copy**: Operates directly on NumPy arrays, avoiding memory duplication.
-- **GIL-Free**: Rust backend releases the Python GIL, enabling parallel execution.
-- **Incremental Updates**: O(1) complexity for real-time applications.
+- **Zero-Copy Performance**: Optimized data transfer between Rust, Python, and WebAssembly.
+- **Apache Arrow Native**: First-class support for Arrow arrays, enabling zero-copy interoperability with Polars, PyArrow, and modern data stacks.
+- **High Performance**: Native Rust implementation, releasing GIL in Python and providing optimized WASM views for JavaScript.
 
 ---
 
