@@ -219,10 +219,10 @@ pub fn cdl_dragonfly_doji_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_open.is_null()
-            || input_high.is_null()
-            || input_low.is_null()
-            || input_close.is_null()
+        if input_open.is_nan()
+            || input_high.is_nan()
+            || input_low.is_nan()
+            || input_close.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

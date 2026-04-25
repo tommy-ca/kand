@@ -412,15 +412,15 @@ pub fn correl_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check for all inputs
-        if input_new_0.is_null()
-            || input_new_1.is_null()
-            || input_old_0.is_null()
-            || input_old_1.is_null()
-            || prev_sum_0.is_null()
-            || prev_sum_1.is_null()
-            || prev_sum_0_sq.is_null()
-            || prev_sum_1_sq.is_null()
-            || prev_sum_01.is_null()
+        if input_new_0.is_nan()
+            || input_new_1.is_nan()
+            || input_old_0.is_nan()
+            || input_old_1.is_nan()
+            || prev_sum_0.is_nan()
+            || prev_sum_1.is_nan()
+            || prev_sum_0_sq.is_nan()
+            || prev_sum_1_sq.is_nan()
+            || prev_sum_01.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

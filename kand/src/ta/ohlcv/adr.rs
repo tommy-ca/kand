@@ -200,11 +200,11 @@ pub fn adr_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_new_high.is_null()
-            || input_new_low.is_null()
-            || input_old_high.is_null()
-            || input_old_low.is_null()
-            || prev_adr.is_null()
+        if input_new_high.is_nan()
+            || input_new_low.is_nan()
+            || input_old_high.is_nan()
+            || input_old_low.is_nan()
+            || prev_adr.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

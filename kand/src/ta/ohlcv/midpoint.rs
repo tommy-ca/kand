@@ -175,7 +175,7 @@ pub fn midpoint(
     #[cfg(feature = "check-nan")]
     {
         for &price in input_price.iter().take(len) {
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -264,7 +264,7 @@ pub fn midpoint_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_price.is_null() || prev_highest.is_null() || prev_lowest.is_null() {
+        if input_price.is_nan() || prev_highest.is_nan() || prev_lowest.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }

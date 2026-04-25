@@ -148,7 +148,7 @@ pub fn typprice_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_high.is_null() || input_low.is_null() || input_close.is_null() {
+        if input_high.is_nan() || input_low.is_nan() || input_close.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }

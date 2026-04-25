@@ -239,11 +239,11 @@ pub fn ad_inc(
 ) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_null()
-            || input_low.is_null()
-            || input_close.is_null()
-            || input_volume.is_null()
-            || prev_ad.is_null()
+        if input_high.is_nan()
+            || input_low.is_nan()
+            || input_close.is_nan()
+            || input_volume.is_nan()
+            || prev_ad.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

@@ -134,7 +134,7 @@ pub fn stddev(
     #[cfg(feature = "check-nan")]
     {
         for price in input_prices {
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -228,10 +228,10 @@ pub fn stddev_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_price.is_null()
-            || prev_sum.is_null()
-            || prev_sum_sq.is_null()
-            || input_old_price.is_null()
+        if input_price.is_nan()
+            || prev_sum.is_nan()
+            || prev_sum_sq.is_nan()
+            || input_old_price.is_nan()
         {
             return Err(KandError::NaNDetected);
         }
@@ -263,6 +263,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -368,7 +369,7 @@ mod tests {
         for i in 0..input_close.len() {
             if i < 13 {
                 #[cfg(feature = "allow-nan")]
-                assert!(stddev_arrow.is_null(i));
+                assert!(stddev_arrow.value(i).is_nan());
             } else {
                 assert_relative_eq!(stddev_arrow.value(i), out_stddev[i], epsilon = 0.0001);
             }

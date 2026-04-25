@@ -124,7 +124,7 @@ pub fn vegas(
     {
         for price in input_price {
             // NaN check
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -175,6 +175,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -243,18 +244,24 @@ mod tests {
         let input_price = vec![100.0; 700];
         let input_arrow = TAArrowArray::from(input_price);
 
-        let (upper, _lower, _b_upper, _b_lower) = vegas_arrow(&input_arrow).unwrap();
+        let (upper, lower, b_upper, b_lower) = vegas_arrow(&input_arrow).unwrap();
 
         assert_eq!(upper.len(), 700);
         let lookback = lookback().unwrap();
 
         #[cfg(feature = "allow-nan")]
         {
-            for i in 0..lookback {
-                assert!(upper.is_null(i));
-                assert!(lower.is_null(i));
-                assert!(b_upper.is_null(i));
-                assert!(b_lower.is_null(i));
+            for i in 0..143 {
+                assert!(upper.value(i).is_nan());
+            }
+            for i in 0..168 {
+                assert!(lower.value(i).is_nan());
+            }
+            for i in 0..575 {
+                assert!(b_upper.value(i).is_nan());
+            }
+            for i in 0..675 {
+                assert!(b_lower.value(i).is_nan());
             }
         }
 
@@ -314,11 +321,11 @@ pub fn vegas_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_price.is_null()
-            || prev_channel_upper.is_null()
-            || prev_channel_lower.is_null()
-            || prev_boundary_upper.is_null()
-            || prev_boundary_lower.is_null()
+        if input_price.is_nan()
+            || prev_channel_upper.is_nan()
+            || prev_channel_lower.is_nan()
+            || prev_boundary_upper.is_nan()
+            || prev_boundary_lower.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

@@ -279,16 +279,16 @@ pub fn adxr_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_high.is_null()
-            || input_low.is_null()
-            || prev_high.is_null()
-            || prev_low.is_null()
-            || prev_close.is_null()
-            || prev_adx.is_null()
-            || prev_adx_period_ago.is_null()
-            || prev_smoothed_plus_dm.is_null()
-            || prev_smoothed_minus_dm.is_null()
-            || prev_smoothed_tr.is_null()
+        if input_high.is_nan()
+            || input_low.is_nan()
+            || prev_high.is_nan()
+            || prev_low.is_nan()
+            || prev_close.is_nan()
+            || prev_adx.is_nan()
+            || prev_adx_period_ago.is_nan()
+            || prev_smoothed_plus_dm.is_nan()
+            || prev_smoothed_minus_dm.is_nan()
+            || prev_smoothed_tr.is_nan()
         {
             return Err(KandError::NaNDetected);
         }
@@ -320,6 +320,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -496,7 +497,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 40 {
                 #[cfg(feature = "allow-nan")]
-                assert!(adxr_arrow.is_null(i));
+                assert!(adxr_arrow.value(i).is_nan());
             } else {
                 assert_relative_eq!(adxr_arrow.value(i), out_adxr[i], epsilon = 0.05);
             }

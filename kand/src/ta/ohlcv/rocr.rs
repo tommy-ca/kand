@@ -118,7 +118,7 @@ pub fn rocr(
     #[cfg(feature = "check-nan")]
     {
         for price in input_price {
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -171,7 +171,7 @@ pub fn rocr_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
 pub fn rocr_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input.is_null() || prev.is_null() {
+        if input.is_nan() || prev.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }

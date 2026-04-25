@@ -189,7 +189,7 @@ pub fn adosc(
 
     #[cfg(feature = "check-nan")]
     {
-        for adosc_val in output_adosc.iter_mut().take(len) {
+        for i in 0..len {
             if input_high[i].is_nan()
                 || input_low[i].is_nan()
                 || input_close[i].is_nan()

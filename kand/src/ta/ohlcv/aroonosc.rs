@@ -341,7 +341,7 @@ pub fn aroonosc_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_null() || input_low.is_null() || prev_high.is_null() || prev_low.is_null()
+        if input_high.is_nan() || input_low.is_nan() || prev_high.is_nan() || prev_low.is_nan()
         {
             return Err(KandError::NaNDetected);
         }
@@ -383,6 +383,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
@@ -513,7 +514,7 @@ mod tests {
             if i < 14 {
                 #[cfg(feature = "allow-nan")]
                 {
-                    assert!(osc_arrow.is_null(i));
+                    assert!(osc_arrow.value(i).is_nan());
                 }
             } else {
                 assert_relative_eq!(osc_arrow.value(i), out_osc[i], epsilon = 0.0001);

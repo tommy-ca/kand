@@ -308,11 +308,11 @@ pub fn cdl_inverted_hammer_inc(
 ) -> Result<(TAInt, TAFloat), KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input_open.is_null()
-            || input_high.is_null()
-            || input_low.is_null()
-            || input_close.is_null()
-            || prev_body_avg.is_null()
+        if input_open.is_nan()
+            || input_high.is_nan()
+            || input_low.is_nan()
+            || input_close.is_nan()
+            || prev_body_avg.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

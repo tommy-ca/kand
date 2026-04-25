@@ -18,7 +18,10 @@ To scale the 5-tier architecture to 100% of the library, the `kand_indicator!` m
 - **`recursive`**: Logic that depends on previous scalar state (e.g., EMA, RSI). Automates feedback loop and simple scalar persistence.
 - **`sliding_window`**: Logic that requires a historical buffer of $N$ values. Automates circular buffer management, rolling sums, and V5.2 compliant persistence.
 
-### 2.2 Durability Standards (V5.2)
+### 2.2 Advanced Macros (V6.5 Planned)
+- **`kand_indicator_multi!`**: Planned to handle indicators with multi-output requirements (e.g., MACD, BBANDS) and complex multi-input sliding windows (e.g., CCI, MFI, DX) with parallel circular buffers.
+
+### 2.3 Durability Standards (V5.2)
 - **Columnar Persistence**: All internal state (counters, cursors, buffers) is serialized as `__kand_` prefixed columns in the state `RecordBatch`.
 - **Atomic Commits**: Transactional updates ensured via state cloning in multi-component indicators.
 

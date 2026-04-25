@@ -54,3 +54,4 @@ pub mod vwap;
 pub mod wclprice;
 pub mod willr;
 pub mod wma;
+pub mod vegas_debug;

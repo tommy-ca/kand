@@ -353,7 +353,7 @@ pub fn ecl_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if prev_high.is_null() || prev_low.is_null() || prev_close.is_null() {
+        if prev_high.is_nan() || prev_low.is_nan() || prev_close.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }

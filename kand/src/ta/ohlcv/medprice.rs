@@ -154,7 +154,7 @@ pub fn medprice_inc_raw(input_high: TAFloat, input_low: TAFloat) -> TAFloat {
 pub fn medprice_inc(input_high: TAFloat, input_low: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_null() || input_low.is_null() {
+        if input_high.is_nan() || input_low.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }

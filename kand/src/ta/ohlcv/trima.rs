@@ -268,11 +268,11 @@ pub fn trima_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if prev_sma1.is_null()
-            || prev_sma2.is_null()
-            || input_new_price.is_null()
-            || input_old_price.is_null()
-            || input_old_sma1.is_null()
+        if prev_sma1.is_nan()
+            || prev_sma2.is_nan()
+            || input_new_price.is_nan()
+            || input_old_price.is_nan()
+            || input_old_sma1.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

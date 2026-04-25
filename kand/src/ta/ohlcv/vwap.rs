@@ -250,12 +250,12 @@ pub fn vwap_inc(
 ) -> Result<(TAFloat, TAFloat, TAFloat), KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if high.is_null()
-            || low.is_null()
-            || close.is_null()
-            || volume.is_null()
-            || prev_cum_pv.is_null()
-            || prev_cum_vol.is_null()
+        if high.is_nan()
+            || low.is_nan()
+            || close.is_nan()
+            || volume.is_nan()
+            || prev_cum_pv.is_nan()
+            || prev_cum_vol.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

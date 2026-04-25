@@ -307,13 +307,13 @@ pub fn cci_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if prev_sma_tp.is_null()
-            || input_new_high.is_null()
-            || input_new_low.is_null()
-            || input_new_close.is_null()
-            || input_old_high.is_null()
-            || input_old_low.is_null()
-            || input_old_close.is_null()
+        if prev_sma_tp.is_nan()
+            || input_new_high.is_nan()
+            || input_new_low.is_nan()
+            || input_new_close.is_nan()
+            || input_old_high.is_nan()
+            || input_old_low.is_nan()
+            || input_old_close.is_nan()
         {
             return Err(KandError::NaNDetected);
         }
@@ -333,7 +333,6 @@ pub fn cci_inc(
 }
 
 // Arrow wrapper
-#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
     cci_arrow,
     crate::ta::ohlcv::cci::cci_raw,
@@ -342,103 +341,12 @@ crate::kand_arrow_wrapper!(
     lookback_params: { opt_period }
 );
 
-// Stateful & Batch via Universal Macro
-crate::kand_indicator!(
-    CCI,
-    type: sliding_window,
-    inputs: { high: TAFloat, low: TAFloat, close: TAFloat },
-    params: { period: usize },
-    state: { sum: TAFloat },
-    init: |period| {
-        (0.0)
-    },
-    next: |state, (high, low, close)| {
-        let tp = (high + low + close) / 3.0;
-        let (old_high, old_low, old_close) = state.__kand_window[state.__kand_cursor];
-        let old_tp = (old_high + old_low + old_close) / 3.0;
-        state.__kand_window[state.__kand_cursor] = (high, low, close);
-        state.__kand_cursor = (state.__kand_cursor + 1) % state.period;
-
-        if state.__kand_count <= state.period {
-            state.sum += tp;
-            if state.__kand_count == state.period {
-                let sma_tp = state.sum / state.period as TAFloat;
-                let mut mean_dev = 0.0;
-                for i in 0..state.period {
-                    let (h, l, c) = state.__kand_window[i];
-                    mean_dev += ((h + l + c) / 3.0 - sma_tp).abs();
-                }
-                mean_dev /= state.period as TAFloat;
-                if mean_dev == 0.0 {
-                    Ok(0.0)
-                } else {
-                    Ok((tp - sma_tp) / (0.015 * mean_dev))
-                }
-            } else {
-                Ok(TAFloat::NAN)
-            }
-        } else {
-            state.sum = state.sum + tp - old_tp;
-            let sma_tp = state.sum / state.period as TAFloat;
-            let mut mean_dev = 0.0;
-            for i in 0..state.period {
-                let (h, l, c) = state.__kand_window[i];
-                mean_dev += ((h + l + c) / 3.0 - sma_tp).abs();
-            }
-            mean_dev /= state.period as TAFloat;
-            if mean_dev == 0.0 {
-                Ok(0.0)
-            } else {
-                Ok((tp - sma_tp) / (0.015 * mean_dev))
-            }
-        }
-    }
-);
-
 #[cfg(test)]
 mod tests {
-    use crate::ta::traits::{BatchIndicator, Indicator};
-    use crate::ta::types::TAArrowArray;
-    use approx::assert_relative_eq;
     use arrow::array::Array;
+    use approx::assert_relative_eq;
 
     use super::*;
-
-    #[test]
-    fn test_stateful_cci() {
-        let mut cci_state = StatefulCCI::new(3).unwrap();
-        assert!(cci_state.next((24.20, 23.85, 23.89)).unwrap().is_nan());
-        assert!(cci_state.next((24.07, 23.72, 23.95)).unwrap().is_nan());
-        assert_relative_eq!(cci_state.next((24.04, 23.64, 23.67)).unwrap(), -100.0, epsilon = 0.0001);
-    }
-
-    #[test]
-    #[cfg(feature = "arrow")]
-    fn test_batch_cci() {
-        let mut batch_cci = BatchCCI::new(3, 2).unwrap();
-        let high = TAArrowArray::from(vec![24.20, 24.20]);
-        let low = TAArrowArray::from(vec![23.85, 23.85]);
-        let close = TAArrowArray::from(vec![23.89, 23.89]);
-
-        // t0
-        let out = batch_cci.next_batch((high.clone(), low.clone(), close.clone())).unwrap();
-        assert!(out.value(0).is_nan());
-
-        // t1
-        let high = TAArrowArray::from(vec![24.07, 24.07]);
-        let low = TAArrowArray::from(vec![23.72, 23.72]);
-        let close = TAArrowArray::from(vec![23.95, 23.95]);
-        let out = batch_cci.next_batch((high.clone(), low.clone(), close.clone())).unwrap();
-        assert!(out.value(0).is_nan());
-
-        // t2
-        let high = TAArrowArray::from(vec![24.04, 24.04]);
-        let low = TAArrowArray::from(vec![23.64, 23.64]);
-        let close = TAArrowArray::from(vec![23.67, 23.67]);
-        let out = batch_cci.next_batch((high.clone(), low.clone(), close.clone())).unwrap();
-        assert_relative_eq!(out.value(0), -100.0, epsilon = 0.0001);
-    }
-
 
     #[test]
     fn test_cci_calculation() {
@@ -573,7 +481,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 13 {
                 #[cfg(feature = "allow-nan")]
-                assert!(cci_arrow.is_null(i));
+                assert!(cci_arrow.value(i).is_nan());
             } else {
                 assert_relative_eq!(cci_arrow.value(i), out_cci[i], epsilon = 0.0001);
             }

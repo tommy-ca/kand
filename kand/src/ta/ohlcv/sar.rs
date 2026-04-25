@@ -445,11 +445,11 @@ pub fn sar_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_null()
-            || input_low.is_null()
-            || prev_high.is_null()
-            || prev_low.is_null()
-            || prev_sar.is_null()
+        if input_high.is_nan()
+            || input_low.is_nan()
+            || prev_high.is_nan()
+            || prev_low.is_nan()
+            || prev_sar.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

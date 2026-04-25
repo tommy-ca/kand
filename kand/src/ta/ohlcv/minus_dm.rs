@@ -271,11 +271,11 @@ pub fn minus_dm_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_high.is_null()
-            || prev_high.is_null()
-            || input_low.is_null()
-            || prev_low.is_null()
-            || prev_minus_dm.is_null()
+        if input_high.is_nan()
+            || prev_high.is_nan()
+            || input_low.is_nan()
+            || prev_low.is_nan()
+            || prev_minus_dm.is_nan()
         {
             return Err(KandError::NaNDetected);
         }
@@ -302,6 +302,7 @@ crate::kand_arrow_wrapper!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -399,7 +400,7 @@ mod tests {
         for i in 0..input_high.len() {
             if i < 13 {
                 #[cfg(feature = "allow-nan")]
-                assert!(result.is_null(i));
+                assert!(result.value(i).is_nan());
             } else {
                 assert_relative_eq!(result.value(i), out[i], epsilon = 0.0001);
             }

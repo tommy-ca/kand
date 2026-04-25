@@ -246,10 +246,10 @@ pub fn midprice_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_high.is_null()
-            || input_low.is_null()
-            || prev_highest_high.is_null()
-            || prev_lowest_low.is_null()
+        if input_high.is_nan()
+            || input_low.is_nan()
+            || prev_highest_high.is_nan()
+            || prev_lowest_low.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

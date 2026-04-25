@@ -242,11 +242,11 @@ pub fn natr_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_high.is_null()
-            || input_low.is_null()
-            || input_close.is_null()
-            || prev_close.is_null()
-            || prev_atr.is_null()
+        if input_high.is_nan()
+            || input_low.is_nan()
+            || input_close.is_nan()
+            || prev_close.is_nan()
+            || prev_atr.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

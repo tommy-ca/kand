@@ -188,7 +188,7 @@ pub fn rocp_inc_raw(input: TAFloat, prev: TAFloat) -> TAFloat {
 pub fn rocp_inc(input: TAFloat, prev: TAFloat) -> Result<TAFloat, KandError> {
     #[cfg(feature = "check-nan")]
     {
-        if input.is_null() || prev.is_null() {
+        if input.is_nan() || prev.is_nan() {
             return Err(KandError::NaNDetected);
         }
         if prev == 0.0 {

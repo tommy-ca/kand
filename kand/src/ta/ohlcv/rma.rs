@@ -139,7 +139,7 @@ pub fn rma(
     {
         for price in input.iter().take(len) {
             // NaN check
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -204,7 +204,7 @@ pub fn rma_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_current.is_null() || prev_rma.is_null() {
+        if input_current.is_nan() || prev_rma.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }

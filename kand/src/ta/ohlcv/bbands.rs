@@ -182,7 +182,7 @@ pub fn bbands(
     #[cfg(feature = "check-nan")]
     {
         for price in input_price {
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -312,15 +312,15 @@ pub fn bbands_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_price.is_null()
-            || prev_sma.is_null()
-            || prev_sum.is_null()
-            || prev_sum_sq.is_null()
-            || input_old_price.is_null()
+        if input_price.is_nan()
+            || prev_sma.is_nan()
+            || prev_sum.is_nan()
+            || prev_sum_sq.is_nan()
+            || input_old_price.is_nan()
         {
             return Err(KandError::NaNDetected);
         }
-        if opt_multiplier_up.is_null() || opt_multiplier_down.is_null() {
+        if opt_multiplier_up.is_nan() || opt_multiplier_down.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -359,6 +359,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -526,9 +527,9 @@ mod tests {
             if i < 19 {
                 #[cfg(feature = "allow-nan")]
                 {
-                    assert!(upper.is_null(i));
-                    assert!(middle.is_null(i));
-                    assert!(lower.is_null(i));
+                    assert!(upper.value(i).is_nan());
+                    assert!(middle.value(i).is_nan());
+                    assert!(lower.value(i).is_nan());
                 }
             } else {
                 assert_relative_eq!(upper.value(i), out_upper[i], epsilon = 0.0001);

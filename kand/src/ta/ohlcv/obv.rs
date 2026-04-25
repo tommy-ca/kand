@@ -183,10 +183,10 @@ pub fn obv_inc(
     #[cfg(feature = "check-nan")]
     {
         // NaN check
-        if input_curr_close.is_null()
-            || prev_close.is_null()
-            || input_volume.is_null()
-            || prev_obv.is_null()
+        if input_curr_close.is_nan()
+            || prev_close.is_nan()
+            || input_volume.is_nan()
+            || prev_obv.is_nan()
         {
             return Err(KandError::NaNDetected);
         }

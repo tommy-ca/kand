@@ -163,7 +163,7 @@ pub fn dema(
     #[cfg(feature = "check-nan")]
     {
         for price in input {
-            if price.is_null() {
+            if price.is_nan() {
                 return Err(KandError::NaNDetected);
             }
         }
@@ -254,7 +254,7 @@ pub fn dema_inc(
 
     #[cfg(feature = "check-nan")]
     {
-        if input_price.is_null() || prev_ema1.is_null() || prev_ema2.is_null() {
+        if input_price.is_nan() || prev_ema1.is_nan() || prev_ema2.is_nan() {
             return Err(KandError::NaNDetected);
         }
     }
@@ -275,6 +275,7 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -377,7 +378,7 @@ mod tests {
         for i in 0..input.len() {
             if i < 8 {
                 #[cfg(feature = "allow-nan")]
-                assert!(dema_arrow.is_null(i));
+                assert!(dema_arrow.value(i).is_nan());
             } else {
                 assert_relative_eq!(dema_arrow.value(i), out_dema[i], epsilon = 0.0001);
             }
