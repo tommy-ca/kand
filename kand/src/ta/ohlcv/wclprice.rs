@@ -156,6 +156,7 @@ pub fn wclprice_inc(
     Ok(wclprice_inc_raw(input_high, input_low, input_close))
 }
 
+// Arrow wrapper
 #[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
     wclprice_arrow,
@@ -165,11 +166,50 @@ crate::kand_arrow_wrapper!(
     lookback_params: {}
 );
 
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    WCLPRICE,
+    type: recursive,
+    inputs: { high: TAFloat, low: TAFloat, close: TAFloat },
+    params: { },
+    state: { },
+    init: | | {
+        ()
+    },
+    next: |state, (high, low, close)| {
+        Ok(close.mul_add(2.0, high + low) / 4.0)
+    }
+);
+
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_wclprice() {
+        let mut wclprice_state = StatefulWCLPRICE::new().unwrap();
+        assert_relative_eq!(wclprice_state.next((10.0, 8.0, 9.0)).unwrap(), 9.0, epsilon = 0.0001);
+        assert_relative_eq!(wclprice_state.next((11.0, 9.0, 10.0)).unwrap(), 10.0, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_wclprice() {
+        let mut batch_wclprice = BatchWCLPRICE::new(2).unwrap();
+        let high = TAArrowArray::from(vec![10.0, 20.0]);
+        let low = TAArrowArray::from(vec![8.0, 18.0]);
+        let close = TAArrowArray::from(vec![9.0, 19.0]);
+
+        let out = batch_wclprice.next_batch((high.clone(), low.clone(), close.clone())).unwrap();
+        assert_relative_eq!(out.value(0), 9.0, epsilon = 0.0001);
+        assert_relative_eq!(out.value(1), 19.0, epsilon = 0.0001);
+    }
+
 
     #[test]
     fn test_wclprice_calculation() {
