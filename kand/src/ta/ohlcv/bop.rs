@@ -212,6 +212,7 @@ pub fn bop_inc(
 }
 
 // Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper!(
     bop_arrow,
     crate::ta::ohlcv::bop::bop_raw,
@@ -220,11 +221,57 @@ crate::kand_arrow_wrapper!(
     lookback_params: {}
 );
 
+// Stateful & Batch via Universal Macro
+crate::kand_indicator!(
+    BOP,
+    type: recursive,
+    inputs: { open: TAFloat, high: TAFloat, low: TAFloat, close: TAFloat },
+    params: { },
+    state: { },
+    init: | | {
+        ()
+    },
+    next: |state, (open, high, low, close)| {
+        let range = high - low;
+        if range == 0.0 {
+            Ok(0.0)
+        } else {
+            Ok((close - open) / range)
+        }
+    }
+);
+
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
+    use arrow::array::Array;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_bop() {
+        let mut bop_state = StatefulBOP::new().unwrap();
+        // open: 10, high: 12, low: 8, close: 11
+        // (11 - 10) / (12 - 8) = 1 / 4 = 0.25
+        assert_relative_eq!(bop_state.next((10.0, 12.0, 8.0, 11.0)).unwrap(), 0.25, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_bop() {
+        let mut batch_bop = BatchBOP::new(2).unwrap();
+        let open = TAArrowArray::from(vec![10.0, 20.0]);
+        let high = TAArrowArray::from(vec![12.0, 22.0]);
+        let low = TAArrowArray::from(vec![8.0, 18.0]);
+        let close = TAArrowArray::from(vec![11.0, 21.0]);
+
+        let out = batch_bop.next_batch((open.clone(), high.clone(), low.clone(), close.clone())).unwrap();
+        assert_relative_eq!(out.value(0), 0.25, epsilon = 0.0001);
+        assert_relative_eq!(out.value(1), 0.25, epsilon = 0.0001);
+    }
+
 
     #[test]
     fn test_bop_calculation() {
