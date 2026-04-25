@@ -366,6 +366,7 @@ pub fn dx_inc(
 }
 
 // Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper_multi!(
     dx_arrow,
     crate::ta::ohlcv::dx::dx_raw,
@@ -376,12 +377,96 @@ crate::kand_arrow_wrapper_multi!(
     return_type: { TAArrowArray, TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
+// Stateful & Batch via Universal Macro
+crate::kand_indicator_multi!(
+    DX,
+    type: recursive,
+    inputs: { high: TAFloat, low: TAFloat, close: TAFloat },
+    params: { period: usize },
+    state: { prev_high: TAFloat, prev_low: TAFloat, prev_close: TAFloat, smoothed_plus_dm: TAFloat, smoothed_minus_dm: TAFloat, smoothed_tr: TAFloat },
+    outputs: { dx: TAFloat, smoothed_plus_dm: TAFloat, smoothed_minus_dm: TAFloat, smoothed_tr: TAFloat },
+    init: |period| {
+        (TAFloat::NAN, TAFloat::NAN, TAFloat::NAN, 0.0, 0.0, 0.0)
+    },
+    next: |state, (high, low, close)| {
+        let mut new_dx = TAFloat::NAN;
+        let mut new_smoothed_plus_dm = state.smoothed_plus_dm;
+        let mut new_smoothed_minus_dm = state.smoothed_minus_dm;
+        let mut new_smoothed_tr = state.smoothed_tr;
+
+        if state.__kand_count > 1 {
+            let up_move = high - state.prev_high;
+            let down_move = state.prev_low - low;
+            let mut plus_dm = 0.0;
+            let mut minus_dm = 0.0;
+            if up_move > down_move && up_move > 0.0 {
+                plus_dm = up_move;
+            }
+            if down_move > up_move && down_move > 0.0 {
+                minus_dm = down_move;
+            }
+            let tr1 = high - low;
+            let tr2 = (high - state.prev_close).abs();
+            let tr3 = (low - state.prev_close).abs();
+            let tr = tr1.max(tr2).max(tr3);
+
+            if state.__kand_count <= state.period {
+                new_smoothed_plus_dm += plus_dm;
+                new_smoothed_minus_dm += minus_dm;
+                new_smoothed_tr += tr;
+            } else {
+                new_smoothed_plus_dm = state.smoothed_plus_dm - (state.smoothed_plus_dm / state.period as TAFloat) + plus_dm;
+                new_smoothed_minus_dm = state.smoothed_minus_dm - (state.smoothed_minus_dm / state.period as TAFloat) + minus_dm;
+                new_smoothed_tr = state.smoothed_tr - (state.smoothed_tr / state.period as TAFloat) + tr;
+                
+                let plus_di = 100.0 * new_smoothed_plus_dm / new_smoothed_tr;
+                let minus_di = 100.0 * new_smoothed_minus_dm / new_smoothed_tr;
+                if plus_di + minus_di != 0.0 {
+                    new_dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di);
+                } else {
+                    new_dx = 0.0;
+                }
+            }
+        }
+
+        state.prev_high = high;
+        state.prev_low = low;
+        state.prev_close = close;
+        state.smoothed_plus_dm = new_smoothed_plus_dm;
+        state.smoothed_minus_dm = new_smoothed_minus_dm;
+        state.smoothed_tr = new_smoothed_tr;
+
+        Ok((new_dx, new_smoothed_plus_dm, new_smoothed_minus_dm, new_smoothed_tr))
+    }
+);
+
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
     use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_dx() {
+        let mut dx_state = StatefulDX::new(2).unwrap();
+        assert!(dx_state.next((10.0, 8.0, 9.0)).unwrap().0.is_nan());
+        assert!(dx_state.next((11.0, 9.0, 10.0)).unwrap().0.is_nan());
+        assert_relative_eq!(dx_state.next((12.0, 10.0, 11.0)).unwrap().0, 100.0, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_dx() {
+        let mut batch_dx = BatchDX::new(2, 1).unwrap();
+        let high = TAArrowArray::from(vec![10.0]);
+        let low = TAArrowArray::from(vec![8.0]);
+        let close = TAArrowArray::from(vec![9.0]);
+
+        assert!(batch_dx.next_batch((high.clone(), low.clone(), close.clone())).unwrap().0.value(0).is_nan());
+    }
 
     // Basic functionality tests
     #[test]

@@ -57,7 +57,7 @@ As discovered in V6.4 porting, indicators like `CCI` require tracking `(high, lo
 
 ## Implementation Units
 
-- [ ] **Unit 1: Define Multi-Output Traits**
+- [x] **Unit 1: Define Multi-Output Traits**
 
 **Goal:** Create `IndicatorMulti` and `BatchIndicatorMulti` traits in `kand/src/ta/traits.rs`.
 
@@ -75,7 +75,7 @@ As discovered in V6.4 porting, indicators like `CCI` require tracking `(high, lo
 **Verification:**
 - Code compiles.
 
-- [ ] **Unit 2: Implement `kand_indicator_multi!` Macro**
+- [x] **Unit 2: Implement `kand_indicator_multi!` Macro**
 
 **Goal:** Write the macro in `arrow_macro.rs` to handle parallel sliding windows and multiple outputs.
 
@@ -98,7 +98,7 @@ As discovered in V6.4 porting, indicators like `CCI` require tracking `(high, lo
 **Verification:**
 - The macro expands correctly and tests pass.
 
-- [ ] **Unit 3: Port CCI, MFI, DX**
+- [x] **Unit 3: Port CCI, MFI, DX**
 
 **Goal:** Utilize the new macro to port the complex indicators deferred from V6.4.
 

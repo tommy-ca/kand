@@ -235,8 +235,8 @@ pub fn mfi(
 
     Ok(())
 }
-
 // Arrow wrapper
+#[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper_multi!(
     mfi_arrow,
     crate::ta::ohlcv::mfi::mfi_raw,
@@ -247,12 +247,101 @@ crate::kand_arrow_wrapper_multi!(
     return_type: { TAArrowArray, TAArrowArray, TAArrowArray, TAArrowArray, TAArrowArray }
 );
 
+// Stateful & Batch via Universal Macro
+crate::kand_indicator_multi!(
+    MFI,
+    type: sliding_window,
+    inputs: { high: TAFloat, low: TAFloat, close: TAFloat, volume: TAFloat },
+    params: { period: usize },
+    state: { prev_tp: TAFloat },
+    outputs: { mfi: TAFloat },
+    window: period,
+    init: |period| {
+        (0.0)
+    },
+    next: |state, (high, low, close, volume)| {
+        let tp = (high + low + close) / 3.0;
+        let money_flow = tp * volume;
+
+        let mut current_pos_flow = 0.0;
+        let mut current_neg_flow = 0.0;
+
+        if state.__kand_count > 1 {
+            if tp > state.prev_tp {
+                current_pos_flow = money_flow;
+            } else if tp < state.prev_tp {
+                current_neg_flow = money_flow;
+            }
+        }
+
+        // Store pos and neg flow in the window arrays
+        state.__kand_window_high[state.__kand_cursor] = current_pos_flow;
+        state.__kand_window_low[state.__kand_cursor] = current_neg_flow;
+        state.__kand_window_close[state.__kand_cursor] = 0.0;
+        state.__kand_window_volume[state.__kand_cursor] = 0.0;
+
+        state.__kand_cursor = (state.__kand_cursor + 1) % state.period;
+        state.prev_tp = tp;
+
+        if state.__kand_count <= state.period {
+            Ok((TAFloat::NAN,))
+        } else {
+            let mut pos_flow = 0.0;
+            let mut neg_flow = 0.0;
+            for i in 0..state.period {
+                pos_flow += state.__kand_window_high[i];
+                neg_flow += state.__kand_window_low[i];
+            }
+
+            let total_flow = pos_flow + neg_flow;
+            if total_flow < 1.0 {
+                Ok((0.0,))
+            } else {
+                Ok((100.0 * (pos_flow / total_flow),))
+            }
+        }
+    }
+);
+
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
     use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
+
+    #[test]
+    fn test_stateful_mfi() {
+        let mut mfi_state = StatefulMFI::new(2).unwrap();
+        assert!(mfi_state.next((10.0, 8.0, 9.0, 100.0)).unwrap().0.is_nan());
+        assert!(mfi_state.next((11.0, 9.0, 10.0, 150.0)).unwrap().0.is_nan());
+        // TP1: 9.0
+        // TP2: 10.0, Vol: 150, MF2: 1500 (Pos)
+        // TP3: 11.0, Vol: 200, MF3: 2200 (Pos)
+        // Total Pos: 3700, Neg: 0
+        // Ratio: inf => MFI: 100.0
+        assert_relative_eq!(mfi_state.next((12.0, 10.0, 11.0, 200.0)).unwrap().0, 100.0, epsilon = 0.0001);
+        // TP4: 10.0, Vol: 150, MF4: 1500 (Neg)
+        // Window = [MF3, MF4] = [2200 (Pos), 1500 (Neg)]
+        // Ratio = 2200 / 1500 = 1.4666
+        // MFI = 100 - (100 / (1 + 1.4666)) = 100 * 2200 / 3700 = 59.4594...
+        assert_relative_eq!(mfi_state.next((11.0, 9.0, 10.0, 150.0)).unwrap().0, 59.45945945945946, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_mfi() {
+        let mut batch_mfi = BatchMFI::new(2, 1).unwrap();
+        let high = TAArrowArray::from(vec![10.0]);
+        let low = TAArrowArray::from(vec![8.0]);
+        let close = TAArrowArray::from(vec![9.0]);
+        let vol = TAArrowArray::from(vec![100.0]);
+
+        assert!(batch_mfi.next_batch((high.clone(), low.clone(), close.clone(), vol.clone())).unwrap().0.value(0).is_nan());
+    }
+
 
     #[test]
     fn test_mfi_calculation() {
