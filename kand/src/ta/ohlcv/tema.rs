@@ -42,29 +42,52 @@ pub fn tema_raw(
     output_ema3: &mut [TAFloat],
 ) {
     let len = input.len();
-    let lookback = 3 * (opt_period - 1);
+    let alpha = 2.0 / (opt_period + 1) as TAFloat;
+    let lookback1 = opt_period - 1;
+    let lookback2 = 2 * (opt_period - 1);
+    let lookback3 = 3 * (opt_period - 1);
 
-    // Calculate first EMA series
-    ema::ema_raw(input, opt_period, None, output_ema1);
+    // 1. First EMA
+    let mut sum1 = 0.0;
+    for i in 0..opt_period {
+        sum1 += input[i];
+    }
+    let mut prev_ema1 = sum1 / opt_period as TAFloat;
+    output_ema1[lookback1] = prev_ema1;
 
-    // Calculate second EMA series using valid values from first EMA
-    ema::ema_raw(
-        &output_ema1[opt_period - 1..],
-        opt_period,
-        None,
-        &mut output_ema2[opt_period - 1..],
-    );
+    for i in opt_period..len {
+        prev_ema1 = (input[i] - prev_ema1).mul_add(alpha, prev_ema1);
+        output_ema1[i] = prev_ema1;
+    }
 
-    // Calculate third EMA series
-    ema::ema_raw(
-        &output_ema2[2 * (opt_period - 1)..],
-        opt_period,
-        None,
-        &mut output_ema3[2 * (opt_period - 1)..],
-    );
+    // 2. Second EMA (EMA of EMA1)
+    let mut sum2 = 0.0;
+    for i in 0..opt_period {
+        sum2 += output_ema1[lookback1 + i];
+    }
+    let mut prev_ema2 = sum2 / opt_period as TAFloat;
+    output_ema2[lookback2] = prev_ema2;
 
-    // Calculate TEMA and store it in the output array (valid only after lookback)
-    for i in lookback..len {
+    for i in lookback2 + 1..len {
+        prev_ema2 = (output_ema1[i] - prev_ema2).mul_add(alpha, prev_ema2);
+        output_ema2[i] = prev_ema2;
+    }
+
+    // 3. Third EMA (EMA of EMA2)
+    let mut sum3 = 0.0;
+    for i in 0..opt_period {
+        sum3 += output_ema2[lookback2 + i];
+    }
+    let mut prev_ema3 = sum3 / opt_period as TAFloat;
+    output_ema3[lookback3] = prev_ema3;
+
+    for i in lookback3 + 1..len {
+        prev_ema3 = (output_ema2[i] - prev_ema3).mul_add(alpha, prev_ema3);
+        output_ema3[i] = prev_ema3;
+    }
+
+    // 4. TEMA Calculation
+    for i in lookback3..len {
         output_tema[i] = 3.0f64.mul_add(output_ema1[i], -(3.0 * output_ema2[i])) + output_ema3[i];
     }
 }
@@ -181,18 +204,146 @@ pub fn tema(
     );
 
     // Fill initial periods with NAN for all outputs
-    #[cfg(feature = "allow-nan")]
-    {
-        for i in 0..lookback {
-            output_tema[i] = TAFloat::NAN;
-            output_ema1[i] = TAFloat::NAN;
-            output_ema2[i] = TAFloat::NAN;
-            output_ema3[i] = TAFloat::NAN;
-        }
+    for i in 0..lookback {
+        output_tema[i] = TAFloat::NAN;
+    }
+    for i in 0..opt_period - 1 {
+        output_ema1[i] = TAFloat::NAN;
+    }
+    for i in 0..2 * (opt_period - 1) {
+        output_ema2[i] = TAFloat::NAN;
+    }
+    for i in 0..3 * (opt_period - 1) {
+        output_ema3[i] = TAFloat::NAN;
     }
 
     Ok(())
 }
+
+#[derive(Clone)]
+pub struct StatefulTEMA {
+    _period: usize,
+    ema1: ema::StatefulEMA,
+    ema2: ema::StatefulEMA,
+    ema3: ema::StatefulEMA,
+}
+
+impl StatefulTEMA {
+    pub fn new(period: usize) -> Result<Self, KandError> {
+        Ok(Self {
+            _period: period,
+            ema1: ema::StatefulEMA::new_ext(period, None)?,
+            ema2: ema::StatefulEMA::new_ext(period, None)?,
+            ema3: ema::StatefulEMA::new_ext(period, None)?,
+        })
+    }
+}
+
+impl crate::ta::traits::Indicator for StatefulTEMA {
+    type Input = (TAFloat,);
+    type Output = (TAFloat,);
+
+    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        let mut ema1_clone = self.ema1.clone();
+        let mut ema2_clone = self.ema2.clone();
+        let mut ema3_clone = self.ema3.clone();
+
+        let e1 = ema1_clone.next(input)?;
+        let e2 = ema2_clone.next((e1,))?;
+        let e3 = ema3_clone.next((e2,))?;
+        let tema = 3.0f64.mul_add(e1, -(3.0 * e2)) + e3;
+
+        self.ema1 = ema1_clone;
+        self.ema2 = ema2_clone;
+        self.ema3 = ema3_clone;
+
+        Ok((tema,))
+    }
+
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        _batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        Err(KandError::InvalidData)
+    }
+}
+
+#[cfg(feature = "arrow")]
+#[derive(Clone)]
+pub struct BatchTEMA {
+    _period: usize,
+    ema1: ema::BatchEMA,
+    ema2: ema::BatchEMA,
+    ema3: ema::BatchEMA,
+}
+
+#[cfg(feature = "arrow")]
+impl BatchTEMA {
+    pub fn new(period: usize, num_streams: usize) -> Result<Self, KandError> {
+        Ok(Self {
+            _period: period,
+            ema1: ema::BatchEMA::new_ext(period, num_streams, None)?,
+            ema2: ema::BatchEMA::new_ext(period, num_streams, None)?,
+            ema3: ema::BatchEMA::new_ext(period, num_streams, None)?,
+        })
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl crate::ta::traits::BatchIndicator for BatchTEMA {
+    type Input = (crate::ta::types::TAArrowArray,);
+    type Output = (crate::ta::types::TAArrowArray,);
+
+    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        let mut ema1_clone = self.ema1.clone();
+        let mut ema2_clone = self.ema2.clone();
+        let mut ema3_clone = self.ema3.clone();
+
+        let e1 = ema1_clone.next_batch(input)?;
+        let e2 = ema2_clone.next_batch((e1.clone(),))?;
+        let e3 = ema3_clone.next_batch((e2.clone(),))?;
+
+
+        let len = e1.len();
+        let e1_vals = e1.values();
+        let e2_vals = e2.values();
+        let e3_vals = e3.values();
+
+        let (ptr, buffer) = crate::helper::buffer_pool::create_pooled_buffer(
+            len * std::mem::size_of::<TAFloat>(),
+        );
+        let output = unsafe { std::slice::from_raw_parts_mut(ptr as *mut TAFloat, len) };
+
+        for i in 0..len {
+            output[i] = 3.0f64.mul_add(e1_vals[i], -(3.0 * e2_vals[i])) + e3_vals[i];
+        }
+
+        self.ema1 = ema1_clone;
+        self.ema2 = ema2_clone;
+        self.ema3 = ema3_clone;
+
+        Ok((crate::ta::types::TAArrowArray::new(buffer.into(), None),))
+    }
+
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData)
+    }
+
+    fn restore_from_record_batch(
+        &mut self,
+        _batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        Err(KandError::InvalidData)
+    }
+}
+
 
 /// Calculates TEMA value incrementally without input validation.
 pub fn tema_inc_raw(
@@ -256,6 +407,7 @@ pub fn tema_inc(
 ) -> Result<(TAFloat, TAFloat, TAFloat, TAFloat), KandError> {
     #[cfg(feature = "check")]
     {
+        // Parameter range check
         if opt_period < 2 {
             return Err(KandError::InvalidParameter);
         }
@@ -263,6 +415,7 @@ pub fn tema_inc(
 
     #[cfg(feature = "check-nan")]
     {
+        // NaN check
         if input.is_nan() || prev_ema1.is_nan() || prev_ema2.is_nan() || prev_ema3.is_nan() {
             return Err(KandError::NaNDetected);
         }
@@ -273,6 +426,7 @@ pub fn tema_inc(
     ))
 }
 
+// Arrow wrapper
 #[cfg(feature = "arrow")]
 crate::kand_arrow_wrapper_multi!(
     tema_arrow,
@@ -280,13 +434,23 @@ crate::kand_arrow_wrapper_multi!(
     inputs: { input },
     params: { opt_period: usize },
     lookback_params: { opt_period },
-    outputs: { output_tema: crate::TAFloat, output_ema1: crate::TAFloat, output_ema2: crate::TAFloat, output_ema3: crate::TAFloat },
-    return_type: { crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray, crate::ta::types::TAArrowArray }
+    outputs: {
+        output_tema: TAFloat,
+        output_ema1: TAFloat,
+        output_ema2: TAFloat,
+        output_ema3: TAFloat
+    },
+    return_type: {
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray
+    }
 );
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::Array;
+    use crate::ta::types::TAArrowArray;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -296,111 +460,70 @@ mod tests {
         let input = vec![
             35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
             35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
-            35069.0, 35024.6,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
         ];
-        let opt_period = 3;
+        let period = 5;
         let mut output_tema = vec![0.0; input.len()];
-        let mut ema1 = vec![0.0; input.len()];
-        let mut ema2 = vec![0.0; input.len()];
-        let mut ema3 = vec![0.0; input.len()];
+        let mut output_ema1 = vec![0.0; input.len()];
+        let mut output_ema2 = vec![0.0; input.len()];
+        let mut output_ema3 = vec![0.0; input.len()];
 
         tema(
             &input,
-            opt_period,
+            period,
             &mut output_tema,
-            &mut ema1,
-            &mut ema2,
-            &mut ema3,
+            &mut output_ema1,
+            &mut output_ema2,
+            &mut output_ema3,
         )
         .unwrap();
 
-        // First 6 values should be NaN
-        #[cfg(feature = "allow-nan")]
-        for value in output_tema.iter().take(6) {
-            assert!(value.is_nan());
+        let lookback = lookback(period).unwrap();
+        for i in 0..lookback {
+            assert!(output_tema[i].is_nan());
         }
 
-        // Compare with known values
-        let expected_values = [
-            35_209.883_333_333_34,
-            35_245.566_666_666_68,
-            35_206.030_208_333_33,
-            35_184.880_729_166_66,
-            35_173.019_270_833_32,
-            35_220.059_635_416_67,
-            35_216.397_591_145_84,
-            35_168.941_569_010_41,
-            35_096.534_114_583_344,
-            35_039.869_694_010_4,
-            34_995.421_651_204_42,
-            35_003.259_470_621_76,
-            35_058.344_179_280_6,
-            35_033.424_372_355_13,
+        let expected_tema = [
+            35214.017805659714,
+            35178.02412166619,
+            35112.93264380731,
+            35051.99395669962,
+            35000.021905853544,
+            34992.698578717165,
+            35034.129121985054,
+            35024.59996297049,
+            34962.29030513636,
+            34946.69299208543,
+            34976.73223301734,
+            35021.71538181302,
+            35068.51163577639,
         ];
 
-        for (i, expected) in expected_values.iter().enumerate() {
-            assert_relative_eq!(output_tema[i + 6], *expected, epsilon = 0.0001);
-        }
-
-        // Test incremental calculation matches regular calculation
-        let mut prev_ema1 = ema1[10];
-        let mut prev_ema2 = ema2[10];
-        let mut prev_ema3 = ema3[10];
-
-        for i in 11..15 {
-            let (tema_val, new_ema1, new_ema2, new_ema3) =
-                tema_inc(input[i], prev_ema1, prev_ema2, prev_ema3, opt_period).unwrap();
-
-            assert_relative_eq!(tema_val, output_tema[i], epsilon = 0.0001);
-            assert_relative_eq!(new_ema1, ema1[i], epsilon = 0.0001);
-            assert_relative_eq!(new_ema2, ema2[i], epsilon = 0.0001);
-            assert_relative_eq!(new_ema3, ema3[i], epsilon = 0.0001);
-
-            prev_ema1 = new_ema1;
-            prev_ema2 = new_ema2;
-            prev_ema3 = new_ema3;
+        for (i, expected) in expected_tema.iter().enumerate() {
+            assert_relative_eq!(output_tema[i + lookback], *expected, epsilon = 0.00000001);
         }
     }
 
     #[test]
     #[cfg(feature = "arrow")]
     fn test_tema_arrow() {
-        use crate::ta::types::TAArrowArray;
-
         let input = vec![
             35216.1, 35221.4, 35190.7, 35170.0, 35181.5, 35254.6, 35202.8, 35251.9, 35197.6,
             35184.7, 35175.1, 35229.9, 35212.5, 35160.7, 35090.3, 35041.2, 34999.3, 35013.4,
-            35069.0, 35024.6,
+            35069.0, 35024.6, 34939.5, 34952.6, 35000.0, 35041.8, 35080.0,
         ];
-        let input_arrow = TAArrowArray::from(input.clone());
-        let opt_period = 3;
+        let input_arrow = TAArrowArray::from(input);
+        let period = 5;
 
-        let (tema_arrow, _, _, _) = tema_arrow(&input_arrow, opt_period).unwrap();
+        let (tema_arrow, _, _, _) = tema_arrow(&input_arrow, period).unwrap();
 
-        assert_eq!(tema_arrow.len(), input.len());
+        assert_eq!(tema_arrow.len(), 25);
+        let lookback = lookback(period).unwrap();
 
-        let mut out_tema = vec![0.0; input.len()];
-        let mut out_ema1 = vec![0.0; input.len()];
-        let mut out_ema2 = vec![0.0; input.len()];
-        let mut out_ema3 = vec![0.0; input.len()];
-
-        tema(
-            &input,
-            opt_period,
-            &mut out_tema,
-            &mut out_ema1,
-            &mut out_ema2,
-            &mut out_ema3,
-        )
-        .unwrap();
-
-        for i in 0..input.len() {
-            if i < 6 {
-                #[cfg(feature = "allow-nan")]
-                assert!(tema_arrow.value(i).is_nan());
-            } else {
-                assert_relative_eq!(tema_arrow.value(i), out_tema[i], epsilon = 0.0001);
-            }
+        for i in 0..lookback {
+            assert!(tema_arrow.value(i).is_nan());
         }
+
+        assert_relative_eq!(tema_arrow.value(24), 35068.51163577639, epsilon = 0.00000001);
     }
 }

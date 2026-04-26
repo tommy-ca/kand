@@ -1,10 +1,22 @@
 use std::mem;
+use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "arrow")]
 use arrow_buffer::Buffer;
 
 pub mod ta;
+
+static MEMORY_VERSION: AtomicU32 = AtomicU32::new(0);
+
+#[wasm_bindgen(js_name = getMemoryVersion)]
+pub fn get_memory_version() -> u32 {
+    MEMORY_VERSION.load(Ordering::Relaxed)
+}
+
+fn bump_memory_version() {
+    MEMORY_VERSION.fetch_add(1, Ordering::Relaxed);
+}
 
 #[wasm_bindgen]
 pub struct WasmBuffer {
@@ -22,6 +34,7 @@ impl WasmBuffer {
     #[wasm_bindgen(constructor)]
     pub fn new(len: usize, element_size: usize) -> Self {
         let capacity = len * element_size;
+        bump_memory_version();
 
         #[cfg(feature = "arrow")]
         {
@@ -61,6 +74,7 @@ impl WasmBuffer {
 
     pub fn resize(&mut self, new_len: usize) {
         let new_capacity = new_len * self.element_size;
+        bump_memory_version();
 
         #[cfg(feature = "arrow")]
         {

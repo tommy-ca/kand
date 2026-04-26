@@ -1,5 +1,6 @@
 use criterion::{BenchmarkId, Criterion, criterion_group};
 use kand::ohlcv::adosc::adosc;
+use kand::ta::types::MAType;
 use std::hint::black_box;
 
 use crate::helper::generate_test_data;
@@ -19,9 +20,6 @@ fn bench_adosc(c: &mut Criterion) {
         let close = generate_test_data(size);
         let volume = generate_test_data(size);
         let mut output_adosc = vec![0.0; size];
-        let mut output_ad = vec![0.0; size];
-        let mut output_fast_ema = vec![0.0; size];
-        let mut output_slow_ema = vec![0.0; size];
 
         for (fast_period, slow_period) in fast_periods.iter().zip(slow_periods.iter()) {
             group.bench_with_input(
@@ -39,10 +37,8 @@ fn bench_adosc(c: &mut Criterion) {
                             black_box(&volume),
                             black_box(*fast_period),
                             black_box(*slow_period),
+                            black_box(MAType::EMA),
                             black_box(&mut output_adosc),
-                            black_box(&mut output_ad),
-                            black_box(&mut output_fast_ema),
-                            black_box(&mut output_slow_ema),
                         );
                     });
                 },

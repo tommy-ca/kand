@@ -152,123 +152,6 @@ pub fn vegas(
     Ok(())
 }
 
-#[cfg(feature = "arrow")]
-crate::kand_arrow_wrapper_multi!(
-    vegas_arrow,
-    crate::ta::ohlcv::vegas::vegas_raw,
-    inputs: { input_price },
-    params: {},
-    lookback_params: {},
-    outputs: {
-        output_channel_upper: TAFloat,
-        output_channel_lower: TAFloat,
-        output_boundary_upper: TAFloat,
-        output_boundary_lower: TAFloat
-    },
-    return_type: {
-        crate::ta::types::TAArrowArray,
-        crate::ta::types::TAArrowArray,
-        crate::ta::types::TAArrowArray,
-        crate::ta::types::TAArrowArray
-    }
-);
-
-#[cfg(test)]
-mod tests {
-    use arrow::array::Array;
-    use approx::assert_relative_eq;
-
-    use super::*;
-
-    #[test]
-    fn test_vegas_calculation() {
-        let input_price = vec![100.0; 700];
-        let mut channel_upper = vec![0.0; 700];
-        let mut channel_lower = vec![0.0; 700];
-        let mut boundary_upper = vec![0.0; 700];
-        let mut boundary_lower = vec![0.0; 700];
-
-        vegas(
-            &input_price,
-            &mut channel_upper,
-            &mut channel_lower,
-            &mut boundary_upper,
-            &mut boundary_lower,
-        )
-        .unwrap();
-
-        let lookback = lookback().unwrap();
-
-        #[cfg(feature = "allow-nan")]
-        {
-            for i in 0..lookback {
-                assert!(channel_upper[i].is_nan());
-                assert!(channel_lower[i].is_nan());
-                assert!(boundary_upper[i].is_nan());
-                assert!(boundary_lower[i].is_nan());
-            }
-        }
-
-        // After lookback, values should be 100.0 for constant input
-        assert_relative_eq!(channel_upper[lookback], 100.0);
-        assert_relative_eq!(channel_lower[lookback], 100.0);
-        assert_relative_eq!(boundary_upper[lookback], 100.0);
-        assert_relative_eq!(boundary_lower[lookback], 100.0);
-    }
-
-    #[test]
-    fn test_vegas_inc() {
-        let current_price = 100.0;
-        let prev_values = (100.0, 100.0, 100.0, 100.0);
-
-        let new_values = vegas_inc(
-            current_price,
-            prev_values.0,
-            prev_values.1,
-            prev_values.2,
-            prev_values.3,
-        )
-        .unwrap();
-
-        assert_relative_eq!(new_values.0, 100.0);
-        assert_relative_eq!(new_values.1, 100.0);
-        assert_relative_eq!(new_values.2, 100.0);
-        assert_relative_eq!(new_values.3, 100.0);
-    }
-
-    #[test]
-    #[cfg(feature = "arrow")]
-    fn test_vegas_arrow() {
-        use crate::ta::types::TAArrowArray;
-
-        let input_price = vec![100.0; 700];
-        let input_arrow = TAArrowArray::from(input_price);
-
-        let (upper, lower, b_upper, b_lower) = vegas_arrow(&input_arrow).unwrap();
-
-        assert_eq!(upper.len(), 700);
-        let lookback = lookback().unwrap();
-
-        #[cfg(feature = "allow-nan")]
-        {
-            for i in 0..143 {
-                assert!(upper.value(i).is_nan());
-            }
-            for i in 0..168 {
-                assert!(lower.value(i).is_nan());
-            }
-            for i in 0..575 {
-                assert!(b_upper.value(i).is_nan());
-            }
-            for i in 0..675 {
-                assert!(b_lower.value(i).is_nan());
-            }
-        }
-
-        assert_relative_eq!(upper.value(lookback), 100.0);
-    }
-}
-
 /// Calculates latest VEGAS indicator values incrementally for real-time updates
 ///
 /// # Description
@@ -337,4 +220,272 @@ pub fn vegas_inc(
     let boundary_lower = ema::ema_inc(input_price, prev_boundary_lower, 676, None)?;
 
     Ok((channel_upper, channel_lower, boundary_upper, boundary_lower))
+}
+
+// Arrow wrapper
+#[cfg(feature = "arrow")]
+crate::kand_arrow_wrapper_multi!(
+    vegas_arrow,
+    crate::ta::ohlcv::vegas::vegas_raw,
+    inputs: { input_price },
+    params: {},
+    lookback_params: {},
+    outputs: {
+        output_channel_upper: TAFloat,
+        output_channel_lower: TAFloat,
+        output_boundary_upper: TAFloat,
+        output_boundary_lower: TAFloat
+    },
+    return_type: {
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray
+    }
+);
+
+#[derive(Clone)]
+pub struct StatefulVEGAS {
+    cu_ema: ema::StatefulEMA,
+    cl_ema: ema::StatefulEMA,
+    bu_ema: ema::StatefulEMA,
+    bl_ema: ema::StatefulEMA,
+}
+
+impl StatefulVEGAS {
+    pub fn new() -> Result<Self, KandError> {
+        let cu_ema = ema::StatefulEMA::new_ext(144, None)?;
+        let cl_ema = ema::StatefulEMA::new_ext(169, None)?;
+        let bu_ema = ema::StatefulEMA::new_ext(576, None)?;
+        let bl_ema = ema::StatefulEMA::new_ext(676, None)?;
+        Ok(Self {
+            cu_ema,
+            cl_ema,
+            bu_ema,
+            bl_ema,
+        })
+    }
+}
+
+impl crate::ta::traits::Indicator for StatefulVEGAS {
+    type Input = (TAFloat,);
+    type Output = (TAFloat, TAFloat, TAFloat, TAFloat);
+
+    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        let mut cu_clone = self.cu_ema.clone();
+        let mut cl_clone = self.cl_ema.clone();
+        let mut bu_clone = self.bu_ema.clone();
+        let mut bl_clone = self.bl_ema.clone();
+
+        let cu = cu_clone.next(input)?;
+        let cl = cl_clone.next(input)?;
+        let bu = bu_clone.next(input)?;
+        let bl = bl_clone.next(input)?;
+
+        self.cu_ema = cu_clone;
+        self.cl_ema = cl_clone;
+        self.bu_ema = bu_clone;
+        self.bl_ema = bl_clone;
+
+        Ok((cu, cl, bu, bl))
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        _batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        Err(KandError::InvalidData)
+    }
+}
+
+#[cfg(feature = "arrow")]
+#[derive(Clone)]
+pub struct BatchVEGAS {
+    cu_ema: ema::BatchEMA,
+    cl_ema: ema::BatchEMA,
+    bu_ema: ema::BatchEMA,
+    bl_ema: ema::BatchEMA,
+}
+
+#[cfg(feature = "arrow")]
+impl BatchVEGAS {
+    pub fn new(num_streams: usize) -> Result<Self, KandError> {
+        let cu_ema = ema::BatchEMA::new_ext(144, num_streams, None)?;
+        let cl_ema = ema::BatchEMA::new_ext(169, num_streams, None)?;
+        let bu_ema = ema::BatchEMA::new_ext(576, num_streams, None)?;
+        let bl_ema = ema::BatchEMA::new_ext(676, num_streams, None)?;
+        Ok(Self {
+            cu_ema,
+            cl_ema,
+            bu_ema,
+            bl_ema,
+        })
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl crate::ta::traits::BatchIndicator for BatchVEGAS {
+    type Input = (crate::ta::types::TAArrowArray,);
+    type Output = (
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+    );
+
+    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        use crate::ta::traits::BatchIndicator;
+
+        let mut cu_clone = self.cu_ema.clone();
+        let mut cl_clone = self.cl_ema.clone();
+        let mut bu_clone = self.bu_ema.clone();
+        let mut bl_clone = self.bl_ema.clone();
+
+        let cu = cu_clone.next_batch(input.clone())?;
+        let cl = cl_clone.next_batch(input.clone())?;
+        let bu = bu_clone.next_batch(input.clone())?;
+        let bl = bl_clone.next_batch(input)?;
+
+        self.cu_ema = cu_clone;
+        self.cl_ema = cl_clone;
+        self.bu_ema = bu_clone;
+        self.bl_ema = bl_clone;
+
+        Ok((cu, cl, bu, bl))
+    }
+
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData)
+    }
+
+    fn restore_from_record_batch(
+        &mut self,
+        _batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        Err(KandError::InvalidData)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
+    use approx::assert_relative_eq;
+    use arrow::array::Array;
+
+    use super::*;
+
+    #[test]
+    fn test_vegas_calculation() {
+        let input_price = vec![100.0; 700];
+        let mut channel_upper = vec![0.0; 700];
+        let mut channel_lower = vec![0.0; 700];
+        let mut boundary_upper = vec![0.0; 700];
+        let mut boundary_lower = vec![0.0; 700];
+
+        vegas(
+            &input_price,
+            &mut channel_upper,
+            &mut channel_lower,
+            &mut boundary_upper,
+            &mut boundary_lower,
+        )
+        .unwrap();
+
+        let lookback = lookback().unwrap();
+
+        #[cfg(feature = "allow-nan")]
+        {
+            for i in 0..lookback {
+                assert!(channel_upper[i].is_nan());
+                assert!(channel_lower[i].is_nan());
+                assert!(boundary_upper[i].is_nan());
+                assert!(boundary_lower[i].is_nan());
+            }
+        }
+
+        // After lookback, values should be 100.0 for constant input
+        assert_relative_eq!(channel_upper[lookback], 100.0);
+        assert_relative_eq!(channel_lower[lookback], 100.0);
+        assert_relative_eq!(boundary_upper[lookback], 100.0);
+        assert_relative_eq!(boundary_lower[lookback], 100.0);
+    }
+
+    #[test]
+    fn test_vegas_inc() {
+        let current_price = 100.0;
+        let prev_values = (100.0, 100.0, 100.0, 100.0);
+
+        let new_values = vegas_inc(
+            current_price,
+            prev_values.0,
+            prev_values.1,
+            prev_values.2,
+            prev_values.3,
+        )
+        .unwrap();
+
+        assert_relative_eq!(new_values.0, 100.0);
+        assert_relative_eq!(new_values.1, 100.0);
+        assert_relative_eq!(new_values.2, 100.0);
+        assert_relative_eq!(new_values.3, 100.0);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_vegas_arrow() {
+        let input_price = vec![100.0; 700];
+        let input_arrow = TAArrowArray::from(input_price);
+
+        let (upper, lower, b_upper, b_lower) = vegas_arrow(&input_arrow).unwrap();
+
+        assert_eq!(upper.len(), 700);
+        let lookback = lookback().unwrap();
+
+        #[cfg(feature = "allow-nan")]
+        {
+            for i in 0..143 {
+                assert!(upper.value(i).is_nan());
+            }
+            for i in 0..168 {
+                assert!(lower.value(i).is_nan());
+            }
+            for i in 0..575 {
+                assert!(b_upper.value(i).is_nan());
+            }
+            for i in 0..675 {
+                assert!(b_lower.value(i).is_nan());
+            }
+        }
+
+        assert_relative_eq!(upper.value(lookback), 100.0);
+    }
+
+    #[test]
+    fn test_stateful_vegas() {
+        let mut vegas_state = StatefulVEGAS::new().unwrap();
+        let out = vegas_state.next((100.0,)).unwrap();
+        assert!(out.0.is_nan());
+        assert!(out.1.is_nan());
+        assert!(out.2.is_nan());
+        assert!(out.3.is_nan());
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_vegas() {
+        let mut batch_vegas = BatchVEGAS::new(2).unwrap();
+        let price = TAArrowArray::from(vec![100.0, 100.0]);
+        let out = batch_vegas.next_batch((price.clone(),)).unwrap();
+        assert!(out.0.value(0).is_nan());
+        assert!(out.1.value(0).is_nan());
+        assert!(out.2.value(0).is_nan());
+        assert!(out.3.value(0).is_nan());
+    }
 }

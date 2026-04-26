@@ -19,8 +19,6 @@ fn bench_macd(c: &mut Criterion) {
         let mut macd_line = vec![0.0; size];
         let mut signal_line = vec![0.0; size];
         let mut histogram = vec![0.0; size];
-        let mut fast_ema = vec![0.0; size];
-        let mut slow_ema = vec![0.0; size];
 
         for ((fast_period, slow_period), signal_period) in
             fast_periods.iter().zip(&slow_periods).zip(&signal_periods)
@@ -43,8 +41,6 @@ fn bench_macd(c: &mut Criterion) {
                             black_box(&mut macd_line),
                             black_box(&mut signal_line),
                             black_box(&mut histogram),
-                            black_box(&mut fast_ema),
-                            black_box(&mut slow_ema),
                         );
                     });
                 },

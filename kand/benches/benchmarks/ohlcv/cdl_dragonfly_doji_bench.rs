@@ -25,6 +25,7 @@ fn bench_cdl_dragonfly_doji(c: &mut Criterion) {
                     black_box(&input_low),
                     black_box(&input_close),
                     black_box(0.1),
+                    black_box(0.1),
                     black_box(&mut output_signals),
                 );
             });

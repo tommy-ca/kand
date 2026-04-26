@@ -1,5 +1,6 @@
 use criterion::{BenchmarkId, Criterion, criterion_group};
 use kand::ohlcv::bbands::bbands;
+use kand::ta::types::MAType;
 use std::hint::black_box;
 
 use crate::helper::generate_test_data;
@@ -16,10 +17,6 @@ fn bench_bbands(c: &mut Criterion) {
         let mut output_upper = vec![0.0; size];
         let mut output_middle = vec![0.0; size];
         let mut output_lower = vec![0.0; size];
-        let mut output_sma = vec![0.0; size];
-        let mut output_var = vec![0.0; size];
-        let mut output_sum = vec![0.0; size];
-        let mut output_sum_sq = vec![0.0; size];
 
         for period in &periods {
             group.bench_with_input(
@@ -32,13 +29,10 @@ fn bench_bbands(c: &mut Criterion) {
                             black_box(period),
                             black_box(2.0),
                             black_box(2.0),
+                            black_box(MAType::SMA),
                             black_box(&mut output_upper),
                             black_box(&mut output_middle),
                             black_box(&mut output_lower),
-                            black_box(&mut output_sma),
-                            black_box(&mut output_var),
-                            black_box(&mut output_sum),
-                            black_box(&mut output_sum_sq),
                         );
                     });
                 },

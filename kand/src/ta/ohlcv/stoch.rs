@@ -1,4 +1,5 @@
 use crate::{KandError, TAFloat};
+use super::sma;
 
 #[cfg(feature = "arrow")]
 use crate::ta::types::TAArrowArray;
@@ -161,9 +162,6 @@ pub fn stoch_raw(
     }
 
     // 2. Calculate Slow %K (SMA of Fast %K)
-    // Needs k_slow_period of Fast %K values.
-    // Fast %K starts at k_period - 1.
-    // Slow %K starts at (k_period - 1) + (k_slow_period - 1) = k_period + k_slow_period - 2
     let k_slow_start_idx = opt_k_period + opt_k_slow_period - 2;
 
     if len > k_slow_start_idx {
@@ -180,9 +178,6 @@ pub fn stoch_raw(
     }
 
     // 3. Calculate %D (SMA of Slow %K)
-    // Needs d_period of Slow %K values.
-    // Slow %K starts at k_slow_start_idx.
-    // %D starts at k_slow_start_idx + (d_period - 1) = k_period + k_slow_period + d_period - 3
     let d_start_idx = k_slow_start_idx + opt_d_period - 1;
 
     if len > d_start_idx {
@@ -200,73 +195,6 @@ pub fn stoch_raw(
 }
 
 /// Calculates the Stochastic Oscillator indicator for the entire price series.
-///
-/// # Description
-/// The Stochastic Oscillator is a momentum indicator that shows the location of the close
-/// relative to the high-low range over a set number of periods. The indicator consists of
-/// two lines: %K (the fast line) and %D (the slow line).
-///
-/// # Mathematical Formula
-/// ```text
-/// Fast %K = 100 * (Close - Lowest Low) / (Highest High - Lowest Low)
-/// Slow %K = SMA(Fast %K, k_slow_period)
-/// %D = SMA(Slow %K, d_period)
-/// ```
-///
-/// # Calculation Steps
-/// 1. Calculate the Fast %K by comparing current close to the high-low range
-/// 2. Smooth the Fast %K using SMA to get Slow %K
-/// 3. Calculate %D as the SMA of Slow %K
-///
-/// # Arguments
-/// * `input_high` - Array of high prices
-/// * `input_low` - Array of low prices
-/// * `input_close` - Array of closing prices
-/// * `opt_k_period` - Period for %K calculation, must be >= 2
-/// * `opt_k_slow_period` - Smoothing period for slow %K, must be >= 2
-/// * `opt_d_period` - Period for %D calculation, must be >= 2
-/// * `output_fast_k` - Array to store Fast %K values
-/// * `output_k` - Array to store Slow %K values
-/// * `output_d` - Array to store %D values
-///
-/// # Returns
-/// * `Result<(), KandError>` - Unit type if successful
-///
-/// # Errors
-/// * `KandError::InvalidData` - If input arrays are empty
-/// * `KandError::LengthMismatch` - If input/output arrays have different lengths
-/// * `KandError::InvalidParameter` - If any period parameter is less than 2
-/// * `KandError::InsufficientData` - If input length is less than required lookback period
-/// * `KandError::NaNDetected`] if any input value is NaN (when "`check-nan`" feature is enabled)
-///
-/// # Example
-/// ```
-/// use kand::ohlcv::stoch;
-///
-/// let input_high = vec![10.0, 12.0, 15.0, 14.0, 13.0];
-/// let input_low = vec![8.0, 9.0, 11.0, 10.0, 9.0];
-/// let input_close = vec![9.0, 11.0, 14.0, 12.0, 11.0];
-/// let opt_k_period = 3;
-/// let opt_k_slow_period = 2;
-/// let opt_d_period = 2;
-/// let mut output_fast_k = vec![0.0; 5];
-/// let mut output_k = vec![0.0; 5];
-/// let mut output_d = vec![0.0; 5];
-///
-/// stoch::stoch(
-///     &input_high,
-///     &input_low,
-///     &input_close,
-///     opt_k_period,
-///     opt_k_slow_period,
-///     opt_d_period,
-///     &mut output_fast_k,
-///     &mut output_k,
-///     &mut output_d,
-/// )
-/// .unwrap();
-/// ```
-#[allow(clippy::similar_names)]
 pub fn stoch(
     input_high: &[TAFloat],
     input_low: &[TAFloat],
@@ -283,17 +211,12 @@ pub fn stoch(
 
     #[cfg(feature = "check")]
     {
-        // Empty data check
         if len == 0 {
             return Err(KandError::InvalidData);
         }
-
-        // Data sufficiency check
         if len <= lookback_val {
             return Err(KandError::InsufficientData);
         }
-
-        // Length consistency check
         if len != input_low.len()
             || len != input_close.len()
             || len != output_fast_k.len()
@@ -307,7 +230,6 @@ pub fn stoch(
     #[cfg(feature = "check-nan")]
     {
         for i in 0..len {
-            // NaN check
             if input_high[i].is_nan() || input_low[i].is_nan() || input_close[i].is_nan() {
                 return Err(KandError::NaNDetected);
             }
@@ -328,6 +250,251 @@ pub fn stoch(
 
     Ok(())
 }
+
+#[derive(Clone)]
+pub struct StatefulSTOCH {
+    k_period: usize,
+    k_slow_period: usize,
+    d_period: usize,
+    __kand_window_high: Vec<TAFloat>,
+    __kand_window_low: Vec<TAFloat>,
+    __kand_cursor: usize,
+    __kand_count: usize,
+    k_slow_sma: sma::StatefulSMA,
+    d_sma: sma::StatefulSMA,
+}
+
+impl StatefulSTOCH {
+    pub fn new(
+        k_period: usize,
+        k_slow_period: usize,
+        d_period: usize,
+    ) -> Result<Self, KandError> {
+        if k_period < 2 || k_slow_period < 2 || d_period < 2 {
+            return Err(KandError::InvalidParameter);
+        }
+        Ok(Self {
+            k_period,
+            k_slow_period,
+            d_period,
+            __kand_window_high: vec![0.0; k_period],
+            __kand_window_low: vec![0.0; k_period],
+            __kand_cursor: 0,
+            __kand_count: 0,
+            k_slow_sma: sma::StatefulSMA::new(k_slow_period)?,
+            d_sma: sma::StatefulSMA::new(d_period)?,
+        })
+    }
+}
+
+impl crate::ta::traits::Indicator for StatefulSTOCH {
+    type Input = (TAFloat, TAFloat, TAFloat);
+    type Output = (TAFloat, TAFloat, TAFloat);
+
+    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        let (high, low, close) = input;
+        self.__kand_window_high[self.__kand_cursor] = high;
+        self.__kand_window_low[self.__kand_cursor] = low;
+        self.__kand_cursor = (self.__kand_cursor + 1) % self.k_period;
+        self.__kand_count += 1;
+
+        let fast_k = if self.__kand_count < self.k_period {
+            TAFloat::NAN
+        } else {
+            let mut highest_high = self.__kand_window_high[0];
+            let mut lowest_low = self.__kand_window_low[0];
+            for i in 1..self.k_period {
+                let h = self.__kand_window_high[i];
+                let l = self.__kand_window_low[i];
+                if h > highest_high {
+                    highest_high = h;
+                }
+                if l < lowest_low {
+                    lowest_low = l;
+                }
+            }
+            let diff = highest_high - lowest_low;
+            if diff == 0.0 {
+                0.0
+            } else {
+                100.0 * (close - lowest_low) / diff
+            }
+        };
+
+        let mut k_slow_sma_clone = self.k_slow_sma.clone();
+        let mut d_sma_clone = self.d_sma.clone();
+
+        let k = k_slow_sma_clone.next((fast_k,))?;
+        let d = d_sma_clone.next((k,))?;
+
+        self.k_slow_sma = k_slow_sma_clone;
+        self.d_sma = d_sma_clone;
+
+        Ok((fast_k, k, d))
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        _batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        Err(KandError::InvalidData)
+    }
+}
+
+#[cfg(feature = "arrow")]
+pub struct BatchSTOCH {
+    k_period: usize,
+    k_slow_period: usize,
+    d_period: usize,
+    num_streams: usize,
+    __kand_windows_high: arrow_buffer::MutableBuffer,
+    __kand_windows_low: arrow_buffer::MutableBuffer,
+    __kand_counts: Vec<usize>,
+    __kand_cursors: Vec<usize>,
+    k_slow_sma: sma::BatchSMA,
+    d_sma: sma::BatchSMA,
+}
+
+#[cfg(feature = "arrow")]
+impl Clone for BatchSTOCH {
+    fn clone(&self) -> Self {
+        let mut __kand_windows_high =
+            arrow_buffer::MutableBuffer::new(self.__kand_windows_high.len());
+        __kand_windows_high.extend_from_slice(self.__kand_windows_high.as_slice());
+        let mut __kand_windows_low = arrow_buffer::MutableBuffer::new(self.__kand_windows_low.len());
+        __kand_windows_low.extend_from_slice(self.__kand_windows_low.as_slice());
+        Self {
+            k_period: self.k_period,
+            k_slow_period: self.k_slow_period,
+            d_period: self.d_period,
+            num_streams: self.num_streams,
+            __kand_windows_high,
+            __kand_windows_low,
+            __kand_counts: self.__kand_counts.clone(),
+            __kand_cursors: self.__kand_cursors.clone(),
+            k_slow_sma: self.k_slow_sma.clone(),
+            d_sma: self.d_sma.clone(),
+        }
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl BatchSTOCH {
+    pub fn new(
+        k_period: usize,
+        k_slow_period: usize,
+        d_period: usize,
+        num_streams: usize,
+    ) -> Result<Self, KandError> {
+        if k_period < 2 || k_slow_period < 2 || d_period < 2 {
+            return Err(KandError::InvalidParameter);
+        }
+        let mut wh =
+            arrow_buffer::MutableBuffer::new(num_streams * k_period * std::mem::size_of::<TAFloat>());
+        wh.resize(num_streams * k_period * std::mem::size_of::<TAFloat>(), 0);
+        let mut wl =
+            arrow_buffer::MutableBuffer::new(num_streams * k_period * std::mem::size_of::<TAFloat>());
+        wl.resize(num_streams * k_period * std::mem::size_of::<TAFloat>(), 0);
+
+        Ok(Self {
+            k_period,
+            k_slow_period,
+            d_period,
+            num_streams,
+            __kand_windows_high: wh,
+            __kand_windows_low: wl,
+            __kand_counts: vec![0; num_streams],
+            __kand_cursors: vec![0; num_streams],
+            k_slow_sma: sma::BatchSMA::new(k_slow_period, num_streams)?,
+            d_sma: sma::BatchSMA::new(d_period, num_streams)?,
+        })
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl crate::ta::traits::BatchIndicator for BatchSTOCH {
+    type Input = (
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+    );
+    type Output = (
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+    );
+
+    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        use crate::ta::traits::{BatchIndicator, Indicator};
+        let (high, low, close) = (input.0.values(), input.1.values(), input.2.values());
+        let len = high.len();
+        if len != self.num_streams {
+            return Err(KandError::LengthMismatch);
+        }
+
+        let wh_slice = self.__kand_windows_high.typed_data_mut::<TAFloat>();
+        let wl_slice = self.__kand_windows_low.typed_data_mut::<TAFloat>();
+
+        let (ptr_fk, buffer_fk) =
+            crate::helper::buffer_pool::create_pooled_buffer(len * std::mem::size_of::<TAFloat>());
+        let fk_slice = unsafe { std::slice::from_raw_parts_mut(ptr_fk as *mut TAFloat, len) };
+
+        for s in 0..len {
+            let mut state = StatefulSTOCH {
+                k_period: self.k_period,
+                k_slow_period: self.k_slow_period,
+                d_period: self.d_period,
+                __kand_window_high: wh_slice[s * self.k_period..(s + 1) * self.k_period].to_vec(),
+                __kand_window_low: wl_slice[s * self.k_period..(s + 1) * self.k_period].to_vec(),
+                __kand_cursor: self.__kand_cursors[s],
+                __kand_count: self.__kand_counts[s],
+                k_slow_sma: sma::StatefulSMA::new(self.k_slow_period)?,
+                d_sma: sma::StatefulSMA::new(self.d_period)?,
+            };
+
+            let (fk, _, _) = state.next((high[s], low[s], close[s]))?;
+            fk_slice[s] = fk;
+
+            self.__kand_counts[s] = state.__kand_count;
+            self.__kand_cursors[s] = state.__kand_cursor;
+            wh_slice[s * self.k_period..(s + 1) * self.k_period]
+                .copy_from_slice(&state.__kand_window_high);
+            wl_slice[s * self.k_period..(s + 1) * self.k_period]
+                .copy_from_slice(&state.__kand_window_low);
+        }
+
+        let fk_arrow = crate::ta::types::TAArrowArray::new(buffer_fk.into(), None);
+
+        let mut k_slow_sma_clone = self.k_slow_sma.clone();
+        let mut d_sma_clone = self.d_sma.clone();
+
+        let k = k_slow_sma_clone.next_batch((fk_arrow,))?;
+        let d = d_sma_clone.next_batch((k.clone(),))?;
+
+        self.k_slow_sma = k_slow_sma_clone;
+        self.d_sma = d_sma_clone;
+
+        Ok((crate::ta::types::TAArrowArray::new(vec![].into(), None), k, d))
+    }
+
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData)
+    }
+
+    fn restore_from_record_batch(
+        &mut self,
+        _batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        Err(KandError::InvalidData)
+    }
+}
+
 
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
@@ -350,6 +517,9 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
+    use arrow::array::Array;
     use approx::assert_relative_eq;
 
     use super::*;
@@ -393,7 +563,6 @@ mod tests {
         )
         .unwrap();
 
-        // K is NaN for i < 15, D is NaN for i < 17
         for i in 0..15 {
             assert!(output_k[i].is_nan(), "Expected K NaN at index {}", i);
         }
@@ -401,7 +570,6 @@ mod tests {
             assert!(output_d[i].is_nan(), "Expected D NaN at index {}", i);
         }
 
-        // Compare with known values
         let expected_k = [
             10.892447125440583,
             9.209849865044355,
@@ -483,5 +651,32 @@ mod tests {
                 assert!(!d.value(i).is_nan());
             }
         }
+    }
+
+    #[test]
+    fn test_stateful_stoch() {
+        let mut stoch_state = StatefulSTOCH::new(3, 2, 2).unwrap();
+        assert!(stoch_state.next((12.0, 9.0, 11.0)).unwrap().0.is_nan());
+        assert!(stoch_state.next((15.0, 11.0, 14.0)).unwrap().0.is_nan());
+        let (fk, k, d) = stoch_state.next((14.0, 10.0, 12.0)).unwrap();
+        assert_relative_eq!(fk, 50.0, epsilon = 0.0001);
+        assert!(k.is_nan());
+
+        let (fk, k, d) = stoch_state.next((13.0, 9.0, 11.0)).unwrap();
+        assert_relative_eq!(fk, 33.333333333333336, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_stoch() {
+        let mut batch_stoch = BatchSTOCH::new(3, 2, 2, 2).unwrap();
+        let high = TAArrowArray::from(vec![12.0, 12.0]);
+        let low = TAArrowArray::from(vec![9.0, 9.0]);
+        let close = TAArrowArray::from(vec![11.0, 11.0]);
+
+        let (_fk, k, d) = batch_stoch
+            .next_batch((high, low, close))
+            .unwrap();
+        assert!(k.value(0).is_nan());
     }
 }

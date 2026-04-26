@@ -17,9 +17,6 @@ fn bench_cci(c: &mut Criterion) {
         let input_low = generate_test_data(size);
         let input_close = generate_test_data(size);
         let mut output_cci = vec![0.0; size];
-        let mut output_tp = vec![0.0; size];
-        let mut output_sma_tp = vec![0.0; size];
-        let mut output_mean_dev = vec![0.0; size];
 
         for period in &periods {
             group.bench_with_input(
@@ -33,9 +30,6 @@ fn bench_cci(c: &mut Criterion) {
                             black_box(&input_close),
                             black_box(period),
                             black_box(&mut output_cci),
-                            black_box(&mut output_tp),
-                            black_box(&mut output_sma_tp),
-                            black_box(&mut output_mean_dev),
                         );
                     });
                 },

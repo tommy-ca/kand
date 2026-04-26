@@ -89,7 +89,6 @@ impl crate::ta::traits::Indicator for StatefulMACD {
 
     #[cfg(feature = "arrow")]
     fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
-        use crate::ta::traits::Indicator;
         // MACD state is the composition of its EMAs
         let fast_batch = self.fast_ema.to_record_batch()?;
         let slow_batch = self.slow_ema.to_record_batch()?;

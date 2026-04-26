@@ -1,6 +1,6 @@
 use crate::{
     KandError, TAFloat,
-    ta::{ohlcv::sma, stats::var, types::MAType},
+    ta::{ohlcv::sma, stats::var, traits::Indicator, types::MAType},
 };
 
 #[cfg(feature = "arrow")]
@@ -337,6 +337,240 @@ pub fn bbands_inc(
     ))
 }
 
+#[derive(Clone)]
+pub struct StatefulBBANDS {
+    period: usize,
+    multiplier_up: TAFloat,
+    multiplier_down: TAFloat,
+    ma_type: MAType,
+    __kand_window: Vec<TAFloat>,
+    __kand_cursor: usize,
+    __kand_count: usize,
+    sum: TAFloat,
+    sum_sq: TAFloat,
+}
+
+impl StatefulBBANDS {
+    pub fn new(
+        period: usize,
+        multiplier_up: TAFloat,
+        multiplier_down: TAFloat,
+        ma_type: MAType,
+    ) -> Result<Self, KandError> {
+        if period < 2 {
+            return Err(KandError::InvalidParameter);
+        }
+        Ok(Self {
+            period,
+            multiplier_up,
+            multiplier_down,
+            ma_type,
+            __kand_window: vec![0.0; period],
+            __kand_cursor: 0,
+            __kand_count: 0,
+            sum: 0.0,
+            sum_sq: 0.0,
+        })
+    }
+}
+
+impl crate::ta::traits::Indicator for StatefulBBANDS {
+    type Input = (TAFloat,);
+    type Output = (TAFloat, TAFloat, TAFloat);
+
+    fn next(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        let price = input.0;
+        let old_price = self.__kand_window[self.__kand_cursor];
+        self.__kand_window[self.__kand_cursor] = price;
+        self.__kand_cursor = (self.__kand_cursor + 1) % self.period;
+        self.__kand_count += 1;
+
+        if self.__kand_count <= self.period {
+            self.sum += price;
+            self.sum_sq += price * price;
+            if self.__kand_count == self.period {
+                let mean = self.sum / self.period as TAFloat;
+                let variance =
+                    (self.sum_sq - (self.sum * self.sum / self.period as TAFloat)) / self.period as TAFloat;
+                let std_dev = variance.max(0.0).sqrt();
+                Ok((
+                    self.multiplier_up.mul_add(std_dev, mean),
+                    mean,
+                    self.multiplier_down.mul_add(-std_dev, mean),
+                ))
+            } else {
+                Ok((TAFloat::NAN, TAFloat::NAN, TAFloat::NAN))
+            }
+        } else {
+            self.sum = self.sum + price - old_price;
+            self.sum_sq = self.sum_sq + price.powi(2) - old_price.powi(2);
+            let mean = self.sum / self.period as TAFloat;
+            let variance =
+                (self.sum_sq - (self.sum * self.sum / self.period as TAFloat)) / self.period as TAFloat;
+            let std_dev = variance.max(0.0).sqrt();
+            Ok((
+                self.multiplier_up.mul_add(std_dev, mean),
+                mean,
+                self.multiplier_down.mul_add(-std_dev, mean),
+            ))
+        }
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn restore_from_record_batch(
+        &mut self,
+        _batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        Err(KandError::InvalidData)
+    }
+}
+
+#[cfg(feature = "arrow")]
+pub struct BatchBBANDS {
+    period: usize,
+    multiplier_up: TAFloat,
+    multiplier_down: TAFloat,
+    ma_type: MAType,
+    num_streams: usize,
+    __kand_windows: arrow_buffer::MutableBuffer,
+    __kand_counts: Vec<usize>,
+    __kand_cursors: Vec<usize>,
+    sums: Vec<TAFloat>,
+    sum_sqs: Vec<TAFloat>,
+}
+
+#[cfg(feature = "arrow")]
+impl Clone for BatchBBANDS {
+    fn clone(&self) -> Self {
+        let mut __kand_windows = arrow_buffer::MutableBuffer::new(self.__kand_windows.len());
+        __kand_windows.extend_from_slice(self.__kand_windows.as_slice());
+        Self {
+            period: self.period,
+            multiplier_up: self.multiplier_up,
+            multiplier_down: self.multiplier_down,
+            ma_type: self.ma_type,
+            num_streams: self.num_streams,
+            __kand_windows,
+            __kand_counts: self.__kand_counts.clone(),
+            __kand_cursors: self.__kand_cursors.clone(),
+            sums: self.sums.clone(),
+            sum_sqs: self.sum_sqs.clone(),
+        }
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl BatchBBANDS {
+    pub fn new(
+        period: usize,
+        multiplier_up: TAFloat,
+        multiplier_down: TAFloat,
+        ma_type: MAType,
+        num_streams: usize,
+    ) -> Result<Self, KandError> {
+        if period < 2 {
+            return Err(KandError::InvalidParameter);
+        }
+        let mut __kand_windows =
+            arrow_buffer::MutableBuffer::new(num_streams * period * std::mem::size_of::<TAFloat>());
+        __kand_windows.resize(num_streams * period * std::mem::size_of::<TAFloat>(), 0);
+
+        Ok(Self {
+            period,
+            multiplier_up,
+            multiplier_down,
+            ma_type,
+            num_streams,
+            __kand_windows,
+            __kand_counts: vec![0; num_streams],
+            __kand_cursors: vec![0; num_streams],
+            sums: vec![0.0; num_streams],
+            sum_sqs: vec![0.0; num_streams],
+        })
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl crate::ta::traits::BatchIndicator for BatchBBANDS {
+    type Input = (crate::ta::types::TAArrowArray,);
+    type Output = (
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+        crate::ta::types::TAArrowArray,
+    );
+
+    fn next_batch(&mut self, input: Self::Input) -> Result<Self::Output, KandError> {
+        let input_prices = input.0.values();
+        let len = input_prices.len();
+        if len != self.num_streams {
+            return Err(KandError::LengthMismatch);
+        }
+
+        let windows_slice = self.__kand_windows.typed_data_mut::<TAFloat>();
+
+        let (ptr_u, buffer_u) =
+            crate::helper::buffer_pool::create_pooled_buffer(len * std::mem::size_of::<TAFloat>());
+        let (ptr_m, buffer_m) =
+            crate::helper::buffer_pool::create_pooled_buffer(len * std::mem::size_of::<TAFloat>());
+        let (ptr_l, buffer_l) =
+            crate::helper::buffer_pool::create_pooled_buffer(len * std::mem::size_of::<TAFloat>());
+
+        let output_u = unsafe { std::slice::from_raw_parts_mut(ptr_u as *mut TAFloat, len) };
+        let output_m = unsafe { std::slice::from_raw_parts_mut(ptr_m as *mut TAFloat, len) };
+        let output_l = unsafe { std::slice::from_raw_parts_mut(ptr_l as *mut TAFloat, len) };
+
+        for s in 0..len {
+            let mut state = StatefulBBANDS {
+                period: self.period,
+                multiplier_up: self.multiplier_up,
+                multiplier_down: self.multiplier_down,
+                ma_type: self.ma_type,
+                __kand_window: windows_slice[s * self.period..(s + 1) * self.period].to_vec(),
+                __kand_cursor: self.__kand_cursors[s],
+                __kand_count: self.__kand_counts[s],
+                sum: self.sums[s],
+                sum_sq: self.sum_sqs[s],
+            };
+
+            let (u, m, l) = state.next((input_prices[s],))?;
+
+            output_u[s] = u;
+            output_m[s] = m;
+            output_l[s] = l;
+
+            self.__kand_counts[s] = state.__kand_count;
+            self.__kand_cursors[s] = state.__kand_cursor;
+            self.sums[s] = state.sum;
+            self.sum_sqs[s] = state.sum_sq;
+            windows_slice[s * self.period..(s + 1) * self.period]
+                .copy_from_slice(&state.__kand_window);
+        }
+
+        Ok((
+            crate::ta::types::TAArrowArray::new(buffer_u.into(), None),
+            crate::ta::types::TAArrowArray::new(buffer_m.into(), None),
+            crate::ta::types::TAArrowArray::new(buffer_l.into(), None),
+        ))
+    }
+
+    fn to_record_batch(&self) -> Result<arrow::record_batch::RecordBatch, KandError> {
+        Err(KandError::InvalidData)
+    }
+
+    fn restore_from_record_batch(
+        &mut self,
+        _batch: &arrow::record_batch::RecordBatch,
+    ) -> Result<(), KandError> {
+        Err(KandError::InvalidData)
+    }
+}
+
+
 // Arrow wrapper
 crate::kand_arrow_wrapper_multi!(
     bbands_arrow,
@@ -359,6 +593,8 @@ crate::kand_arrow_wrapper_multi!(
 
 #[cfg(test)]
 mod tests {
+    use crate::ta::traits::{BatchIndicator, Indicator};
+    use crate::ta::types::TAArrowArray;
     use arrow::array::Array;
     use approx::assert_relative_eq;
 
@@ -537,5 +773,42 @@ mod tests {
                 assert_relative_eq!(lower.value(i), out_lower[i], epsilon = 0.0001);
             }
         }
+    }
+
+    #[test]
+    fn test_stateful_bbands() {
+        let mut bbands_state = StatefulBBANDS::new(3, 2.0, 2.0, MAType::SMA).unwrap();
+        // Prices: 10, 11, 12
+        // Mean: (10+11+12)/3 = 11
+        // Variance: ((10-11)^2 + (11-11)^2 + (12-11)^2)/3 = (1 + 0 + 1)/3 = 2/3 = 0.666...
+        // StdDev: sqrt(2/3) = 0.816496...
+        // Upper: 11 + 2*0.816496 = 11 + 1.63299 = 12.63299
+        // Lower: 11 - 2*0.816496 = 11 - 1.63299 = 9.36701
+
+        assert!(bbands_state.next((10.0,)).unwrap().0.is_nan());
+        assert!(bbands_state.next((11.0,)).unwrap().0.is_nan());
+        let (u, m, l) = bbands_state.next((12.0,)).unwrap();
+        assert_relative_eq!(u, 12.632993161855452, epsilon = 0.0001);
+        assert_relative_eq!(m, 11.0, epsilon = 0.0001);
+        assert_relative_eq!(l, 9.367006838144548, epsilon = 0.0001);
+    }
+
+    #[test]
+    #[cfg(feature = "arrow")]
+    fn test_batch_bbands() {
+        let mut batch_bbands = BatchBBANDS::new(3, 2.0, 2.0, MAType::SMA, 2).unwrap();
+        let price = crate::ta::types::TAArrowArray::from(vec![10.0, 10.0]);
+        let (u, _m, _l) = batch_bbands.next_batch((price,)).unwrap();
+        assert!(u.value(0).is_nan());
+
+        let price = crate::ta::types::TAArrowArray::from(vec![11.0, 11.0]);
+        let (u, _m, _l) = batch_bbands.next_batch((price,)).unwrap();
+        assert!(u.value(0).is_nan());
+
+        let price = crate::ta::types::TAArrowArray::from(vec![12.0, 12.0]);
+        let (u, m, l) = batch_bbands.next_batch((price,)).unwrap();
+        assert_relative_eq!(u.value(0), 12.632993161855452, epsilon = 0.0001);
+        assert_relative_eq!(m.value(0), 11.0, epsilon = 0.0001);
+        assert_relative_eq!(l.value(0), 9.367006838144548, epsilon = 0.0001);
     }
 }

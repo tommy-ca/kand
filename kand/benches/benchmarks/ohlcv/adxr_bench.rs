@@ -17,10 +17,6 @@ fn bench_adxr(c: &mut Criterion) {
         let input_low = generate_test_data(size);
         let input_close = generate_test_data(size);
         let mut output_adxr = vec![0.0; size];
-        let mut output_adx = vec![0.0; size];
-        let mut output_smoothed_plus_dm = vec![0.0; size];
-        let mut output_smoothed_minus_dm = vec![0.0; size];
-        let mut output_smoothed_tr = vec![0.0; size];
 
         for period in &periods {
             group.bench_with_input(
@@ -34,10 +30,6 @@ fn bench_adxr(c: &mut Criterion) {
                             black_box(&input_close),
                             black_box(period),
                             black_box(&mut output_adxr),
-                            black_box(&mut output_adx),
-                            black_box(&mut output_smoothed_plus_dm),
-                            black_box(&mut output_smoothed_minus_dm),
-                            black_box(&mut output_smoothed_tr),
                         );
                     });
                 },

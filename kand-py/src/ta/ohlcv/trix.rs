@@ -95,14 +95,22 @@ pub fn trix_py(
 ///   ... )
 ///   ```
 #[pyfunction]
-#[pyo3(name = "trix_inc", signature = (price, prev_ema1, prev_ema2, prev_ema3, period))]
+#[pyo3(name = "trix_inc", signature = (price, prev_ema1, prev_ema2, prev_ema3, prev_smoothed_ema3, period))]
 pub fn trix_inc_py(
     price: TAFloat,
     prev_ema1: TAFloat,
     prev_ema2: TAFloat,
     prev_ema3: TAFloat,
+    prev_smoothed_ema3: TAFloat,
     period: usize,
 ) -> PyResult<(TAFloat, TAFloat, TAFloat, TAFloat)> {
-    trix::trix_inc(price, prev_ema1, prev_ema2, prev_ema3, period)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    trix::trix_inc(
+        price,
+        prev_ema1,
+        prev_ema2,
+        prev_ema3,
+        prev_smoothed_ema3,
+        period,
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }

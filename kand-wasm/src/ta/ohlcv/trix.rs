@@ -52,14 +52,22 @@ pub fn trix_inc_wasm(
     prev_ema1: f64,
     prev_ema2: f64,
     prev_ema3: f64,
+    prev_smoothed_ema3: f64,
     opt_period: usize,
 ) -> Result<TRIXResult, JsValue> {
-    trix::trix_inc(input, prev_ema1, prev_ema2, prev_ema3, opt_period)
-        .map(|(trix, ema1, ema2, ema3)| TRIXResult {
-            trix,
-            ema1,
-            ema2,
-            ema3,
-        })
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    trix::trix_inc(
+        input,
+        prev_ema1,
+        prev_ema2,
+        prev_ema3,
+        prev_smoothed_ema3,
+        opt_period,
+    )
+    .map(|(trix, ema1, ema2, ema3)| TRIXResult {
+        trix,
+        ema1,
+        ema2,
+        ema3,
+    })
+    .map_err(|e| JsValue::from_str(&e.to_string()))
 }
